@@ -39,6 +39,41 @@ interface QueueMessageRow {
   delay_seconds: number;
 }
 
+interface LeadRow {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  category: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  rating: number | null;
+  reviews: number | null;
+  niche: string | null;
+  status: string | null;
+}
+
+/** Substitutes dynamic placeholders ({nome_empresa}, {telefone}, ...) in a string. */
+function applyPlaceholders(input: string, lead: LeadRow): string {
+  const values: Record<string, string> = {
+    nome_empresa: lead.name ?? '',
+    telefone: lead.phone ?? '',
+    cidade: lead.city ?? '',
+    estado: lead.state ?? '',
+    endereco: lead.address ?? '',
+    categoria: lead.category ?? '',
+    site: lead.website ?? '',
+    nicho: lead.niche ?? '',
+    avaliacao: lead.rating != null ? String(lead.rating) : '',
+    avaliacoes: lead.reviews != null ? String(lead.reviews) : '',
+  };
+  return input.replace(/\{(\w+)\}/g, (match, key: string) =>
+    values[key] !== undefined ? values[key] : match,
+  );
+}
+
 export class SendWorker {
   private readonly url: string;
   private readonly key: string;
@@ -58,13 +93,13 @@ export class SendWorker {
       : { apikey: this.key, Authorization: `Bearer ${this.key}` };
   }
 
-  private async getLeadPhone(leadId: string): Promise<string | null> {
-    const r = await fetch(`${this.url}/rest/v1/leads?id=eq.${leadId}&select=phone,status`, {
+  private async getLead(leadId: string): Promise<LeadRow | null> {
+    const r = await fetch(`${this.url}/rest/v1/leads?id=eq.${leadId}&select=*`, {
       headers: this.headers(),
     });
     if (!r.ok) return null;
-    const rows = (await r.json()) as Array<{ phone: string | null; status: string | null }>;
-    return rows[0]?.phone ?? null;
+    const rows = (await r.json()) as LeadRow[];
+    return rows[0] ?? null;
   }
 
   private async getPendingRuns(): Promise<SendRunRow[]> {
@@ -123,7 +158,13 @@ export class SendWorker {
       return;
     }
 
-    const phone = await this.getLeadPhone(run.lead_id);
+    const lead = await this.getLead(run.lead_id);
+    if (!lead) {
+      log.warn({ runId: run.id, leadId: run.lead_id }, 'send-worker: lead not found, failing');
+      await this.patchSendRun(run.id, { status: 'failed', current_position: position });
+      return;
+    }
+    const phone = lead.phone;
     if (!phone) {
       log.warn({ runId: run.id, leadId: run.lead_id }, 'send-worker: no phone, failing');
       await this.patchSendRun(run.id, { status: 'failed', current_position: position });
@@ -133,16 +174,21 @@ export class SendWorker {
     log.info({ runId: run.id, position, kind: next.kind, phone }, 'send-worker: sending');
     let ok: boolean;
     if (next.kind === 'text' && next.text) {
-      ok = (await sendText({ to: phone, text: next.text })).ok;
+      ok = (await sendText({ to: phone, text: applyPlaceholders(next.text, lead) })).ok;
     } else if (next.media_url) {
+      const mediaUrl = next.media_url.startsWith('http')
+        ? next.media_url
+        : `${this.url}/storage/v1/object/public/${next.media_url.replace(/^\/+/, '')}`;
       ok = (
         await sendMedia({
           to: phone,
           kind: next.kind as MediaKind,
-          media: next.media_url,
-          caption: next.media_caption ?? undefined,
-          mimetype: guessMimetype(next.media_url, next.kind),
-          filename: basename(next.media_url),
+          media: mediaUrl,
+          caption: next.media_caption
+            ? applyPlaceholders(next.media_caption, lead)
+            : undefined,
+          mimetype: guessMimetype(mediaUrl, next.kind),
+          filename: basename(mediaUrl),
         })
       ).ok;
     } else {

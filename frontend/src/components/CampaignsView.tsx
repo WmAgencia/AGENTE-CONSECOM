@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase, type Campaign, type QueueMessage } from '../lib/supabase'
+import { SequenceEditor } from './SequenceEditor'
 
 export function CampaignsView() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -44,7 +45,7 @@ export function CampaignsView() {
         <CampaignButton onCreated={load} />
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {campaigns.map((c) => (
-            <CampaignCard key={c.id} campaign={c} messages={messagesByCampaign[c.id] ?? []} />
+            <CampaignCard key={c.id} campaign={c} messages={messagesByCampaign[c.id] ?? []} onChanged={load} />
           ))}
           {campaigns.length === 0 && (
             <p className="col-span-full text-sm text-slate-500">
@@ -108,7 +109,8 @@ function CampaignButton({ onCreated }: { onCreated: () => Promise<void> }) {
   )
 }
 
-function CampaignCard({ campaign, messages }: { campaign: Campaign; messages: QueueMessage[] }) {
+function CampaignCard({ campaign, messages, onChanged }: { campaign: Campaign; messages: QueueMessage[]; onChanged: () => void }) {
+  const [open, setOpen] = useState(false)
   return (
     <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
       <div className="flex items-center justify-between mb-3">
@@ -118,33 +120,46 @@ function CampaignCard({ campaign, messages }: { campaign: Campaign; messages: Qu
             {messages.length} mensagens na sequência
           </div>
         </div>
-        <span
-          className={`text-[11px] px-2 py-1 rounded-full ${
-            campaign.is_active ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-slate-400'
-          }`}
-        >
-          {campaign.is_active ? 'Ativa' : 'Pausada'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`text-[11px] px-2 py-1 rounded-full ${
+              campaign.is_active ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-slate-400'
+            }`}
+          >
+            {campaign.is_active ? 'Ativa' : 'Pausada'}
+          </span>
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="text-[11px] px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10"
+          >
+            {open ? 'Fechar' : 'Montar sequência'}
+          </button>
+        </div>
       </div>
-      <ol className="space-y-1.5">
-        {messages.map((m, i) => (
-          <li key={m.id} className="text-xs flex items-center gap-2 text-slate-300">
-            <span className="w-5 h-5 shrink-0 rounded-full bg-white/5 flex items-center justify-center text-[10px] text-slate-400">
-              {i + 1}
-            </span>
-            <KindBadge kind={m.kind} />
-            <span className="truncate flex-1">{m.text || (m.media_url ? 'Mídia' : '...')}</span>
-            {m.delay_seconds > 0 && (
-              <span className="text-[10px] text-slate-500 shrink-0">+{m.delay_seconds}s</span>
-            )}
-          </li>
-        ))}
-        {messages.length === 0 && (
-          <li className="text-xs text-slate-600">
-            Sem mensagens — monte a sequência no painel da campanha.
-          </li>
-        )}
-      </ol>
+
+      {!open ? (
+        <ol className="space-y-1.5">
+          {messages.map((m, i) => (
+            <li key={m.id} className="text-xs flex items-center gap-2 text-slate-300">
+              <span className="w-5 h-5 shrink-0 rounded-full bg-white/5 flex items-center justify-center text-[10px] text-slate-400">
+                {i + 1}
+              </span>
+              <KindBadge kind={m.kind} />
+              <span className="truncate flex-1">{m.text || (m.media_url ? 'Mídia' : '...')}</span>
+              {m.delay_seconds > 0 && (
+                <span className="text-[10px] text-slate-500 shrink-0">+{m.delay_seconds}s</span>
+              )}
+            </li>
+          ))}
+          {messages.length === 0 && (
+            <li className="text-xs text-slate-600">
+              Sem mensagens — monte a sequência no painel da campanha.
+            </li>
+          )}
+        </ol>
+      ) : (
+        <SequenceEditor campaign={campaign} messages={messages} onSaved={onChanged} />
+      )}
     </div>
   )
 }

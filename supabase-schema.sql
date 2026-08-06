@@ -157,3 +157,19 @@ CREATE POLICY qm_auth_delete ON public.queue_messages FOR DELETE USING (auth.rol
 CREATE POLICY sendruns_auth_read  ON public.send_runs FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY sendruns_auth_insert ON public.send_runs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY sendruns_auth_update ON public.send_runs FOR UPDATE USING (auth.role() = 'authenticated');
+
+-- =============================================================
+-- Mídia (Supabase Storage) — bucket "consecom-media" (público).
+-- ▪ Usuário autenticado pode fazer UPLOAD dos arquivos no bucket.
+-- ▪ Leitura pública (qualquer pessoa) para o Evolution API baixar
+--   o arquivo pela URL e mandar pelo WhatsApp.
+-- =============================================================
+-- Permitir upload apenas para usuários logados (auth.role()='authenticated')
+CREATE POLICY consecom_media_insert ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'consecom-media' AND auth.role() = 'authenticated');
+CREATE POLICY consecom_media_update ON storage.objects FOR UPDATE
+  USING (bucket_id = 'consecom-media' AND auth.role() = 'authenticated');
+
+-- Leitura pública para o Evolution baixar e enviar a mídia.
+CREATE POLICY consecom_media_select_public ON storage.objects FOR SELECT
+  USING (bucket_id = 'consecom-media');
