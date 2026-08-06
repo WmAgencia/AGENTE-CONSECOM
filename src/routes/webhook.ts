@@ -20,7 +20,7 @@
  *  - Logging uses only structural metadata (text length, JID masked, message
  *    key id). Full message is redacted by pino (utils/logger.ts).
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   evolutionWebhookPayloadSchema,
   extractMessage,
@@ -127,7 +127,11 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     semaphore = new Semaphore(1);
   }
 
-  app.post('/webhook/evolution', async (req, reply) => {
+  app.post('/webhook/evolution', webhookHandler);
+  // Evolution v2 pode adicionar o nome do evento ao path (ex: /webhook/evolution/messages-upsert).
+  app.post('/webhook/evolution/:eventName', webhookHandler);
+
+  async function webhookHandler(req: FastifyRequest, reply: FastifyReply) {
     const log = getLogger();
 
     // 1. Secret validation
@@ -218,7 +222,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     });
 
     return reply;
-  });
+  }
 
   async function processMessage(msg: {
     text: string;
