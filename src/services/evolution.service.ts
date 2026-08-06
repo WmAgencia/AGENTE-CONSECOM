@@ -145,8 +145,7 @@ export async function sendText(params: SendTextParams): Promise<SendTextResult> 
 
   const body = {
     number: stripJidSuffix(to),
-    options: { delay: 0, presence: 'composing' },
-    textMessage: { text },
+    text,
   };
 
   const maxRetries = getEnv().EVOLUTION_SENDTEXT_MAX_RETRIES;
@@ -269,8 +268,7 @@ export async function sendGroupText(
   const endpoint = `${cfg.apiUrl}/message/sendText/${encodeURIComponent(cfg.instance)}`;
   const body = {
     number: to,
-    options: { delay: 0, presence: 'composing' },
-    textMessage: { text },
+    text,
   };
 
   const maxRetries = getEnv().EVOLUTION_SENDTEXT_MAX_RETRIES;
@@ -317,4 +315,103 @@ export async function sendGroupText(
     }
   }
   return { ok: false, status: 0, error: lastError ?? 'sendGroupText failed' };
+}
+
+export type MediaKind = 'audio' | 'video' | 'image' | 'document';
+
+export interface SendMediaParams {
+  to: string;
+  kind: MediaKind;
+  /** base64 (without data-prefix) + filename/mimetype, OR a public media URL. */
+  media: string;
+  caption?: string;
+  mimetype?: string;
+  filename?: string;
+}
+
+/** Maps Consecom kind to the Evolution v1 media type */
+const MEDIA_TYPE: Record<MediaKind, string> = {
+  audio: 'audio',
+  video: 'video',
+  image: 'image',
+  document: 'document',
+};
+
+export async function sendMedia(params: SendMediaParams): Promise<SendTextResult> {
+  const log = getLogger();
+  const { to, kind, media, caption, mimetype, filename } = params;
+  if (!to || !media) {
+    return { ok: false, status: 0, error: 'to and media are required' };
+  }
+  if (isEvolutionMockMode()) {
+    log.info({ to: maskJid(to), kind, captionLength: caption?.length ?? 0 }, 'evolution: sendMedia (mock mode)');
+    return {
+      ok: true,
+      status: 200,
+      mock: true,
+      messageId: `mock-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    };
+  }
+
+  const cfg = getEvolutionConfig();
+  const endpoint = `${cfg.apiUrl}/message/send${capitalize(MEDIA_TYPE[kind])}/${encodeURIComponent(cfg.instance)}`;
+
+  const mediaBody: Record<string, unknown> = { media };
+  if (caption) mediaBody.caption = caption;
+  if (mimetype) mediaBody.mimetype = mimetype;
+  if (filename) mediaBody.fileName = filename;
+
+  const body = {
+    number: stripJidSuffix(to),
+    mediatype: MEDIA_TYPE[kind],
+    ...mediaBody,
+  };
+
+  const maxRetries = getEnv().EVOLUTION_SENDTEXT_MAX_RETRIES;
+  let lastError: string | undefined;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: cfg.apiKey },
+        body: JSON.stringify(body),
+      });
+      const raw = await response.text();
+      if (response.status >= 500 || response.status === 429) {
+        log.warn({ status: response.status, attempt, endpoint }, 'evolution: sendMedia transient error');
+        if (attempt < maxRetries) {
+          const backoffMs = Math.min(8000, 500 * Math.pow(2, attempt - 1));
+          await sleep(backoffMs);
+          continue;
+        }
+        return { ok: false, status: response.status, error: `Evolution API returned status ${response.status}` };
+      }
+      if (!response.ok) {
+        return { ok: false, status: response.status, error: `Evolution API returned status ${response.status}: ${raw.slice(0, 200)}` };
+      }
+      let parsed: { key?: { id?: string } } = {};
+      try {
+        parsed = JSON.parse(raw) as { key?: { id?: string } };
+      } catch {
+        // ignore
+      }
+      const messageId = parsed.key?.id;
+      log.info({ status: response.status, kind, to: maskJid(to), messageId, attempt }, 'evolution: sendMedia delivered');
+      return { ok: true, status: response.status, messageId };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown send error';
+      log.warn({ errMessage: message, attempt, endpoint }, 'evolution: sendMedia network failure (retryable)');
+      lastError = message;
+      if (attempt < maxRetries) {
+        const backoffMs = Math.min(8000, 500 * Math.pow(2, attempt - 1));
+        await sleep(backoffMs);
+        continue;
+      }
+    }
+  }
+  return { ok: false, status: 0, error: lastError ?? 'sendMedia failed' };
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

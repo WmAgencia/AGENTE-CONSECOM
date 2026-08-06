@@ -1,6 +1,7 @@
 import { getLogger } from './utils/logger.js';
 import { buildApp } from './app.js';
-import { getEnv } from './config/env.js';
+import { getEnv, hasSupabaseProspeccao } from './config/env.js';
+import { SendWorker } from './services/send.worker.js';
 
 async function bootstrap(): Promise<void> {
   const log = getLogger();
@@ -24,6 +25,20 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
+  // Start the auto-send worker (only if Supabase is configured for prospecting).
+  let worker: SendWorker | null = null;
+  if (hasSupabaseProspeccao()) {
+    try {
+      worker = new SendWorker();
+      worker.start();
+    } catch (err) {
+      log.warn(
+        { errMessage: err instanceof Error ? err.message : 'unknown' },
+        'server: send worker disabled',
+      );
+    }
+  }
+
   try {
     await app.listen({ port: env.PORT, host: '0.0.0.0' });
     log.info(
@@ -39,6 +54,7 @@ async function bootstrap(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     log.info({ signal }, 'server: shutting down');
     try {
+      if (worker) worker.stop();
       await app.close();
       log.info('server: closed cleanly');
       process.exit(0);

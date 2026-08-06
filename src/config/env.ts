@@ -215,6 +215,16 @@ const envSchema = z.object({
     .optional()
     .default('consecom_marcar_reuniao'),
 
+  // Auto-send worker polling interval in ms (how often it checks pending runs).
+  CONSECOM_WORKER_TICK_MS: z
+    .string()
+    .optional()
+    .default('5000')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isInteger(v) && v > 0, {
+      message: 'CONSECOM_WORKER_TICK_MS must be a positive integer',
+    }),
+
   // === Rate limiting (Etapa 2C) ===
   RATE_LIMIT_MAX: z
     .string()

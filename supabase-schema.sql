@@ -126,3 +126,34 @@ ALTER TABLE public.queue_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.send_runs ENABLE ROW LEVEL SECURITY;
 GRANT EXECUTE ON FUNCTION public.consecom_marcar_reuniao(UUID, TIMESTAMPTZ, TEXT)
   TO service_role;
+
+-- =============================================================
+-- RLS policies: somente usuários autenticados (auth.uid()) podem
+-- ler/gravar. Sem acesso anônimo. Os anon grants ficam vazios.
+-- =============================================================
+-- leads: full CRUD para autenticado
+CREATE POLICY leads_auth_read  ON public.leads FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY leads_auth_insert ON public.leads FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY leads_auth_update ON public.leads FOR UPDATE USING (auth.role() = 'authenticated');
+CREATE POLICY leads_auth_delete ON public.leads FOR DELETE USING (auth.role() = 'authenticated');
+
+-- lead_status_history
+CREATE POLICY lsh_auth_read  ON public.lead_status_history FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY lsh_auth_insert ON public.lead_status_history FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- campaigns
+CREATE POLICY campaigns_auth_read  ON public.campaigns FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY campaigns_auth_insert ON public.campaigns FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY campaigns_auth_update ON public.campaigns FOR UPDATE USING (auth.role() = 'authenticated');
+CREATE POLICY campaigns_auth_delete ON public.campaigns FOR DELETE USING (auth.role() = 'authenticated');
+
+-- queue_messages
+CREATE POLICY qm_auth_read  ON public.queue_messages FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY qm_auth_insert ON public.queue_messages FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY qm_auth_update ON public.queue_messages FOR UPDATE USING (auth.role() = 'authenticated');
+CREATE POLICY qm_auth_delete ON public.queue_messages FOR DELETE USING (auth.role() = 'authenticated');
+
+-- send_runs
+CREATE POLICY sendruns_auth_read  ON public.send_runs FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY sendruns_auth_insert ON public.send_runs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY sendruns_auth_update ON public.send_runs FOR UPDATE USING (auth.role() = 'authenticated');
