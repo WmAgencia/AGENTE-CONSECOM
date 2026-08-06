@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; margin: 0; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
+      body { width: 300px; background: #0d0d14; color: #e2e8f0; font-size: 13px; }
+      .wrap { padding: 14px; }
+      .head { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+      .logo { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; background: linear-gradient(135deg,#6366f1,#d946ef); }
+      h1 { font-size: 14px; font-weight: 700; }
+      .sub { font-size: 11px; color: #64748b; }
+      label { display: block; font-size: 11px; color: #94a3b8; margin: 10px 0 4px; }
+      input { width: 100%; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #e2e8f0; font-size: 12px; outline: none; }
+      input:focus { border-color: #6366f1; }
+      button { width: 100%; margin-top: 14px; padding: 10px; border: none; border-radius: 8px; font-weight: 600; font-size: 12px; color: #fff; background: linear-gradient(135deg,#6366f1,#7c3aed); cursor: pointer; }
+      button.secondary { background: rgba(255,255,255,0.1); margin-top: 8px; }
+      button:hover { filter: brightness(1.1); }
+      .status { margin-top: 10px; font-size: 11px; color: #22c55e; text-align: center; min-height: 14px; }
+      .hint { margin-top: 12px; padding: 8px 10px; background: rgba(99,102,241,0.08); border-radius: 8px; font-size: 11px; color: #94a3b8; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="head">
+        <div class="logo">C</div>
+        <div>
+          <h1>Consecom</h1>
+          <div class="sub">Captura de leads do Google Maps</div>
+        </div>
+      </div>
+
+      <label>URL do projeto Supabase</label>
+      <input id="url" placeholder="https://xxxx.supabase.co" spellcheck="false" />
+      <label>Chave anon (publishable)</label>
+      <input id="key" placeholder="eyJhbGci..." spellcheck="false" />
+      <button id="save">Salvar configuração</button>
+      <button id="open">Abrir painel no Maps</button>
+      <div class="status" id="status"></div>
+      <div class="hint">
+        Abra o <b>Google Maps</b>, faça uma busca (ex.: &quot;clínicas odontológicas em Sorocaba&quot;), role a lista e clique em &quot;Abrir painel no Maps&quot; para importar as empresas.
+      </div>
+    </div>
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>
