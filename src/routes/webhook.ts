@@ -34,6 +34,12 @@ import {
   getConversationStore,
   turnsToHistory,
 } from '../services/conversation.store.js';
+import {
+  findLeadByPhone,
+  updateLeadStatus,
+  isProspectingStatus,
+  appendConversationTurn,
+} from '../services/supabase.leads.js';
 
 const IDEMPOTENCY_MAX_ENTRIES = 1000;
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -222,13 +228,37 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
   }): Promise<void> {
     const log = getLogger();
     const mockMode = isEvolutionMockMode();
-    const conversationId = `wa:${msg.from}`;
+    const fromJid = msg.from;
+
+    // Prospecção Consecom: só respondemos leads que estejam na jornada
+    // (na_fila / mensagem_enviada / respondendo). Desconhecidos são ignorados.
+    let leadId: string | undefined;
+    try {
+      const lead = await findLeadByPhone(fromJid);
+      if (lead && isProspectingStatus(lead.status)) {
+        leadId = lead.id;
+        // Primeiro retorno do lead: marca como "respondendo" (persistido).
+        if (lead.status !== 'respondendo') {
+          await updateLeadStatus(lead.id, 'respondendo').catch(() => {});
+        }
+      } else {
+        log.info({ from: maskFrom(fromJid) }, 'webhook: inbound ignored (not a prospecting lead)');
+        return;
+      }
+    } catch (err) {
+      const em = err instanceof Error ? err.message : 'unknown';
+      log.warn({ errMessage: em, from: maskFrom(fromJid) }, 'webhook: lead lookup failed; ignoring');
+      return;
+    }
+
+    const conversationId = `wa:${fromJid}`;
     const store = getConversationStore();
     const history = turnsToHistory(await store.get(conversationId));
 
     log.info(
       {
-        from: maskFrom(msg.from),
+        from: maskFrom(fromJid),
+        leadId,
         textLength: msg.text.length,
         messageKeyId: msg.messageKeyId,
         mockMode,
@@ -261,12 +291,16 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         'webhook: agent completed',
       );
 
-      // Persist this turn pair to the in-RAM store.
+      // Persist this turn pair (in-RAM store + Supabase for the lead).
       await store.appendUser(conversationId, msg.text);
       await store.appendAssistant(conversationId, agentResult.result);
+      if (leadId) {
+        await appendConversationTurn(leadId, 'user', msg.text).catch(() => {});
+        await appendConversationTurn(leadId, 'assistant', agentResult.result, agentResult.model).catch(() => {});
+      }
 
       // Send back via Evolution API
-      const send = await sendText({ to: msg.from, text: agentResult.result });
+      const send = await sendText({ to: fromJid, text: agentResult.result });
       if (!send.ok) {
         log.error(
           {
@@ -294,7 +328,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       );
       try {
         await sendText({
-          to: msg.from,
+          to: fromJid,
           text: 'Desculpe, não consegui processar sua mensagem agora.',
         });
       } catch {

@@ -82,6 +82,18 @@ CREATE TABLE IF NOT EXISTS public.send_runs (
 );
 CREATE INDEX IF NOT EXISTS send_runs_lead_idx ON public.send_runs (lead_id);
 
+-- Histórico de conversas de prospecção (persistido pelo webhook).
+CREATE TABLE IF NOT EXISTS public.consecom_conversations (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id     UUID NOT NULL REFERENCES public.leads (id) ON DELETE CASCADE,
+  role        TEXT NOT NULL CHECK (role IN ('user','assistant')),
+  content     TEXT NOT NULL,
+  agent_model TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS consecom_conversations_lead_idx
+  ON public.consecom_conversations (lead_id, created_at);
+
 -- =============================================================
 -- RPC usado pelo agente tool `marcar_reuniao`
 -- Marca um lead como "reuniao_marcada".
@@ -124,6 +136,7 @@ ALTER TABLE public.lead_status_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.queue_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.send_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.consecom_conversations ENABLE ROW LEVEL SECURITY;
 GRANT EXECUTE ON FUNCTION public.consecom_marcar_reuniao(UUID, TIMESTAMPTZ, TEXT)
   TO service_role;
 
@@ -157,6 +170,10 @@ CREATE POLICY qm_auth_delete ON public.queue_messages FOR DELETE USING (auth.rol
 CREATE POLICY sendruns_auth_read  ON public.send_runs FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY sendruns_auth_insert ON public.send_runs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY sendruns_auth_update ON public.send_runs FOR UPDATE USING (auth.role() = 'authenticated');
+
+-- consecom_conversations
+CREATE POLICY conv_auth_read  ON public.consecom_conversations FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY conv_auth_insert ON public.consecom_conversations FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- =============================================================
 -- Mídia (Supabase Storage) — bucket "consecom-media" (público).
