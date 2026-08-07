@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@fastify/rate-limit": "^9.1.0",
+    "dotenv": "^17.4.2",
     "fastify": "^4.28.1",
     "pg": "^8.22.0",
     "pino": "^9.5.0",

@@ -11,6 +11,24 @@
 import { getEvolutionConfig, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 
+/**
+ * Returns the public base URL of this backend (used to register the
+ * webhook on the Evolution instance). Prefers RAILWAY_PUBLIC_DOMAIN
+ * (auto-set by Railway), then PUBLIC_BASE_URL (manual override), and
+ * finally throws if neither is set so we never silently point at the
+ * wrong environment.
+ */
+function getPublicBaseUrl(): string {
+  const fromRailway = process.env.RAILWAY_PUBLIC_DOMAIN;
+  if (fromRailway) return `https://${fromRailway.replace(/\/$/, '')}`;
+  const manual = process.env.PUBLIC_BASE_URL;
+  if (manual) return manual.replace(/\/$/, '');
+  throw new Error(
+    'PUBLIC_BASE_URL (or RAILWAY_PUBLIC_DOMAIN) must be set so the ' +
+      'Evolution API can reach /webhook/evolution on this backend.',
+  );
+}
+
 export interface WhatsAppConnection {
   id: string;
   user_id: string | null;
@@ -75,7 +93,7 @@ export async function createInstanceForUser(userId: string): Promise<{ ok: boole
       headers: { 'Content-Type': 'application/json', apikey: cfg.apiKey },
       body: JSON.stringify({
         instanceName,
-        webhook: `${process.env.RAILWAY_PUBLIC_DOMAIN ?? 'https://consecom-backend-production.up.railway.app'}/webhook/evolution`,
+        webhook: `${getPublicBaseUrl()}/webhook/evolution`,
         webhook_by_events: true,
         events: ['APPLICATION_STARTUP', 'QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT', 'SEND_MESSAGE'],
       }),
