@@ -3,6 +3,36 @@ import { supabase } from '../lib/supabase'
 
 type ConnStatus = 'pending' | 'connecting' | 'connected' | 'disconnected' | 'error'
 
+/**
+ * Normaliza o conteúdo do QR para um data URI PNG bem-formado:
+ *  - remove prefixos duplicados (`data:image/png;base64,data:image/png;base64,...`)
+ *  - tira espaços, quebras de linha, vírgulas perdidas
+ *  - garante exatamente UM prefixo `data:image/png;base64,`
+ *  - retorna null se não for um base64 PNG plausível
+ *
+ * A mesma lógica vive no backend em `src/utils/qr.ts` — manter em sincronia.
+ */
+function normalizeQr(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null
+  let s = value.trim()
+  if (!s) return null
+
+  const PREFIX = 'data:image/png;base64,'
+  // Remove prefixos repetidos no começo
+  while (s.toLowerCase().startsWith(PREFIX.toLowerCase())) {
+    s = s.slice(PREFIX.length).trim()
+  }
+  // Remove qualquer outro prefixo data: ao longo do texto (concatenação múltipla)
+  s = s.replace(/data:image\/png;base64,/gi, '')
+
+  // Mantém só caracteres válidos de base64
+  s = s.replace(/[^A-Za-z0-9+/=]/g, '')
+  if (s.length < 80) return null
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(s)) return null
+
+  return `${PREFIX}${s}`
+}
+
 interface Conn {
   id: string
   instance_name: string
@@ -60,7 +90,13 @@ export function ConnectionsPage() {
       const data = await r.json()
       if (data.connection) {
         setConn(data.connection)
-        if (data.connection.qr_code) setQr(data.connection.qr_code)
+        const normalized = normalizeQr(data.connection.qr_code)
+        if (normalized) {
+          setQr(normalized)
+        } else if (data.connection.status === 'connected') {
+          // Não estamos mais aguardando scan — limpa QR local.
+          setQr(null)
+        }
       }
     }
   }, [sessionUser])
@@ -97,35 +133,73 @@ export function ConnectionsPage() {
     return () => clearInterval(t)
   }, [conn, loadConn])
 
+  // Quando conectar, esconde QR local imediatamente (sem precisar esperar polling)
+  useEffect(() => {
+    if (conn?.status === 'connected' || conn?.status === 'disconnected') {
+      setQr(null)
+    }
+  }, [conn?.status])
+
   async function connect() {
     if (!sessionUser) return
     setLoading(true)
-    const r = await fetch(`${API}/api/connections/whatsapp/connect`, { method: 'POST', headers: { 'x-user-id': sessionUser } })
-    if (r.ok) {
-      const data = await r.json()
-      if (data.qrCode) setQr(data.qrCode)
-      loadConn()
+    try {
+      const r = await fetch(`${API}/api/connections/whatsapp/connect`, {
+        method: 'POST',
+        headers: { 'x-user-id': sessionUser },
+      })
+      if (r.ok) {
+        const data = await r.json()
+        const normalized = normalizeQr(data.qrCode)
+        if (normalized) setQr(normalized)
+        loadConn()
+      }
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function newQR() {
     if (!sessionUser) return
     setLoading(true)
-    const r = await fetch(`${API}/api/connections/whatsapp/qr`, { method: 'POST', headers: { 'x-user-id': sessionUser } })
-    if (r.ok) {
-      const data = await r.json()
-      if (data.qrCode) setQr(data.qrCode)
+    try {
+      // Rota "refresh" pedida no spec (POST /api/connections/whatsapp/connect/refresh).
+      // /qr continua funcionando como alias.
+      const r = await fetch(`${API}/api/connections/whatsapp/connect/refresh`, {
+        method: 'POST',
+        headers: { 'x-user-id': sessionUser },
+      })
+      if (r.ok) {
+        const data = await r.json()
+        const normalized = normalizeQr(data.qrCode)
+        if (normalized) {
+          setQr(normalized)
+        } else {
+          // Sem QR imediato — mantém o anterior mas força polling
+          loadConn()
+        }
+      } else {
+        const err = await r.json().catch(() => ({}))
+        console.error('refresh failed', err)
+      }
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function disconnect() {
     if (!sessionUser) return
     setLoading(true)
-    await fetch(`${API}/api/connections/whatsapp`, { method: 'DELETE', headers: { 'x-user-id': sessionUser } })
-    loadConn()
-    setLoading(false)
+    try {
+      await fetch(`${API}/api/connections/whatsapp`, {
+        method: 'DELETE',
+        headers: { 'x-user-id': sessionUser },
+      })
+      setQr(null)
+      loadConn()
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function loadGroups() {
@@ -247,12 +321,12 @@ export function ConnectionsPage() {
           {(conn?.status === 'connecting' || conn?.status === 'pending' || (!conn && loading)) && qr && (
             <div className="flex flex-col items-center py-4">
               <div className="bg-white rounded-lg p-3 mb-3">
-                <img src={qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`} alt="QR Code" className="w-48 h-48" />
-              </div>
+                <img src={qr} alt="QR Code" className="w-48 h-48" />
+             </div>
               <p className="text-sm text-slate-400 text-center max-w-xs">
                 Escaneie o QR Code pelo WhatsApp → Dispositivos conectados → Conectar dispositivo.
-              </p>
-            </div>
+             </p>
+           </div>
           )}
 
           {loading && !qr && (

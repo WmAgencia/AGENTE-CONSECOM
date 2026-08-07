@@ -29,6 +29,7 @@ import {
 } from '../types/webhook.js';
 import { getEnv, getWebhookSecret, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
+import { extractQrFromEvolution, isValidQrDataUri } from '../utils/qr.js';
 import { runAgentLoop } from '../services/agent.service.js';
 import {
   loadLearningsForPrompt,
@@ -273,44 +274,53 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       const reason = data.statusReason;
       if (state === 'open') {
         patch.status = 'connected';
+        // Conexão bem-sucedida: limpa QR Code (já foi usado) e dados antigos.
+        patch.qr_code = null;
+        patch.phone_number = null;
+        patch.whatsapp_name = null;
       } else if (state === 'close') {
         patch.status = 'disconnected';
+        patch.qr_code = null;
       } else if (state === 'connecting') {
         patch.status = 'connecting';
       }
       if (typeof reason === 'number') {
         patch.status = 'error';
       }
-      // Telefone/owner quando disponivel
+      // Telefone/owner quando disponivel (Evolution envia `ownerJid` ou `jid`)
       const ownerJid = (data.ownerJid as string | undefined) ?? (data.jid as string | undefined);
-      if (typeof ownerJid === 'string') {
+      if (typeof ownerJid === 'string' && ownerJid.length > 0) {
         const at = ownerJid.indexOf('@');
         patch.phone_number = at > 0 ? ownerJid.slice(0, at) : ownerJid;
       }
       const profileName = data.profileName as string | undefined;
       if (typeof profileName === 'string') patch.whatsapp_name = profileName;
       const profilePicUrl = data.profilePicUrl as string | undefined;
-      if (typeof profilePicUrl === 'string') patch.whatsapp_name = patch.whatsapp_name ?? profilePicUrl;
+      if (typeof profilePicUrl === 'string' && !patch.whatsapp_name) {
+        // Não grava URL no whatsapp_name (campo é texto). Apenas loga.
+        log.debug({ profilePicUrl }, 'webhook: profilePicUrl ignored (whatsapp_name is text)');
+      }
       const instanceId = (data.instanceId as string | undefined) ?? (data.id as string | undefined);
       if (typeof instanceId === 'string') patch.evolution_instance_id = instanceId;
     }
 
     // ----- QRCODE_UPDATED -----
     if (payload.event === 'QRCODE_UPDATED') {
-      const qr = data.qrcode;
-      let base64: string | undefined;
-      if (typeof qr === 'string') {
-        base64 = qr;
-      } else if (qr && typeof qr === 'object' && 'base64' in qr) {
-        const b = (qr as { base64?: unknown }).base64;
-        if (typeof b === 'string') base64 = b;
-      }
-      if (base64) {
-        patch.qr_code = base64;
+      const extracted = extractQrFromEvolution(data);
+      if (extracted?.dataUri && isValidQrDataUri(extracted.dataUri)) {
+        patch.qr_code = extracted.dataUri;
         patch.status = 'connecting';
+      } else {
+        log.warn(
+          { event: payload.event, dataKeys: Object.keys(data) },
+          'webhook: QRCODE_UPDATED had no usable base64 in any known field',
+        );
       }
+      // pairingCode (opcional): alguns fluxos entregam só o pairing code.
       const pairingCode = data.pairingCode as string | undefined;
-      if (typeof pairingCode === 'string') patch.qr_code = pairingCode;
+      if (typeof pairingCode === 'string' && pairingCode.trim().length > 0 && !patch.qr_code) {
+        patch.qr_code = `data:text/plain;base64,${Buffer.from(pairingCode).toString('base64')}`;
+      }
     }
 
     // ----- APPLICATION_STARTUP -----

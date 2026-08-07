@@ -5,6 +5,7 @@
  *   GET    /api/connections/whatsapp
  *   POST   /api/connections/whatsapp/connect
  *   POST   /api/connections/whatsapp/qr
+ *   POST   /api/connections/whatsapp/connect/refresh   (alias do /qr)
  *   DELETE /api/connections/whatsapp
  *   GET    /api/connections/groups
  *   GET    /api/connections/whatsapp/groups
@@ -69,6 +70,17 @@ export function registerConnectionsRoutes(app: FastifyInstance): void {
       return reply.status(502).send({ error: result.error ?? 'qr_failed' });
     }
     return reply.send({ qrCode: result.qrCode });
+  });
+
+  // Alias semântico de /qr — rota "refresh" pedida no spec.
+  app.post('/api/connections/whatsapp/connect/refresh', async (req, reply) => {
+    const { identifier } = auth(req);
+    if (!identifier) return reply.status(401).send({ error: 'unauthorized' });
+    const result = await regenerateQRCode(identifier);
+    if (!result.ok) {
+      return reply.status(502).send({ error: result.error ?? 'qr_failed' });
+    }
+    return reply.send({ qrCode: result.qrCode, status: 'connecting' });
   });
 
   app.delete('/api/connections/whatsapp', async (req, reply) => {

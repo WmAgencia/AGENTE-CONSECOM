@@ -10,6 +10,7 @@
  */
 import { getEvolutionConfig, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
+import { extractQrFromEvolution, isValidQrDataUri, toQrDataUri } from '../utils/qr.js';
 
 /**
  * Returns the public base URL of this backend (used to register the
@@ -180,20 +181,36 @@ export async function createInstanceForUser(
     }
 
     // Tenta gerar QR code imediatamente
-    const qrRes = await fetch(`${cfg.apiUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
-      method: 'GET',
-      headers: { apikey: cfg.apiKey },
-    });
-
     let qrCode: string | null = null;
-    if (qrRes.ok) {
-      const qrJson = (await qrRes.json()) as { qrcode?: { base64?: string } | string };
-      if (typeof qrJson.qrcode === 'string') {
-        qrCode = qrJson.qrcode;
-      } else if (qrJson.qrcode?.base64) {
-        qrCode = qrJson.qrcode.base64;
+    try {
+      const qrRes = await fetch(`${cfg.apiUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
+        method: 'GET',
+        headers: { apikey: cfg.apiKey },
+      });
+      if (qrRes.ok) {
+        const qrJson = (await qrRes.json()) as unknown;
+        const extracted = extractQrFromEvolution(qrJson);
+        if (extracted?.dataUri && isValidQrDataUri(extracted.dataUri)) {
+          qrCode = extracted.dataUri;
+        }
+      } else {
+        log.warn(
+          { status: qrRes.status },
+          'connections: Evolution /instance/connect returned non-OK on create',
+        );
       }
+    } catch (e) {
+      log.warn(
+        { err: e instanceof Error ? e.message : 'unknown' },
+        'connections: failed to fetch initial QR code',
+      );
     }
+
+    // Se a chamada síncrona não devolveu QR (comum: Baileys ainda está
+    // inicializando), o webhook QRCODE_UPDATED atualizará o qr_code
+    // automaticamente. Marca como `connecting` para o frontend saber
+    // que está aguardando.
+    const initialStatus: 'pending' | 'connecting' = qrCode ? 'connecting' : 'pending';
 
     // Persiste no Supabase
     await fetch(`${supUrl()}/rest/v1/whatsapp_connections`, {
@@ -203,7 +220,7 @@ export async function createInstanceForUser(
         user_id: userId,
         workspace_id: workspaceId,
         instance_name: instanceName,
-        status: qrCode ? 'connecting' : 'pending',
+        status: initialStatus,
         qr_code: qrCode,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -218,33 +235,52 @@ export async function createInstanceForUser(
 }
 
 /** Gera um novo QR Code para uma instância existente. */
-export async function regenerateQRCode(userId: string): Promise<{ ok: boolean; qrCode?: string; error?: string }> {
+export async function regenerateQRCode(identifier: string): Promise<{ ok: boolean; qrCode?: string; error?: string }> {
   const log = getLogger();
   try {
-    const conn = await getUserConnection(userId);
+    const conn = await getUserConnection(identifier);
     if (!conn) return { ok: false, error: 'no_connection' };
 
     const cfg = getEvolutionConfig();
-    const qrRes = await fetch(`${cfg.apiUrl}/instance/connect/${encodeURIComponent(conn.instance_name)}`, {
-      method: 'GET',
-      headers: { apikey: cfg.apiKey },
-    });
 
-    if (!qrRes.ok) {
-      return { ok: false, error: `Evolution API erro ${qrRes.status}` };
+    // Algumas versões da Evolution exigem POST /instance/connect/{instance}
+    // para forçar nova geração; outras respondem em GET. Tentamos POST
+    // primeiro (mais comum em v2.x) e caímos para GET.
+    let qrJson: unknown = null;
+    let lastStatus = 0;
+    for (const method of ['POST', 'GET'] as const) {
+      try {
+        const res = await fetch(`${cfg.apiUrl}/instance/connect/${encodeURIComponent(conn.instance_name)}`, {
+          method,
+          headers: { apikey: cfg.apiKey },
+        });
+        lastStatus = res.status;
+        if (res.ok) {
+          qrJson = await res.json();
+          break;
+        }
+      } catch (inner) {
+        log.warn(
+          { err: inner instanceof Error ? inner.message : 'unknown', method },
+          'connections: regenerate QR attempt failed',
+        );
+      }
     }
 
-    const qrJson = (await qrRes.json()) as { qrcode?: { base64?: string } | string };
-    let qrCode: string | null = null;
-    if (typeof qrJson.qrcode === 'string') {
-      qrCode = qrJson.qrcode;
-    } else if (qrJson.qrcode?.base64) {
-      qrCode = qrJson.qrcode.base64;
+    if (!qrJson) {
+      return { ok: false, error: `evolution_unreachable_${lastStatus || 'network'}` };
     }
 
-    if (!qrCode) {
+    const extracted = extractQrFromEvolution(qrJson);
+    if (!extracted?.dataUri || !isValidQrDataUri(extracted.dataUri)) {
+      log.warn(
+        { hasBase64: Boolean(qrJson && typeof qrJson === 'object' && (qrJson as { base64?: unknown }).base64) },
+        'connections: Evolution response did not contain a valid QR data URI',
+      );
       return { ok: false, error: 'qr_not_available' };
     }
+
+    const qrCode = extracted.dataUri;
 
     // Atualiza no Supabase
     await fetch(`${supUrl()}/rest/v1/whatsapp_connections?id=eq.${conn.id}`, {
@@ -264,6 +300,38 @@ export async function regenerateQRCode(userId: string): Promise<{ ok: boolean; q
   }
 }
 
+/**
+ * Limpa o QR code armazenado e marca a conexão como conectada.
+ * Chamado pelo handler CONNECTION_UPDATE quando state=open.
+ */
+export async function clearQrCode(identifier: string): Promise<void> {
+  const log = getLogger();
+  try {
+    const conn = await getUserConnection(identifier);
+    if (!conn) return;
+    if (!conn.qr_code) return;
+    await fetch(`${supUrl()}/rest/v1/whatsapp_connections?id=eq.${conn.id}`, {
+      method: 'PATCH',
+      headers: supHeaders(),
+      body: JSON.stringify({
+        qr_code: null,
+        last_sync_at: new Date().toISOString(),
+      }),
+    });
+  } catch (e) {
+    log.warn(
+      { err: e instanceof Error ? e.message : 'unknown' },
+      'connections: clearQrCode failed (non-fatal)',
+    );
+  }
+}
+
+/**
+ * Versão "inteligente" de toQrDataUri re-exportada para que routes/
+ * possam usar sem importar o módulo utils inteiro se quiserem.
+ */
+export { toQrDataUri };
+
 /** Desconecta a instância do WhatsApp. */
 export async function disconnectInstance(userId: string): Promise<{ ok: boolean; error?: string }> {
   const log = getLogger();
@@ -282,6 +350,9 @@ export async function disconnectInstance(userId: string): Promise<{ ok: boolean;
       headers: supHeaders(),
       body: JSON.stringify({
         status: 'disconnected',
+        qr_code: null,
+        phone_number: null,
+        whatsapp_name: null,
         last_sync_at: new Date().toISOString(),
       }),
     });
