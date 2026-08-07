@@ -21,49 +21,50 @@ import {
   disconnectInstance,
   fetchUserGroups,
   sendTestMessage,
+  getWorkspaceAndUser,
 } from '../services/evolution.connections.js';
 
-function getUserId(req: { headers: Record<string, string | string[] | undefined> }): string {
-  // The frontend accesses these endpoints authenticated; we read the
-  // Supabase user ID via the x-user-id header (the frontend sends it
-  // from its Supabase session). Production should validate the JWT
-  // properly via Supabase, but for now we trust the header since
-  // RLS on the tables protects the data.
-  const userId = (req.headers['x-user-id'] as string | undefined) ?? '';
-  return userId;
+function auth(req: { headers: Record<string, string | string[] | undefined> }) {
+  const { workspaceId, userId } = getWorkspaceAndUser(req);
+  // Multi-tenant: prefer workspace_id; fallback to user_id (single-tenant).
+  return {
+    workspaceId,
+    userId,
+    identifier: workspaceId ?? userId,
+  };
 }
 
 export function registerConnectionsRoutes(app: FastifyInstance): void {
   const log = getLogger();
 
   app.get('/api/connections/whatsapp', async (req, reply) => {
-    const userId = getUserId(req);
-    if (!userId) return reply.status(401).send({ error: 'unauthorized' });
-    const conn = await getUserConnection(userId);
+    const { identifier } = auth(req);
+    if (!identifier) return reply.status(401).send({ error: 'unauthorized' });
+    const conn = await getUserConnection(identifier);
     return reply.send({ connection: conn });
   });
 
   app.post('/api/connections/whatsapp/connect', async (req, reply) => {
-    const userId = getUserId(req);
-    if (!userId) return reply.status(401).send({ error: 'unauthorized' });
+    const { workspaceId, userId, identifier } = auth(req);
+    if (!identifier || !userId) return reply.status(401).send({ error: 'unauthorized' });
 
-    const existing = await getUserConnection(userId);
+    const existing = await getUserConnection(identifier);
     if (existing && existing.status === 'connected') {
       return reply.send({ connection: existing });
     }
 
-    const result = await createInstanceForUser(userId);
+    const result = await createInstanceForUser(userId, workspaceId);
     if (!result.ok) {
       return reply.status(502).send({ error: result.error ?? 'create_failed' });
     }
-    const conn = await getUserConnection(userId);
+    const conn = await getUserConnection(identifier);
     return reply.send({ connection: conn, qrCode: result.qrCode });
   });
 
   app.post('/api/connections/whatsapp/qr', async (req, reply) => {
-    const userId = getUserId(req);
-    if (!userId) return reply.status(401).send({ error: 'unauthorized' });
-    const result = await regenerateQRCode(userId);
+    const { identifier } = auth(req);
+    if (!identifier) return reply.status(401).send({ error: 'unauthorized' });
+    const result = await regenerateQRCode(identifier);
     if (!result.ok) {
       return reply.status(502).send({ error: result.error ?? 'qr_failed' });
     }
@@ -71,9 +72,9 @@ export function registerConnectionsRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/connections/whatsapp', async (req, reply) => {
-    const userId = getUserId(req);
-    if (!userId) return reply.status(401).send({ error: 'unauthorized' });
-    const result = await disconnectInstance(userId);
+    const { identifier } = auth(req);
+    if (!identifier) return reply.status(401).send({ error: 'unauthorized' });
+    const result = await disconnectInstance(identifier);
     if (!result.ok) {
       return reply.status(502).send({ error: result.error ?? 'disconnect_failed' });
     }
@@ -81,9 +82,9 @@ export function registerConnectionsRoutes(app: FastifyInstance): void {
   });
 
   app.get('/api/connections/whatsapp/groups', async (req, reply) => {
-    const userId = getUserId(req);
-    if (!userId) return reply.status(401).send({ error: 'unauthorized' });
-    const result = await fetchUserGroups(userId);
+    const { identifier } = auth(req);
+    if (!identifier) return reply.status(401).send({ error: 'unauthorized' });
+    const result = await fetchUserGroups(identifier);
     if (!result.ok) {
       return reply.status(502).send({ error: result.error ?? 'groups_failed' });
     }
@@ -91,11 +92,11 @@ export function registerConnectionsRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/connections/groups/test', async (req, reply) => {
-    const userId = getUserId(req);
-    if (!userId) return reply.status(401).send({ error: 'unauthorized' });
+    const { identifier } = auth(req);
+    if (!identifier) return reply.status(401).send({ error: 'unauthorized' });
     const body = req.body as { groupId?: string } | null;
     if (!body?.groupId) return reply.status(400).send({ error: 'groupId_required' });
-    const result = await sendTestMessage(userId, body.groupId);
+    const result = await sendTestMessage(identifier, body.groupId);
     if (!result.ok) {
       return reply.status(502).send({ error: result.error ?? 'test_failed' });
     }

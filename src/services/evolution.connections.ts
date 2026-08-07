@@ -29,6 +29,38 @@ function getPublicBaseUrl(): string {
   );
 }
 
+/**
+ * Builds the Evolution instance name for a given workspace.
+ * Naming convention: `consecom-<workspace_id>` (sanitized for Evolution rules).
+ * Falls back to `consecom-user-<id8>` when no workspace_id is provided.
+ */
+function buildInstanceName(workspaceId: string | null, userId: string): string {
+  const sanitize = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
+  if (workspaceId) {
+    return `consecom-${sanitize(workspaceId)}`;
+  }
+  return `consecom-user-${sanitize(userId).slice(0, 12)}`;
+}
+
+/**
+ * Returns the workspace_id and user_id from the request headers.
+ * Prefers workspace_id (multi-tenant); falls back to user_id.
+ */
+export function getWorkspaceAndUser(req: {
+  headers: Record<string, string | string[] | undefined>;
+}): { workspaceId: string | null; userId: string | null } {
+  const headerVal = (k: string): string | null => {
+    const v = req.headers[k.toLowerCase()];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    return null;
+  };
+  return {
+    workspaceId: headerVal('x-workspace-id'),
+    userId: headerVal('x-user-id'),
+  };
+}
+
 export interface WhatsAppConnection {
   id: string;
   user_id: string | null;
@@ -81,11 +113,14 @@ export async function getUserConnection(userId: string): Promise<WhatsAppConnect
 }
 
 /** Cria uma nova instância na Evolution API e persiste a conexão no Supabase. */
-export async function createInstanceForUser(userId: string): Promise<{ ok: boolean; qrCode?: string; error?: string }> {
+export async function createInstanceForUser(
+  userId: string,
+  workspaceId: string | null = null,
+): Promise<{ ok: boolean; qrCode?: string; error?: string }> {
   const log = getLogger();
   try {
     const cfg = getEvolutionConfig();
-    const instanceName = `consecom_${userId.slice(0, 8)}_${Date.now().toString(36)}`;
+    const instanceName = buildInstanceName(workspaceId, userId);
 
     // POST /instance/create — cria instância na Evolution API
     const createRes = await fetch(`${cfg.apiUrl}/instance/create`, {
@@ -127,6 +162,7 @@ export async function createInstanceForUser(userId: string): Promise<{ ok: boole
       headers: supHeaders(),
       body: JSON.stringify({
         user_id: userId,
+        workspace_id: workspaceId,
         instance_name: instanceName,
         status: qrCode ? 'connecting' : 'pending',
         qr_code: qrCode,
