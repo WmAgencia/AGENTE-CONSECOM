@@ -1,175 +1,309 @@
-import { useState } from 'react'
-import { type Lead, type LeadStatus } from '../lib/supabase'
+import { useMemo, useState } from 'react'
+import { type Lead, type LeadStatus, type Campaign } from '../lib/supabase'
 
-const COLUMNS: { status: LeadStatus; label: string; color: string }[] = [
-  { status: 'novo', label: 'Novo', color: 'from-slate-500 to-slate-600' },
-  { status: 'na_fila', label: 'Na fila', color: 'from-amber-500 to-orange-500' },
-  { status: 'mensagem_enviada', label: 'Mensagem enviada', color: 'from-sky-500 to-blue-600' },
-  { status: 'respondendo', label: 'Respondendo', color: 'from-violet-500 to-purple-600' },
-  { status: 'reuniao_marcada', label: 'Reunião marcada', color: 'from-emerald-500 to-teal-600' },
-  { status: 'fechado', label: 'Fechado', color: 'from-green-500 to-green-600' },
-  { status: 'perdido', label: 'Perdido', color: 'from-rose-500 to-red-600' },
+type Section =
+  | 'enviados'
+  | 'conversando'
+  | 'sem_interesse'
+  | 'remarketing'
+  | 'reuniao_marcada'
+  | 'reuniao_cancelada'
+  | 'concluidos'
+
+const SECTIONS: { key: Section; label: string; icon: string; statuses: LeadStatus[] }[] = [
+  { key: 'enviados', label: 'Enviados', icon: '📤', statuses: ['enviado', 'na_fila'] },
+  { key: 'conversando', label: 'Conversando', icon: '💬', statuses: ['conversando'] },
+  { key: 'remarketing', label: 'Remarketing', icon: '🔁', statuses: ['remarketing'] },
+  { key: 'sem_interesse', label: 'Sem interesse', icon: '🚫', statuses: ['sem_interesse'] },
+  { key: 'reuniao_marcada', label: 'Reuniões', icon: '📅', statuses: ['reuniao_marcada'] },
+  { key: 'reuniao_cancelada', label: 'Reuniões canceladas', icon: '🗓️', statuses: ['reuniao_cancelada'] },
+  { key: 'concluidos', label: 'Concluídos', icon: '✅', statuses: ['fechado', 'nao_fechado'] },
 ]
 
-const STATUS_META: Record<LeadStatus, { color: string; label: string }> = Object.fromEntries(
-  COLUMNS.map((c) => [c.status, { color: c.color, label: c.label }]),
-) as Record<LeadStatus, { color: string; label: string }>
+const SECTION_COLOR: Record<Section, string> = {
+  enviados: 'bg-sky-500',
+  conversando: 'bg-violet-500',
+  remarketing: 'bg-amber-500',
+  sem_interesse: 'bg-rose-500',
+  reuniao_marcada: 'bg-emerald-500',
+  reuniao_cancelada: 'bg-orange-500',
+  concluidos: 'bg-green-500',
+}
 
 export function KanbanBoard({
   leads,
-  onMove,
+  campaigns,
+  onMeeting,
+  onClose,
 }: {
   leads: Lead[]
-  onMove: (id: string, status: LeadStatus) => Promise<void>
+  campaigns: Campaign[]
+  onMeeting: (id: string, at: string, notes: string) => Promise<boolean>
+  onClose: (id: string, closed: boolean, motivo: string) => Promise<boolean>
 }) {
-  const [dragOver, setDragOver] = useState<LeadStatus | null>(null)
-  const [dragging, setDragging] = useState<string | null>(null)
+  const [campaignFilter, setCampaignFilter] = useState<'all' | string>('all')
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
+  const [modal, setModal] = useState<'meeting' | 'close' | null>(null)
+
+  const list = useMemo(() => {
+    if (campaignFilter === 'all') return leads
+    return leads.filter((l) => l.campaign_id === campaignFilter)
+  }, [leads, campaignFilter])
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-lg font-semibold">Painel de prospecção</h1>
-          <p className="text-sm text-slate-400">Arraste os leads entre as etapas</p>
+          <h1 className="text-lg font-semibold">Pipeline de prospecção</h1>
+          <p className="text-sm text-slate-400">Leads que saíram das campanhas</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="text-xs text-slate-400">
+            Filtrar por campanha
+            <select value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)}
+              className="ml-2 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none focus:border-indigo-500">
+              <option value="all">Todos</option>
+              {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
         </div>
       </div>
 
       <div className="flex-1 flex gap-4 px-6 py-5 overflow-x-auto">
-        {COLUMNS.map((col) => {
-          const items = leads.filter((l) => l.status === col.status)
+        {SECTIONS.map((sec) => {
+          const items = list.filter((l) => sec.statuses.includes(l.status))
+          const ordered = sec.key === 'reuniao_marcada'
+            ? [...items].sort((a, b) => (a.meeting_at ?? '9999').localeCompare(b.meeting_at ?? '9999'))
+            : sec.key === 'concluidos'
+              ? [...items].sort((a, b) => (b.closed_at ?? '').localeCompare(a.closed_at ?? ''))
+              : items
           return (
-            <div
-              key={col.status}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setDragOver(col.status)
-              }}
-              onDragLeave={() => setDragOver((s) => (s === col.status ? null : s))}
-              onDrop={(e) => {
-                e.preventDefault()
-                const id = dragging ?? e.dataTransfer.getData('text/plain')
-                if (id) onMove(id, col.status)
-                setDragOver(null)
-                setDragging(null)
-              }}
-              className={`w-72 shrink-0 rounded-xl border flex flex-col transition-colors ${
-                dragOver === col.status
-                  ? 'border-indigo-500/50 bg-indigo-500/5'
-                  : 'border-white/5 bg-white/[0.02]'
-              }`}
-            >
+            <div key={sec.key} className="w-72 shrink-0 rounded-xl border border-white/5 bg-white/[0.02] flex flex-col">
               <div className="px-4 py-3 flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full bg-gradient-to-br ${col.color}`} />
-                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
-                  {col.label}
-                </span>
-                <span className="ml-auto text-xs text-slate-500 bg-white/5 rounded-full px-2 py-0.5">
-                  {items.length}
-                </span>
+                <span className="text-sm">{sec.icon}</span>
+                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">{sec.label}</span>
+                <span className={`w-2 h-2 rounded-full ${SECTION_COLOR[sec.key]}`} />
+                <span className="ml-auto text-xs text-slate-500 bg-white/5 rounded-full px-2 py-0.5">{items.length}</span>
               </div>
-
               <div className="flex-1 px-2 pb-2 space-y-2 overflow-y-auto">
-                {items.map((lead) => (
+                {ordered.map((lead) => (
                   <LeadCard
                     key={lead.id}
                     lead={lead}
-                    draggable
-                    onDragStart={() => setDragging(lead.id)}
-                    onDragEnd={() => {
-                      setDragging(null)
-                      setDragOver(null)
-                    }}
+                    onAction={() => setSelectedLead(lead)}
+                    onMeeting={() => { setSelectedLead(lead); setModal('meeting') }}
+                    onClose={() => { setSelectedLead(lead); setModal('close') }}
                   />
                 ))}
-                {items.length === 0 && (
-                  <div className="text-xs text-slate-600 text-center py-6 border border-dashed border-white/5 rounded-lg">
-                    Sem leads
-                  </div>
+                {ordered.length === 0 && (
+                  <div className="text-xs text-slate-600 text-center py-6 border border-dashed border-white/5 rounded-lg">Sem leads</div>
                 )}
               </div>
             </div>
           )
         })}
       </div>
-    </div>
-  )
-}
 
-export function LeadCard({
-  lead,
-  draggable = false,
-  onDragStart,
-  onDragEnd,
-}: {
-  lead: Lead
-  draggable?: boolean
-  onDragStart?: () => void
-  onDragEnd?: () => void
-}) {
-  const meta = STATUS_META[lead.status]
-  return (
-    <div
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      className="rounded-lg bg-[#16161f] border border-white/5 p-3 cursor-grab active:cursor-grabbing hover:border-white/10 transition"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm truncate">{lead.name || 'Sem nome'}</div>
-          {lead.category && (
-            <div className="text-[11px] text-slate-400 truncate">{lead.category}</div>
-          )}
-        </div>
-        <span className={`w-2 h-2 rounded-full shrink-0 mt-1 bg-gradient-to-br ${meta.color}`} />
-      </div>
-
-      <div className="mt-2 space-y-1 text-[11px] text-slate-400">
-        {lead.city && (
-          <div className="flex items-center gap-1.5">
-            <Pin className="w-3 h-3" /> {lead.city}
-            {lead.state ? `, ${lead.state}` : ''}
-          </div>
-        )}
-        {lead.phone && (
-          <div className="flex items-center gap-1.5">
-            <Phone className="w-3 h-3" /> {lead.phone}
-          </div>
-        )}
-        {(lead.rating ?? 0) > 0 && (
-          <div className="flex items-center gap-1.5">
-            <Star className="w-3 h-3 text-amber-400" /> {lead.rating} ({lead.reviews ?? 0})
-          </div>
-        )}
-      </div>
-
-      {lead.niche && (
-        <div className="mt-2 inline-block text-[10px] text-indigo-300/80 bg-indigo-500/10 rounded px-1.5 py-0.5">
-          {lead.niche}
-        </div>
+      {selectedLead && modal === 'meeting' && (
+        <MeetingModal
+          lead={selectedLead}
+          onClose={() => { setModal(null); setSelectedLead(null) }}
+          onSave={async (at, notes) => {
+            const ok = await onMeeting(selectedLead.id, at, notes)
+            if (ok) { setModal(null); setSelectedLead(null) }
+            return ok
+          }}
+        />
+      )}
+      {selectedLead && modal === 'close' && (
+        <CloseModal
+          lead={selectedLead}
+          onClose={() => { setModal(null); setSelectedLead(null) }}
+          onSave={async (closed, motivo) => {
+            const ok = await onClose(selectedLead.id, closed, motivo)
+            if (ok) { setModal(null); setSelectedLead(null) }
+            return ok
+          }}
+        />
       )}
     </div>
   )
 }
 
-function Pin({ className }: { className?: string }) {
+const STATUS_BADGE: Record<LeadStatus, { label: string; cls: string }> = {
+  novo: { label: 'Novo', cls: 'bg-slate-500/15 text-slate-300' },
+  na_fila: { label: 'Na fila', cls: 'bg-amber-500/15 text-amber-300' },
+  enviado: { label: 'Enviado', cls: 'bg-sky-500/15 text-sky-300' },
+  conversando: { label: 'Conversando', cls: 'bg-violet-500/15 text-violet-300' },
+  sem_interesse: { label: 'Sem interesse', cls: 'bg-rose-500/15 text-rose-300' },
+  remarketing: { label: 'Remarketing', cls: 'bg-amber-500/15 text-amber-300' },
+  reuniao_marcada: { label: 'Reunião', cls: 'bg-emerald-500/15 text-emerald-300' },
+  reuniao_cancelada: { label: 'Cancelada', cls: 'bg-orange-500/15 text-orange-300' },
+  fechado: { label: 'Fechado', cls: 'bg-green-500/15 text-green-300' },
+  nao_fechado: { label: 'Não fechado', cls: 'bg-rose-500/15 text-rose-300' },
+}
+
+export function LeadCard({ lead, onAction, onMeeting, onClose }: {
+  lead: Lead
+  onAction: () => void
+  onMeeting: () => void
+  onClose: () => void
+}) {
+  const badge = STATUS_BADGE[lead.status]
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
+    <div className="group relative rounded-lg bg-[#16161f] border border-white/5 p-3 hover:border-white/10 transition">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-sm truncate">{lead.name || 'Sem nome'}</div>
+          {lead.niche && <div className="text-[11px] text-indigo-300/80 truncate">{lead.niche}</div>}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <button onClick={onAction} title="Ver detalhes" className="text-slate-600 hover:text-white text-xs">•••</button>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
+        </div>
+      </div>
+
+      {lead.status === 'reuniao_marcada' && lead.meeting_at && (
+        <div className="mt-2 text-[11px] text-emerald-300 bg-emerald-500/10 rounded-md px-2 py-1">
+          📅 {new Date(lead.meeting_at).toLocaleString('pt-BR')}
+        </div>
+      )}
+      {lead.status === 'reuniao_cancelada' && lead.meeting_at && (
+        <div className="mt-2 text-[11px] text-orange-300 bg-orange-500/10 rounded-md px-2 py-1">
+          🗓️ Cancelada — era {new Date(lead.meeting_at).toLocaleString('pt-BR')}
+        </div>
+      )}
+      {(lead.status === 'fechado' || lead.status === 'nao_fechado') && (
+        <div className="mt-2 text-[11px] text-slate-400">{lead.closed_reason || '(sem motivo)'}</div>
+      )}
+
+      <div className="mt-2 space-y-1 text-[11px] text-slate-400">
+        {lead.phone && <div className="truncate">☎ {lead.phone}</div>}
+        {lead.city && <div className="truncate">📍 {lead.city}{lead.state ? ', ' + lead.state : ''}</div>}
+      </div>
+
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {lead.status === 'reuniao_marcada' && (
+          <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-emerald-300">
+            Reagendar
+          </button>
+        )}
+        {onMeeting && (
+          <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-indigo-300">
+            Marcar reunião
+          </button>
+        )}
+        {onClose && lead.status !== 'fechado' && lead.status !== 'nao_fechado' && (
+          <button onClick={onClose} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-slate-300">
+            Concluir
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
-function Phone({ className }: { className?: string }) {
+
+function MeetingModal({ lead, onClose, onSave }: {
+  lead: Lead
+  onClose: () => void
+  onSave: (at: string, notes: string) => Promise<boolean>
+}) {
+  const [date, setDate] = useState(lead.meeting_at ? lead.meeting_at.slice(0, 16) : '')
+  const [notes, setNotes] = useState(lead.meeting_notes ?? '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    setBusy(true)
+    setError('')
+    const ok = await onSave(date, notes)
+    setBusy(false)
+    if (!ok) setError('Não foi possível salvar. Tente novamente.')
+  }
+
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.5 2.9.7a2 2 0 0 1 1.6 2Z" stroke="currentColor" strokeWidth="1.8" fill="none" />
-    </svg>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="font-semibold">Reunião</div>
+            <div className="text-xs text-slate-400 truncate max-w-[220px]">{lead.name || 'Sem nome'}</div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+        </div>
+        <label className="block text-xs text-slate-400 mb-3">
+          Data e hora
+          <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)}
+            className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+        </label>
+        <label className="block text-xs text-slate-400 mb-3">
+          Observações
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
+            className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 resize-none" />
+        </label>
+        {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
+            {busy ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
-function Star({ className }: { className?: string }) {
+
+function CloseModal({ lead, onClose, onSave }: {
+  lead: Lead
+  onClose: () => void
+  onSave: (closed: boolean, motivo: string) => Promise<boolean>
+}) {
+  const [closed, setClosed] = useState(true)
+  const [motivo, setMotivo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    setBusy(true)
+    setError('')
+    const ok = await onSave(closed, motivo)
+    setBusy(false)
+    if (!ok) setError('Não foi possível salvar. Tente novamente.')
+  }
+
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-      <path d="M12 2l2.9 6.2 6.6.9-4.8 4.6 1.2 6.6L12 17.8 6.1 20.3l1.2-6.6L2.5 9.1l6.6-.9L12 2Z" />
-    </svg>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="font-semibold">Concluir lead</div>
+            <div className="text-xs text-slate-400 truncate max-w-[220px]">{lead.name || 'Sem nome'}</div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+        </div>
+        <div className="space-y-2 mb-3">
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input type="radio" checked={closed} onChange={() => setClosed(true)} className="accent-emerald-500" />
+            Fechado (cliente fechou)
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input type="radio" checked={!closed} onChange={() => setClosed(false)} className="accent-rose-500" />
+            Não fechado
+          </label>
+        </div>
+        <label className="block text-xs text-slate-400 mb-3">
+          Motivo
+          <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: fora do orçamento, já tem fornecedor..."
+            className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+        </label>
+        {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
+            {busy ? 'Salvando...' : 'Concluir'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

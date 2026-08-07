@@ -14,11 +14,14 @@ export const supabase = createClient(url, anonKey)
 export type LeadStatus =
   | 'novo'
   | 'na_fila'
-  | 'mensagem_enviada'
-  | 'respondendo'
+  | 'enviado'
+  | 'conversando'
+  | 'sem_interesse'
+  | 'remarketing'
   | 'reuniao_marcada'
+  | 'reuniao_cancelada'
   | 'fechado'
-  | 'perdido'
+  | 'nao_fechado'
 
 export interface Lead {
   id: string
@@ -34,6 +37,15 @@ export interface Lead {
   niche: string | null
   status: LeadStatus
   last_message_sent: string | null
+  meeting_at: string | null
+  meeting_notes: string | null
+  session_id: string | null
+  campaign_id: string | null
+  no_interest_until: string | null
+  closed_reason: string | null
+  closed_at: string | null
+  remarket_at: string | null
+  first_msg_sent_at: string | null
   created_at: string
   updated_at: string
 }
@@ -43,6 +55,18 @@ export interface Campaign {
   name: string
   description: string | null
   is_active: boolean
+  status: 'pronta' | 'em_progresso' | 'finalizada' | 'cancelada'
+  started_at: string | null
+  finished_at: string | null
+  lead_count: number
+  success_count: number
+  fail_count: number
+  created_at: string
+}
+
+export interface CaptureSession {
+  id: string
+  imported_by: string | null
   created_at: string
 }
 
@@ -55,4 +79,26 @@ export interface QueueMessage {
   media_url: string | null
   media_caption: string | null
   delay_seconds: number
+}
+
+export interface LeadContact {
+  id: string
+  user_id: string
+  lead_id: string
+  contacted_at: string
+}
+
+export type SendRunStatus = 'pending' | 'running' | 'done' | 'failed'
+
+export interface SendRun {
+  id: string
+  campaign_id: string
+  lead_id: string
+  status: SendRunStatus
+  current_position: number
+  next_send_at: string | null
+  last_sent_at: string | null
+  created_at: string
+  campaign?: Pick<Campaign, 'id' | 'name'>
+  lead?: Pick<Lead, 'id' | 'name' | 'phone' | 'status'>
 }

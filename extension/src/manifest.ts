@@ -3,7 +3,7 @@ import { defineManifest } from '@crxjs/vite-plugin'
 export default defineManifest({
   manifest_version: 3,
   name: 'Consecom — Captura de Leads',
-  version: '1.0.0',
+  version: '1.5.0',
   description: 'Capture empresas do Google Maps e importe para o painel Consecom.',
   permissions: ['storage', 'activeTab', 'tabs'],
   host_permissions: [
@@ -37,3 +37,4 @@ export default defineManifest({
     type: 'module',
   },
 })
+

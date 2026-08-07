@@ -23,6 +23,7 @@ import { createFileWriteTool } from './file.write.js';
 import { createListDirTool } from './list.dir.js';
 import { createMarcarReuniaoTool } from './marcar.reuniao.js';
 import { createNotifyAdminGroupTool } from './notify.admin.js';
+import { createFinalizeProspectingTool } from './finalizar.sem.interesse.js';
 import { getEnv } from '../config/env.js';
 
 let buildCalled = false;
@@ -63,6 +64,7 @@ export function buildDefaultRegistry(): ToolRegistry {
   const listDir = createListDirTool(allowedDir);
   const marcarReuniao = createMarcarReuniaoTool();
   const notifyAdminGroup = createNotifyAdminGroupTool();
+  const finalizeProspecting = createFinalizeProspectingTool();
 
   const all = [
     { name: fileRead.definition.name, tool: fileRead },
@@ -70,6 +72,7 @@ export function buildDefaultRegistry(): ToolRegistry {
     { name: listDir.definition.name, tool: listDir },
     { name: marcarReuniao.definition.name, tool: marcarReuniao },
     { name: notifyAdminGroup.definition.name, tool: notifyAdminGroup },
+    { name: finalizeProspecting.definition.name, tool: finalizeProspecting },
   ];
 
   for (const { name, tool } of all) {

@@ -1,28 +1,30 @@
-import { getStoredConfig, saveConfig } from '../shared/config'
+import { getStoredConfig, DEFAULT_CONFIG, saveConfig } from '../shared/config'
 
-function $(id: string): HTMLElement {
-  return document.getElementById(id) as HTMLElement
-}
-
-async function load(): Promise<void> {
+async function prefill(): Promise<void> {
   const cfg = await getStoredConfig()
-  ;($('url') as HTMLInputElement).value = cfg.supabaseUrl || ''
-  ;($('key') as HTMLInputElement).value = cfg.anonKey || ''
+  const urlInput = document.getElementById('url') as HTMLInputElement
+  const keyInput = document.getElementById('key') as HTMLInputElement
+  if (!urlInput.value || !keyInput.value) {
+    urlInput.value = cfg.supabaseUrl || DEFAULT_CONFIG.supabaseUrl
+    keyInput.value = cfg.anonKey || DEFAULT_CONFIG.anonKey
+  }
 }
 
-$('save').addEventListener('click', async () => {
-  const url = ($('url') as HTMLInputElement).value.trim()
-  const key = ($('key') as HTMLInputElement).value.trim()
+document.getElementById('save')?.addEventListener('click', async () => {
+  const url = (document.getElementById('url') as HTMLInputElement).value.replace(/\/+$/, '')
+  const key = (document.getElementById('key') as HTMLInputElement).value.trim()
   if (!url || !key) {
-    $('status').textContent = 'Informe a URL e a chave anon.'
+    const s = document.getElementById('status')
+    if (s) s.textContent = 'Informe a URL e a chave anon.'
     return
   }
   await saveConfig({ supabaseUrl: url, anonKey: key })
-  $('status').textContent = 'Salvo ✓'
+  const s = document.getElementById('status')
+  if (s) s.textContent = 'Salvo ✓'
 })
 
-$('open').addEventListener('click', () => {
+document.getElementById('open')?.addEventListener('click', () => {
   void chrome.runtime.sendMessage({ type: 'consecom:open' })
 })
 
-void load()
+void prefill()

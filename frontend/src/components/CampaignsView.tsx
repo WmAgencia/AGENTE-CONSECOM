@@ -1,13 +1,30 @@
 import { useEffect, useState } from 'react'
-import { supabase, type Campaign, type QueueMessage } from '../lib/supabase'
+import { supabase, type Campaign, type QueueMessage, type Lead, type SendRun } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 
-export function CampaignsView() {
+export function CampaignsView({ leads }: { leads: Lead[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [messagesByCampaign, setMessagesByCampaign] = useState<Record<string, QueueMessage[]>>({})
+  const [runs, setRuns] = useState<SendRun[]>([])
+  const [enqueueOpen, setEnqueueOpen] = useState<Campaign | null>(null)
 
   useEffect(() => {
     load()
+  }, [])
+
+  // atualização em tempo real da fila de envio
+  useEffect(() => {
+    const ch = supabase
+      .channel('send_runs')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'send_runs' },
+        () => void loadRuns(),
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(ch)
+    }
   }, [])
 
   async function load() {
@@ -24,6 +41,36 @@ export function CampaignsView() {
       if (msgs) grouped[c.id] = msgs
     }
     setMessagesByCampaign(grouped)
+    await loadRuns()
+  }
+
+async function loadRuns() {
+    const { data, error } = await supabase
+      .from('send_runs')
+      .select('*, campaign:campaigns(name), lead:leads(id,name,phone,status)')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (!error && data) setRuns(data)
+  }
+
+  async function removeRun(r: SendRun) {
+    if (!window.confirm(`Desenfileirar "${r.lead?.name ?? 'este lead'}" da campanha "${r.campaign?.name ?? ''}"?`)) return
+    const { error } = await supabase.from('send_runs').delete().eq('id', r.id)
+    if (!error) setRuns((rs) => rs.filter((x) => x.id !== r.id))
+  }
+
+  async function fireCampaign(c: Campaign) {
+    const running = campaigns.filter((x) => x.status === 'em_progresso' && x.id !== c.id)
+    if (running.length > 0) {
+      if (!window.confirm(`A campanha "${running[0].name}" está em progresso. O worker só dispara uma por vez. Enfileirar mesmo assim?`)) return
+    }
+    const { error } = await supabase.from('campaigns').update({ status: 'em_progresso', started_at: new Date().toISOString(), success_count: 0, fail_count: 0 }).eq('id', c.id)
+    if (!error) await load()
+  }
+
+  async function finishCampaign(c: Campaign) {
+    const { error } = await supabase.from('campaigns').update({ status: 'finalizada', finished_at: new Date().toISOString() }).eq('id', c.id)
+    if (!error) await load()
   }
 
   return (
@@ -32,7 +79,7 @@ export function CampaignsView() {
         <div>
           <h1 className="text-lg font-semibold">Campanhas &amp; fila de envio</h1>
           <p className="text-sm text-slate-400">
-            Monte a sequência de mensagens que será enviada aos leads
+            Monte a sequência, enfileire leads e acompanhe o envio (WhatsApp)
           </p>
         </div>
         <button onClick={load}
@@ -41,19 +88,50 @@ export function CampaignsView() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto px-6 py-5 space-y-5">
-        <CampaignButton onCreated={load} />
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {campaigns.map((c) => (
-            <CampaignCard key={c.id} campaign={c} messages={messagesByCampaign[c.id] ?? []} onChanged={load} />
-          ))}
-          {campaigns.length === 0 && (
-            <p className="col-span-full text-sm text-slate-500">
-              Nenhuma campanha criada ainda.
-            </p>
-          )}
-        </div>
+      <div className="flex-1 overflow-auto px-6 py-5 space-y-8">
+        <section>
+          <CampaignButton onCreated={load} />
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 mt-5">
+            {campaigns.map((c) => (
+              <CampaignCard
+                key={c.id}
+                campaign={c}
+                messages={messagesByCampaign[c.id] ?? []}
+                onChanged={load}
+                onEnqueue={() => setEnqueueOpen(c)}
+                onFire={() => void fireCampaign(c)}
+                onFinish={() => void finishCampaign(c)}
+              />
+            ))}
+            {campaigns.length === 0 && (
+              <p className="col-span-full text-sm text-slate-500">
+                Nenhuma campanha criada ainda.
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+              Fila de envio ({runs.filter((r) => r.status !== 'done').length} ativos)
+            </h2>
+          </div>
+          <RunsTable runs={runs} onRemove={removeRun} />
+        </section>
       </div>
+
+      {enqueueOpen && (
+        <EnqueueModal
+          campaign={enqueueOpen}
+          leads={leads}
+          onClose={() => setEnqueueOpen(null)}
+          onEnrolled={() => {
+            setEnqueueOpen(null)
+            void loadRuns()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -109,7 +187,21 @@ function CampaignButton({ onCreated }: { onCreated: () => Promise<void> }) {
   )
 }
 
-function CampaignCard({ campaign, messages, onChanged }: { campaign: Campaign; messages: QueueMessage[]; onChanged: () => void }) {
+function CampaignCard({
+  campaign,
+  messages,
+  onChanged,
+  onEnqueue,
+  onFire,
+  onFinish,
+}: {
+  campaign: Campaign
+  messages: QueueMessage[]
+  onChanged: () => void
+  onEnqueue: () => void
+  onFire: () => void
+  onFinish: () => void
+}) {
   const [open, setOpen] = useState(false)
   return (
     <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
@@ -121,13 +213,13 @@ function CampaignCard({ campaign, messages, onChanged }: { campaign: Campaign; m
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className={`text-[11px] px-2 py-1 rounded-full ${
-              campaign.is_active ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-slate-400'
-            }`}
+          <CampaignStatusBadge status={campaign.status} />
+          <button
+            onClick={onEnqueue}
+            className="text-[11px] px-2 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30"
           >
-            {campaign.is_active ? 'Ativa' : 'Pausada'}
-          </span>
+            Enfileirar leads
+          </button>
           <button
             onClick={() => setOpen((o) => !o)}
             className="text-[11px] px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10"
@@ -136,6 +228,23 @@ function CampaignCard({ campaign, messages, onChanged }: { campaign: Campaign; m
           </button>
         </div>
       </div>
+
+      <div className="flex flex-wrap gap-2 mb-3">
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-slate-300">{campaign.lead_count} leads</span>
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{campaign.success_count} sucessos</span>
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300">{campaign.fail_count} falhas</span>
+      </div>
+
+      {campaign.status === 'pronta' && (
+        <button onClick={onFire} className="w-full mb-3 text-sm py-2 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg font-medium">
+          ▶ Disparar campanha
+        </button>
+      )}
+      {campaign.status === 'em_progresso' && (
+        <button onClick={onFinish} className="w-full mb-3 text-xs py-2 bg-amber-600/70 hover:bg-amber-500 rounded-lg font-medium">
+          Encerrar manualmente
+        </button>
+      )}
 
       {!open ? (
         <ol className="space-y-1.5">
@@ -160,6 +269,196 @@ function CampaignCard({ campaign, messages, onChanged }: { campaign: Campaign; m
       ) : (
         <SequenceEditor campaign={campaign} messages={messages} onSaved={onChanged} />
       )}
+    </div>
+  )
+}
+
+function EnqueueModal({
+  campaign,
+  leads,
+  onClose,
+  onEnrolled,
+}: {
+  campaign: Campaign
+  leads: Lead[]
+  onClose: () => void
+  onEnrolled: () => void
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  function toggle(id: string) {
+    setSelected((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
+  async function submit() {
+    if (selected.size === 0) {
+      setError('Selecione ao menos um lead.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    const rows = Array.from(selected).map((lead_id) => ({
+      campaign_id: campaign.id,
+      lead_id,
+      status: 'pending',
+      current_position: 0,
+      next_send_at: new Date().toISOString(),
+    }))
+    const { error: err } = await supabase.from('send_runs').upsert(rows, {
+      onConflict: 'campaign_id,lead_id',
+      ignoreDuplicates: true,
+    })
+    setBusy(false)
+    if (err) {
+      setError(err.message)
+      return
+    }
+    onEnrolled()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="font-semibold">Enfileirar leads</div>
+            <div className="text-xs text-slate-400">Campanha: {campaign.name}</div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">
+            ×
+          </button>
+        </div>
+
+        <div className="max-h-72 overflow-y-auto space-y-1.5 mb-4">
+          {leads.length === 0 && (
+            <p className="text-sm text-slate-500">Nenhum lead cadastrado ainda.</p>
+          )}
+          {leads.map((lead) => (
+            <label
+              key={lead.id}
+              className="flex items-center gap-3 rounded-lg border border-white/5 px-3 py-2 cursor-pointer hover:bg-white/5"
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(lead.id)}
+                onChange={() => toggle(lead.id)}
+                className="accent-indigo-500"
+              />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm truncate">{lead.name || 'Sem nome'}</span>
+                {lead.phone && <span className="block text-[11px] text-slate-500">{lead.phone}</span>}
+              </span>
+              <span className="text-[10px] text-slate-500 shrink-0">{lead.status}</span>
+            </label>
+          ))}
+        </div>
+
+        {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400">{selected.size} selecionado(s)</span>
+          <div className="flex gap-2">
+            <button onClick={onClose}
+              className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">
+              Cancelar
+            </button>
+            <button onClick={() => void submit()} disabled={busy}
+              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
+              {busy ? 'Enfileirando...' : 'Enfileirar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const CAMPAIGN_STATUS: Record<Campaign['status'], { label: string; cls: string }> = {
+  pronta: { label: 'Pronta', cls: 'bg-white/5 text-slate-300' },
+  em_progresso: { label: 'Em progresso', cls: 'bg-amber-500/15 text-amber-300' },
+  finalizada: { label: 'Finalizada', cls: 'bg-emerald-500/15 text-emerald-300' },
+  cancelada: { label: 'Cancelada', cls: 'bg-rose-500/15 text-rose-300' },
+}
+
+function CampaignStatusBadge({ status }: { status: Campaign['status'] }) {
+  const meta = CAMPAIGN_STATUS[status]
+  return (
+    <span className={`text-[11px] px-2 py-1 rounded-full ${meta.cls}`}>
+      {meta.label}
+    </span>
+  )
+}
+
+const RUN_STATUS: Record<SendRun['status'], { label: string; cls: string }> = {
+  pending: { label: 'Pendente', cls: 'bg-slate-500/15 text-slate-300' },
+  running: { label: 'Rodando', cls: 'bg-amber-500/15 text-amber-300' },
+  done: { label: 'Concluído', cls: 'bg-emerald-500/15 text-emerald-300' },
+  failed: { label: 'Falhou', cls: 'bg-rose-500/15 text-rose-300' },
+}
+
+function RunsTable({ runs, onRemove }: { runs: SendRun[]; onRemove: (r: SendRun) => void }) {
+  if (runs.length === 0) {
+    return (
+      <p className="text-sm text-slate-500 border border-dashed border-white/10 rounded-lg px-4 py-6 text-center">
+        Nenhuma execução de envio ainda. Enfileire leads em uma campanha para começar.
+      </p>
+    )
+  }
+  return (
+    <div className="rounded-xl border border-white/5 overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-white/5">
+            <th className="px-4 py-2.5 font-medium">Lead</th>
+            <th className="px-4 py-2.5 font-medium">Campanha</th>
+            <th className="px-4 py-2.5 font-medium">Etapa</th>
+            <th className="px-4 py-2.5 font-medium">Status</th>
+            <th className="px-4 py-2.5 font-medium">Próximo envio</th>
+            <th className="px-4 py-2.5 font-medium text-right">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((r) => {
+            const st = RUN_STATUS[r.status]
+            return (
+              <tr key={r.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                <td className="px-4 py-2.5">
+                  <div className="font-medium truncate max-w-[200px]">{r.lead?.name ?? '—'}</div>
+                  {r.lead?.phone && <div className="text-[11px] text-slate-500">{r.lead.phone}</div>}
+                </td>
+                <td className="px-4 py-2.5 text-slate-300">{r.campaign?.name ?? '—'}</td>
+                <td className="px-4 py-2.5 text-slate-400">#{(r.current_position ?? 0) + 1}</td>
+                <td className="px-4 py-2.5">
+                  <span className={`${st.cls} px-2 py-0.5 rounded text-[11px] font-medium`}>
+                    {st.label}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-slate-500">
+                  {r.next_send_at ? new Date(r.next_send_at).toLocaleString('pt-BR') : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  {r.status !== 'done' && (
+                    <button
+                      onClick={() => onRemove(r)}
+                      title="Desenfileirar"
+                      className="text-slate-500 hover:text-rose-400 text-lg leading-none"
+                    >
+                      ×
+                    </button>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

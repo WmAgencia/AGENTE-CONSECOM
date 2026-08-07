@@ -17,7 +17,7 @@ export interface LeadRow {
   category: string | null;
 }
 
-const PROSPECTING_STATUSES = ['na_fila', 'mensagem_enviada', 'respondendo'];
+const PROSPECTING_STATUSES = ['na_fila', 'enviado', 'conversando', 'sem_interesse', 'remarketing'];
 
 // Normaliza um JID/número para uma forma comparável:
 //  strip @s.whatsapp.net, remove tudo que não for dígito.
@@ -121,4 +121,33 @@ export async function appendConversationTurn(
     content,
     agent_model: agentModel ?? null,
   });
+}
+
+/**
+ * Returns the persisted conversation transcript for a lead (oldest first).
+ * Used by the autotreino to build a lesson from a real win/rejection.
+ */
+export async function fetchLeadTranscript(
+  leadId: string,
+  limit = 400,
+): Promise<Array<{ role: string; content: string }>> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!cfg.url || !cfg.serviceRoleKey || !leadId) return [];
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/consecom_conversations?select=role,content,created_at` +
+        `&lead_id=eq.${encodeURIComponent(leadId)}&order=created_at.asc&limit=${limit}`,
+      { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+    );
+    if (!res.ok) return [];
+    return (await res.json()) as Array<{ role: string; content: string }>;
+  } catch {
+    return [];
+  }
+}
+
+/** Dispatches the current turn to appendConversationTurn for the lead. */
+export async function recordAssistantTurn(leadId: string, content: string, model?: string): Promise<void> {
+  if (!leadId) return;
+  await appendConversationTurn(leadId, 'assistant', content, model);
 }

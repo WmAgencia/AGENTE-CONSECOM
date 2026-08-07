@@ -68,6 +68,8 @@ interface RunAgentLoopInput {
   history?: ChatMessage[];
   /** Optional site-provided rules/guidelines injected into the system prompt. */
   directives?: string;
+  /** Optional auto-trained patterns injected into the system prompt. */
+  learnings?: string;
 }
 
 export interface RunAgentLoopResult extends AgentResponse {
@@ -80,6 +82,7 @@ function buildSystemPrompt(opts: {
   useReactFallback: boolean;
   toolNames: string[];
   directives?: string;
+  learnings?: string;
 }): string {
   const agoraBrasilia = new Date(Date.now() - 3 * 3600_000);
   const dataAtual = agoraBrasilia.toISOString().slice(0, 10);
@@ -94,12 +97,20 @@ const base = [
     'Be FAST and decisive. Your goal is to build rapport, answer questions about the service, and move the conversation toward scheduling a meeting.',
     'BOOKING RULE: only call marcar_reuniao when the prospect has clearly agreed to a date/time for the meeting. When that happens, resolve it in ONE decisive turn: call marcar_reuniao with the lead id (when known) and meeting details, then reply to the prospect confirming the meeting and next steps. Only call marcar_reuniao if the prospect actually agreed - never invent an agreement.',
     'If the prospect declines or goes quiet, do not insist or spam. Respond gracefully and stop.',
+    'OUTCOME RULE: when the prospect clearly refuses/interrupts or says they are not interested, call finalizar_sem_interesse with the lead id (when known) or phone and outcome="sem_interesse" in the SAME turn, then reply gracefully and stop. When the prospect cancels an already-scheduled meeting, call finalizar_sem_interesse with outcome="reuniao_cancelada" and a short motive.',
   ];
   if (opts.directives) {
     base.push(
       '=== PROSPECTION DIRECTIVES (always follow these rules) ===',
       opts.directives,
       '=== END OF PROSPECTION DIRECTIVES ===',
+    );
+  }
+  if (opts.learnings) {
+    base.push(
+      '=== AUTO-TREINO: padrões aprendidos com conversas reais ===',
+      opts.learnings,
+      'Use these to refine your approach, tone and arguments. They come from past wins/rejections.',
     );
   }
   if (opts.useReactFallback && opts.toolNames.length > 0) {
@@ -217,6 +228,7 @@ export async function runAgentLoop(
       useReactFallback: false,
       toolNames,
       directives: input.directives,
+      learnings: input.learnings,
     }),
   });
   if (input.history && input.history.length > 0) {
@@ -242,6 +254,7 @@ export async function runAgentLoop(
         useReactFallback: true,
         toolNames,
         directives: input.directives,
+        learnings: input.learnings,
       });
     }
 

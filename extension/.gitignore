@@ -1,2 +1,7 @@
 ﻿node_modules/
 dist/
+
+# Build artifacts (zip bundles / unpacked builds)
+consecom-extension-*.zip
+consecom-extension-*/
+

@@ -17,6 +17,7 @@ import {
   getEnv,
 } from '../config/env.js';
 import { sendGroupText } from '../services/evolution.service.js';
+import { captureLearning } from '../services/agent.learning.js';
 
 export function createMarcarReuniaoTool(): ToolBase {
   return {
@@ -123,6 +124,13 @@ export function createMarcarReuniaoTool(): ToolBase {
             'Não afirme ao lead que a reunião foi registrada.',
           error: 'io_error',
         };
+      }
+
+      // Autotreino: vitória real -> captura a lição (fire-and-forget).
+      if (recorded && leadId) {
+        void captureLearning('vitoria', leadId, {
+          lessonOverride: notes || undefined,
+        });
       }
 
       return {

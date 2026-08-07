@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS public.leads (
   status            TEXT NOT NULL DEFAULT 'novo'
                     CHECK (status IN ('novo','na_fila','mensagem_enviada','respondendo','reuniao_marcada','fechado','perdido')),
   last_message_sent TIMESTAMPTZ,
+  meeting_at        TIMESTAMPTZ,
+  meeting_notes     TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -94,6 +96,19 @@ CREATE TABLE IF NOT EXISTS public.consecom_conversations (
 CREATE INDEX IF NOT EXISTS consecom_conversations_lead_idx
   ON public.consecom_conversations (lead_id, created_at);
 
+-- Quem (qual login) já contatou um lead. Impede o MESMO usuário de
+-- enviar mensagem 2x para o mesmo lead, e serve para o painel mostrar
+-- "disponível" (ainda não enviou) vs "contatado" (já enviou).
+CREATE TABLE IF NOT EXISTS public.lead_contacts (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+  lead_id      UUID NOT NULL REFERENCES public.leads (id) ON DELETE CASCADE,
+  contacted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, lead_id)
+);
+CREATE INDEX IF NOT EXISTS lead_contacts_lead_idx ON public.lead_contacts (lead_id);
+CREATE INDEX IF NOT EXISTS lead_contacts_user_idx ON public.lead_contacts (user_id);
+
 -- =============================================================
 -- RPC usado pelo agente tool `marcar_reuniao`
 -- Marca um lead como "reuniao_marcada".
@@ -108,7 +123,10 @@ SECURITY INVOKER
 AS $$
 BEGIN
   UPDATE public.leads
-  SET status = 'reuniao_marcada', updated_at = now()
+  SET status = 'reuniao_marcada',
+      meeting_at = COALESCE(p_meeting_at, meeting_at),
+      meeting_notes = COALESCE(p_notes, meeting_notes),
+      updated_at = now()
   WHERE id = p_lead_id;
 
   INSERT INTO public.lead_status_history (lead_id, status, notes)
@@ -118,7 +136,8 @@ BEGIN
     'ok', true,
     'lead_id', p_lead_id,
     'status', 'reuniao_marcada',
-    'meeting_at', p_meeting_at
+    'meeting_at', p_meeting_at,
+    'meeting_notes', p_notes
   );
 END;
 $$;
@@ -137,6 +156,7 @@ ALTER TABLE public.campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.queue_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.send_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.consecom_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.lead_contacts ENABLE ROW LEVEL SECURITY;
 GRANT EXECUTE ON FUNCTION public.consecom_marcar_reuniao(UUID, TIMESTAMPTZ, TEXT)
   TO service_role;
 
@@ -149,6 +169,21 @@ CREATE POLICY leads_auth_read  ON public.leads FOR SELECT USING (auth.role() = '
 CREATE POLICY leads_auth_insert ON public.leads FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY leads_auth_update ON public.leads FOR UPDATE USING (auth.role() = 'authenticated');
 CREATE POLICY leads_auth_delete ON public.leads FOR DELETE USING (auth.role() = 'authenticated');
+
+-- leads: extensão do Google Maps grava leads anonimamente (sem login).
+-- Anon: INSERT para criar, SELECT para checar importados,
+-- DELETE para a opção "Excluir selecionados" da extensão.
+CREATE POLICY leads_anon_insert ON public.leads
+  FOR INSERT TO anon
+  WITH CHECK (true);
+
+CREATE POLICY leads_anon_select ON public.leads
+  FOR SELECT TO anon
+  USING (true);
+
+CREATE POLICY leads_anon_delete ON public.leads
+  FOR DELETE TO anon
+  USING (true);
 
 -- lead_status_history
 CREATE POLICY lsh_auth_read  ON public.lead_status_history FOR SELECT USING (auth.role() = 'authenticated');
@@ -174,6 +209,11 @@ CREATE POLICY sendruns_auth_update ON public.send_runs FOR UPDATE USING (auth.ro
 -- consecom_conversations
 CREATE POLICY conv_auth_read  ON public.consecom_conversations FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY conv_auth_insert ON public.consecom_conversations FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- lead_contacts: cada usuário só lê/grava os SEUS contatos (auth.uid()).
+CREATE POLICY lc_read  ON public.lead_contacts FOR SELECT USING (auth.role() = 'authenticated' AND user_id = auth.uid());
+CREATE POLICY lc_insert ON public.lead_contacts FOR INSERT WITH CHECK (auth.role() = 'authenticated' AND user_id = auth.uid());
+CREATE POLICY lc_delete ON public.lead_contacts FOR DELETE USING (auth.role() = 'authenticated' AND user_id = auth.uid());
 
 -- =============================================================
 -- Mídia (Supabase Storage) — bucket "consecom-media" (público).

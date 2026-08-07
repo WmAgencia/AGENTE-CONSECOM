@@ -29,6 +29,10 @@ import {
 import { getEnv, getWebhookSecret } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { runAgentLoop } from '../services/agent.service.js';
+import {
+  loadLearningsForPrompt,
+  captureLearning,
+} from '../services/agent.learning.js';
 import { sendText, isEvolutionMockMode } from '../services/evolution.service.js';
 import {
   getConversationStore,
@@ -241,9 +245,9 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       const lead = await findLeadByPhone(fromJid);
       if (lead && isProspectingStatus(lead.status)) {
         leadId = lead.id;
-        // Primeiro retorno do lead: marca como "respondendo" (persistido).
-        if (lead.status !== 'respondendo') {
-          await updateLeadStatus(lead.id, 'respondendo').catch(() => {});
+        // Primeiro retorno do lead: marca como "conversando" (persistido).
+        if (lead.status !== 'conversando') {
+          await updateLeadStatus(lead.id, 'conversando').catch(() => {});
         }
       } else {
         log.info({ from: maskFrom(fromJid) }, 'webhook: inbound ignored (not a prospecting lead)');
@@ -282,6 +286,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         conversationId,
         source: 'whatsapp',
         history,
+        learnings: (await loadLearningsForPrompt()) ?? undefined,
       });
 
       log.info(
@@ -294,6 +299,18 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         },
         'webhook: agent completed',
       );
+
+      // Autotreino: se o agente encerrou com um desfecho explícito, registra.
+      if (leadId) {
+        const final = agentResult.result.trim();
+        const vitoriaTerms = ['reuni', 'agendad', 'confirmad', 'marcada', 'fechado', 'aceitou'];
+        const rejTerms = ['sem interesse', 'rejeito', 'não tenho interesse', 'nao quero', 'dispens', 'cancel'];
+        if (vitoriaTerms.some((t) => final.toLowerCase().includes(t))) {
+          void captureLearning('vitoria', leadId);
+        } else if (rejTerms.some((t) => final.toLowerCase().includes(t))) {
+          void captureLearning('rejeicao', leadId);
+        }
+      }
 
       // Persist this turn pair (in-RAM store + Supabase for the lead).
       await store.appendUser(conversationId, msg.text);
