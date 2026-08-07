@@ -25,8 +25,9 @@ import {
   evolutionWebhookPayloadSchema,
   extractMessage,
   type WebhookAcknowledgement,
+  type EvolutionWebhookPayload,
 } from '../types/webhook.js';
-import { getEnv, getWebhookSecret } from '../config/env.js';
+import { getEnv, getWebhookSecret, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { runAgentLoop } from '../services/agent.service.js';
 import {
@@ -191,6 +192,20 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       } satisfies WebhookAcknowledgement);
     }
 
+    // 3b. Handle connection/QrCode events: atualiza status da instância no Supabase.
+    // Eventos: CONNECTION_UPDATE, QRCODE_UPDATED.
+    if (
+      payload.event === 'CONNECTION_UPDATE' ||
+      payload.event === 'QRCODE_UPDATED' ||
+      payload.event === 'APPLICATION_STARTUP'
+    ) {
+      void handleInstanceEvent(payload).catch((err) => {
+        const message = err instanceof Error ? err.message : 'unknown';
+        log.error({ errMessage: message, event: payload.event }, 'webhook: instance event handler crashed');
+      });
+      return reply.status(200).send({ accepted: true, reason: 'instance_event' } satisfies WebhookAcknowledgement);
+    }
+
     // 4-6. Extract + anti-loop + idempotency (synchronous checks)
     const extracted = extractMessage(payload);
     if (!extracted) {
@@ -229,6 +244,105 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     });
 
     return reply;
+  }
+
+  /**
+   * Handles Evolution lifecycle events (CONNECTION_UPDATE, QRCODE_UPDATED,
+   * APPLICATION_STARTUP) and updates the corresponding row in
+   * `whatsapp_connections` so the frontend reflects the real state.
+   */
+  async function handleInstanceEvent(payload: EvolutionWebhookPayload): Promise<void> {
+    const log = getLogger();
+    const cfg = getSupabaseProspeccaoConfig();
+    if (!cfg.url || !cfg.serviceRoleKey) return;
+
+    const instanceName = payload.instance;
+    if (!instanceName) return;
+
+    const data = payload.data as Record<string, unknown> | undefined;
+    if (!data) return;
+
+    const patch: Record<string, unknown> = {
+      last_sync_at: new Date().toISOString(),
+    };
+
+    // ----- CONNECTION_UPDATE -----
+    // data.state pode ser "open" | "close" | "connecting"
+    if (payload.event === 'CONNECTION_UPDATE') {
+      const state = typeof data.state === 'string' ? data.state.toLowerCase() : null;
+      const reason = data.statusReason;
+      if (state === 'open') {
+        patch.status = 'connected';
+      } else if (state === 'close') {
+        patch.status = 'disconnected';
+      } else if (state === 'connecting') {
+        patch.status = 'connecting';
+      }
+      if (typeof reason === 'number') {
+        patch.status = 'error';
+      }
+      // Telefone/owner quando disponivel
+      const ownerJid = (data.ownerJid as string | undefined) ?? (data.jid as string | undefined);
+      if (typeof ownerJid === 'string') {
+        const at = ownerJid.indexOf('@');
+        patch.phone_number = at > 0 ? ownerJid.slice(0, at) : ownerJid;
+      }
+      const profileName = data.profileName as string | undefined;
+      if (typeof profileName === 'string') patch.whatsapp_name = profileName;
+      const profilePicUrl = data.profilePicUrl as string | undefined;
+      if (typeof profilePicUrl === 'string') patch.whatsapp_name = patch.whatsapp_name ?? profilePicUrl;
+      const instanceId = (data.instanceId as string | undefined) ?? (data.id as string | undefined);
+      if (typeof instanceId === 'string') patch.evolution_instance_id = instanceId;
+    }
+
+    // ----- QRCODE_UPDATED -----
+    if (payload.event === 'QRCODE_UPDATED') {
+      const qr = data.qrcode;
+      let base64: string | undefined;
+      if (typeof qr === 'string') {
+        base64 = qr;
+      } else if (qr && typeof qr === 'object' && 'base64' in qr) {
+        const b = (qr as { base64?: unknown }).base64;
+        if (typeof b === 'string') base64 = b;
+      }
+      if (base64) {
+        patch.qr_code = base64;
+        patch.status = 'connecting';
+      }
+      const pairingCode = data.pairingCode as string | undefined;
+      if (typeof pairingCode === 'string') patch.qr_code = pairingCode;
+    }
+
+    // ----- APPLICATION_STARTUP -----
+    // Apenas atualiza last_sync_at + status connecting (instância subiu).
+
+    try {
+      const url = `${cfg.url}/rest/v1/whatsapp_connections?instance_name=eq.${encodeURIComponent(instanceName)}`;
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: cfg.serviceRoleKey,
+          Authorization: `Bearer ${cfg.serviceRoleKey}`,
+        },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        log.warn(
+          { status: res.status, body: txt.slice(0, 200), event: payload.event },
+          'webhook: failed to update whatsapp_connections',
+        );
+      } else {
+        log.info(
+          { instance: instanceName, event: payload.event, patch },
+          'webhook: instance event processed',
+        );
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown';
+      log.warn({ errMessage: message }, 'webhook: instance event update crashed');
+    }
   }
 
   async function processMessage(msg: {

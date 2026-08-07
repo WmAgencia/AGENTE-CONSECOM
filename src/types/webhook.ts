@@ -66,6 +66,7 @@ export interface WebhookAcknowledgement {
     | 'from_me'
     | 'no_text'
     | 'duplicate'
+    | 'instance_event'
     | 'ignored';
   messageKeyId?: string;
   message?: string;
