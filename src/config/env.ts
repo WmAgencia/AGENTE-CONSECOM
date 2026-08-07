@@ -75,7 +75,7 @@ const envSchema = z.object({
   EVOLUTION_WEBHOOK_EVENTS: z
     .string()
     .optional()
-    .default('messages.upsert,messages.upsert-ephemeral')
+    .default('messages.upsert,messages.upsert-ephemeral,QRCODE_UPDATED,CONNECTION_UPDATE,APPLICATION_STARTUP')
     .transform((v) =>
       v
         .split(',')
