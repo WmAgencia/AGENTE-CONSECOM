@@ -6,8 +6,9 @@ import { CampaignsView } from './components/CampaignsView'
 import { LeadsView } from './components/LeadsView'
 import { DashboardView } from './components/DashboardView'
 import { AgentConfig } from './components/AgentConfig'
+import { ConnectionsPage } from './components/ConnectionsPage'
 
-type Tab = 'kanban' | 'leads' | 'campanhas' | 'dashboard' | 'agente'
+type Tab = 'kanban' | 'leads' | 'campanhas' | 'dashboard' | 'agente' | 'conexoes'
 
 const APP_VERSION = '2.0.0'
 
@@ -118,7 +119,7 @@ export default function App() {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {(['kanban', 'leads', 'campanhas', 'dashboard', 'agente'] as Tab[]).map((t) => (
+          {(['kanban', 'leads', 'campanhas', 'dashboard', 'agente', 'conexoes'] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -132,7 +133,8 @@ export default function App() {
                   : t === 'leads' ? 'Leads'
                   : t === 'campanhas' ? 'Campanhas'
                   : t === 'dashboard' ? 'Dashboard'
-                  : 'Config do Agente'}
+                  : t === 'agente' ? 'Config do Agente'
+                  : 'Conexões'}
               </button>
             ))}
         </nav>
@@ -164,6 +166,7 @@ export default function App() {
         {tab === 'campanhas' && <CampaignsView leads={leads} />}
         {tab === 'dashboard' && <DashboardView leads={leads} />}
         {tab === 'agente' && <AgentConfig />}
+        {tab === 'conexoes' && <ConnectionsPage />}
       </main>
     </div>
   )

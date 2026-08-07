@@ -19,6 +19,7 @@ import { registerStatusRoutes } from './routes/status.js';
 import { registerAgentRoutes } from './routes/agent.js';
 import { registerWebhookRoutes } from './routes/webhook.js';
 import { registerEvolutionRoutes } from './routes/evolution.js';
+import { registerConnectionsRoutes } from './routes/connections.js';
 import { registerUiRoutes } from './routes/ui.js';
 import { buildDefaultRegistry } from './tools/index.js';
 import { ensureSchema, isDbEnabled } from './services/db.js';
@@ -183,6 +184,7 @@ export function buildApp(): BuiltApp {
   registerAgentRoutes(app);
   registerWebhookRoutes(app);
   registerEvolutionRoutes(app);
+  registerConnectionsRoutes(app);
   registerUiRoutes(app);
 
   return { app };
