@@ -44,6 +44,8 @@ import {
   isProspectingStatus,
   appendConversationTurn,
   loadAgentDirectives,
+  loadAgentName,
+  formatAgentSignature,
 } from '../services/supabase.leads.js';
 
 const IDEMPOTENCY_MAX_ENTRIES = 1000;
@@ -322,8 +324,10 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         await appendConversationTurn(leadId, 'assistant', agentResult.result, agentResult.model).catch(() => {});
       }
 
-      // Send back via Evolution API
-      const send = await sendText({ to: fromJid, text: agentResult.result });
+      // Send back via Evolution API (with agent name signature)
+      const agentName = await loadAgentName();
+      const finalText = formatAgentSignature(agentResult.result, agentName);
+      const send = await sendText({ to: fromJid, text: finalText });
       if (!send.ok) {
         log.error(
           {

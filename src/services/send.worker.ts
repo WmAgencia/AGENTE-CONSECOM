@@ -17,6 +17,7 @@
 import { getSupabaseProspeccaoConfig, getEnv } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { sendText, sendMedia, type MediaKind } from './evolution.service.js';
+import { loadAgentName, formatAgentSignature } from './supabase.leads.js';
 
 const TICK_MS = Number(getEnv().CONSECOM_WORKER_TICK_MS ?? 5000);
 
@@ -194,9 +195,10 @@ export class SendWorker {
     }
 
     log.info({ runId: run.id, position, kind: next.kind, phone }, 'send-worker: sending');
+    const agentName = await loadAgentName();
     let ok: boolean;
     if (next.kind === 'text' && next.text) {
-      ok = (await sendText({ to: phone, text: applyPlaceholders(next.text, lead) })).ok;
+      ok = (await sendText({ to: phone, text: formatAgentSignature(applyPlaceholders(next.text, lead), agentName) })).ok;
     } else if (next.media_url) {
       const mediaUrl = next.media_url.startsWith('http')
         ? next.media_url
@@ -207,7 +209,7 @@ export class SendWorker {
           kind: next.kind as MediaKind,
           media: mediaUrl,
           caption: next.media_caption
-            ? applyPlaceholders(next.media_caption, lead)
+            ? formatAgentSignature(applyPlaceholders(next.media_caption, lead), agentName)
             : undefined,
           mimetype: guessMimetype(mediaUrl, next.kind),
           filename: basename(mediaUrl),
@@ -290,7 +292,9 @@ export class SendWorker {
     for (const lead of leads) {
       if (!lead.phone) continue;
       const body = applyPlaceholders(message, lead);
-      const ok = (await sendText({ to: lead.phone, text: body })).ok;
+      const agentName = await loadAgentName();
+      const finalText = formatAgentSignature(body, agentName);
+      const ok = (await sendText({ to: lead.phone, text: finalText })).ok;
       if (!ok) {
         log.warn({ leadId: lead.id, phone: lead.phone }, 'send-worker: remarketing send failed');
         continue;

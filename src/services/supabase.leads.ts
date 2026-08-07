@@ -5,6 +5,7 @@
  *   - find a lead by WhatsApp JID / phone number
  *   - update a lead's status (api: flagging "respondendo")
  *   - persist conversation turns for a lead (consecom_conversations)
+ *   - load agent directives / name used in the agent system prompt
  */
 import { getSupabaseProspeccaoConfig } from '../config/env.js';
 
@@ -176,7 +177,11 @@ export async function loadAgentDirectives(): Promise<string | null> {
     const objective = typeof map.objective === 'string' ? map.objective : '';
     const service = typeof map.service === 'string' ? map.service : '';
     const project = typeof map.project === 'string' ? map.project : '';
+    const agentName = typeof map.agent_name === 'string' ? map.agent_name : '';
+    const company = typeof map.company === 'string' ? map.company : '';
 
+    if (agentName) parts.push(`SEU NOME é ${agentName}. Você se apresenta e assina as mensagens como ${agentName}.`);
+    if (company) parts.push(`SOBRE A EMPRESA (contexto que você domina para vender): ${company}`);
     if (greeting) parts.push(`SAUDAÇÃO inicial (use no primeiro contato): ${greeting}`);
     if (objective) parts.push(`OBJETIVO da conversa: ${objective}`);
     if (service) parts.push(`SERVIÇO/PROPOSTA que você apresenta: ${service}`);
@@ -187,4 +192,31 @@ export async function loadAgentDirectives(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** Carrega o nome configurado do agente (para assinar as mensagens). */
+export async function loadAgentName(): Promise<string | null> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!cfg.url || !cfg.serviceRoleKey) return null;
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/agent_settings?select=key,value&limit=100`,
+      { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as Array<{ key: string; value: unknown }>;
+    if (rows.length === 0) return null;
+    const map: Record<string, unknown> = {};
+    for (const r of rows) map[r.key] = r.value;
+    const name = typeof map.agent_name === 'string' ? map.agent_name : null;
+    return name;
+  } catch {
+    return null;
+  }
+}
+
+/** Prefixa o nome do agente em *nome* acima da mensagem. Sem nome, devolve o texto puro. */
+export function formatAgentSignature(text: string, name: string | null): string {
+  if (!name || !name.trim()) return text;
+  return `*${name.trim()}*\n\n${text}`;
 }

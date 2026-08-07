@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 interface AgentCfg {
+  agent_name: string
+  company: string
   greeting: string
   objective: string
   service: string
@@ -13,6 +15,8 @@ interface AgentCfg {
 }
 
 const DEFAULTS: AgentCfg = {
+  agent_name: '',
+  company: '',
   greeting: 'Olá! Meu nome é {nome_ia}, da {empresa}.',
   objective: 'Apresentar nosso serviço/projeto e marcar uma reunião com o responsável.',
   service: 'Descreva aqui o serviço ou projeto que o agente apresenta.',
@@ -38,6 +42,8 @@ export function AgentConfig() {
       const map: Record<string, unknown> = {}
       data.forEach((r) => { map[r.key] = r.value })
       setCfg({
+        agent_name: (map.agent_name as string) ?? DEFAULTS.agent_name,
+        company: (map.company as string) ?? DEFAULTS.company,
         greeting: (map.greeting as string) ?? DEFAULTS.greeting,
         objective: (map.objective as string) ?? DEFAULTS.objective,
         service: (map.service as string) ?? DEFAULTS.service,
@@ -73,6 +79,16 @@ export function AgentConfig() {
       <div className="space-y-6">
         <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
           <h2 className="text-sm font-semibold text-slate-300">Apresentação</h2>
+          <div>
+            <label className={label}>Nome do agente</label>
+            <input value={cfg.agent_name} onChange={(e) => set('agent_name', e.target.value)} placeholder="Ex: Alex" className={input} />
+            <p className="text-[11px] text-slate-500 mt-1">Quando definido, aparece em *negrito* acima de toda mensagem enviada pela IA.</p>
+          </div>
+          <div>
+            <label className={label}>Sobre a empresa</label>
+            <textarea value={cfg.company} onChange={(e) => set('company', e.target.value)} placeholder="Explique a empresa, o mercado, o que ela vende, diferenciais, público-alvo..." rows={4} className={input} />
+            <p className="text-[11px] text-slate-500 mt-1">A IA usa esse contexto para entender o negócio e vender melhor.</p>
+          </div>
           <div>
             <label className={label}>Mensagem de saudação</label>
             <input value={cfg.greeting} onChange={(e) => set('greeting', e.target.value)} className={input} />
