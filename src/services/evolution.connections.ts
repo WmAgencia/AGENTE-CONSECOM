@@ -95,17 +95,32 @@ function supUrl(): string {
   return cfg.url;
 }
 
-/** Lê a conexão WhatsApp do usuário da tabela whatsapp_connections. */
-export async function getUserConnection(userId: string): Promise<WhatsAppConnection | null> {
+/** Lê a conexão WhatsApp do usuário/workspace da tabela whatsapp_connections.
+ *  Aceita um identifier que pode ser workspace_id (multi-tenant) ou user_id (legado).
+ *  Faz lookup em workspace_id primeiro (precedência), depois em user_id.
+ */
+export async function getUserConnection(identifier: string): Promise<WhatsAppConnection | null> {
   const log = getLogger();
   try {
-    const res = await fetch(
-      `${supUrl()}/rest/v1/whatsapp_connections?select=*&user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=1`,
-      { headers: supHeaders() },
+    const url = supUrl();
+    const hdrs = supHeaders();
+    // 1) Tenta por workspace_id (multi-tenant)
+    const wRes = await fetch(
+      `${url}/rest/v1/whatsapp_connections?select=*&workspace_id=eq.${encodeURIComponent(identifier)}&order=created_at.desc&limit=1`,
+      { headers: hdrs },
     );
-    if (!res.ok) return null;
-    const rows = (await res.json()) as WhatsAppConnection[];
-    return rows[0] ?? null;
+    if (wRes.ok) {
+      const wRows = (await wRes.json()) as WhatsAppConnection[];
+      if (wRows.length > 0) return wRows[0];
+    }
+    // 2) Fallback: por user_id (legado single-tenant)
+    const uRes = await fetch(
+      `${url}/rest/v1/whatsapp_connections?select=*&user_id=eq.${encodeURIComponent(identifier)}&order=created_at.desc&limit=1`,
+      { headers: hdrs },
+    );
+    if (!uRes.ok) return null;
+    const uRows = (await uRes.json()) as WhatsAppConnection[];
+    return uRows[0] ?? null;
   } catch (e) {
     log.warn({ err: e instanceof Error ? e.message : 'unknown' }, 'connections: getUserConnection failed');
     return null;
