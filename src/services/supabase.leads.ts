@@ -151,3 +151,40 @@ export async function recordAssistantTurn(leadId: string, content: string, model
   if (!leadId) return;
   await appendConversationTurn(leadId, 'assistant', content, model);
 }
+
+/**
+ * Carrega as configurações do agente (agent_settings) e monta o texto de
+ * DIRECTIVES que o webhook injeta no system prompt da IA.
+ */
+export async function loadAgentDirectives(): Promise<string | null> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!cfg.url || !cfg.serviceRoleKey) return null;
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/agent_settings?select=key,value&limit=100`,
+      { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as Array<{ key: string; value: unknown }>;
+    if (rows.length === 0) return null;
+
+    const map: Record<string, unknown> = {};
+    for (const r of rows) map[r.key] = r.value;
+
+    const parts: string[] = [];
+    const greeting = typeof map.greeting === 'string' ? map.greeting : '';
+    const objective = typeof map.objective === 'string' ? map.objective : '';
+    const service = typeof map.service === 'string' ? map.service : '';
+    const project = typeof map.project === 'string' ? map.project : '';
+
+    if (greeting) parts.push(`SAUDAÇÃO inicial (use no primeiro contato): ${greeting}`);
+    if (objective) parts.push(`OBJETIVO da conversa: ${objective}`);
+    if (service) parts.push(`SERVIÇO/PROPOSTA que você apresenta: ${service}`);
+    if (project) parts.push(`PROJETO/PROPOSTA específica: ${project}`);
+
+    if (parts.length === 0) return null;
+    return parts.join('\n');
+  } catch {
+    return null;
+  }
+}

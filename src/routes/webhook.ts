@@ -43,6 +43,7 @@ import {
   updateLeadStatus,
   isProspectingStatus,
   appendConversationTurn,
+  loadAgentDirectives,
 } from '../services/supabase.leads.js';
 
 const IDEMPOTENCY_MAX_ENTRIES = 1000;
@@ -286,6 +287,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         conversationId,
         source: 'whatsapp',
         history,
+        directives: (await loadAgentDirectives()) ?? undefined,
         learnings: (await loadLearningsForPrompt()) ?? undefined,
       });
 
