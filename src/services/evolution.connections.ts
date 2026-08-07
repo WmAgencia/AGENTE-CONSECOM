@@ -122,15 +122,17 @@ export async function createInstanceForUser(
     const cfg = getEvolutionConfig();
     const instanceName = buildInstanceName(workspaceId, userId);
 
-    // POST /instance/create — cria instância na Evolution API
+    // POST /instance/create — cria instância na Evolution API.
+    // Importante: a Evolution API v2.3.x rejeita o payload quando `webhook` +
+    // `events` são enviados juntos no create (bug interno: "Cannot read
+    // properties of undefined (reading 'length')"). Solução: criar primeiro só
+    // com instanceName + integration, e setar o webhook em um segundo POST.
     const createRes = await fetch(`${cfg.apiUrl}/instance/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: cfg.apiKey },
       body: JSON.stringify({
         instanceName,
-        webhook: `${getPublicBaseUrl()}/webhook/evolution`,
-        webhook_by_events: true,
-        events: ['APPLICATION_STARTUP', 'QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT', 'SEND_MESSAGE'],
+        integration: 'WHATSAPP-BAILEYS',
       }),
     });
 
@@ -138,6 +140,28 @@ export async function createInstanceForUser(
       const txt = await createRes.text();
       log.error({ status: createRes.status, body: txt.slice(0, 200) }, 'connections: Evolution create failed');
       return { ok: false, error: `Evolution API erro ${createRes.status}` };
+    }
+
+    // POST /webhook/set/{instance} — registra webhook separadamente.
+    // Necessário por causa do bug da Evolution v2.3.x que rejeita webhook no create.
+    const webhookRes = await fetch(`${cfg.apiUrl}/webhook/set/${encodeURIComponent(instanceName)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: cfg.apiKey },
+      body: JSON.stringify({
+        webhook: {
+          url: `${getPublicBaseUrl()}/webhook/evolution`,
+          enabled: true,
+          webhook_by_events: true,
+          events: ['APPLICATION_STARTUP', 'QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT', 'SEND_MESSAGE'],
+        },
+      }),
+    });
+    if (!webhookRes.ok) {
+      const txt = await webhookRes.text();
+      log.warn(
+        { status: webhookRes.status, body: txt.slice(0, 200) },
+        'connections: webhook setup failed (instance still created)',
+      );
     }
 
     // Tenta gerar QR code imediatamente
