@@ -206,7 +206,11 @@ CREATE TABLE IF NOT EXISTS public.notification_settings (
   UNIQUE (user_id, key)
 );
 
--- Triggers updated_at
+  -- workspace_id e user_id viraram TEXT para aceitar slugs alem de UUIDs.
+  -- ATENCAO: as policies em lead_contacts usam auth.uid()::text (cast direto),
+  -- entao esta alteracao de tipo nao conflita com elas. Esta secao fica
+  -- ANTES do bloco de policies para garantir que as policies sao criadas
+  -- com a coluna ja no tipo TEXT.
 DROP TRIGGER IF EXISTS whatsapp_connections_updated ON public.whatsapp_connections;
 CREATE TRIGGER whatsapp_connections_updated BEFORE UPDATE ON public.whatsapp_connections
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
@@ -455,9 +459,9 @@ CREATE POLICY sendruns_auth_update ON public.send_runs FOR UPDATE USING (auth.ro
 CREATE POLICY conv_auth_read   ON public.consecom_conversations FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY conv_auth_insert ON public.consecom_conversations FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
-CREATE POLICY lc_read   ON public.lead_contacts FOR SELECT USING (auth.role() = 'authenticated' AND user_id = auth.uid());
-CREATE POLICY lc_insert ON public.lead_contacts FOR INSERT WITH CHECK (auth.role() = 'authenticated' AND user_id = auth.uid());
-CREATE POLICY lc_delete ON public.lead_contacts FOR DELETE USING (auth.role() = 'authenticated' AND user_id = auth.uid());
+CREATE POLICY lc_read   ON public.lead_contacts FOR SELECT USING (auth.role() = 'authenticated' AND user_id = auth.uid()::text);
+CREATE POLICY lc_insert ON public.lead_contacts FOR INSERT WITH CHECK (auth.role() = 'authenticated' AND user_id = auth.uid()::text);
+CREATE POLICY lc_delete ON public.lead_contacts FOR DELETE USING (auth.role() = 'authenticated' AND user_id = auth.uid()::text);
 
 CREATE POLICY capture_sessions_anon_insert ON public.capture_sessions FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY capture_sessions_auth_read   ON public.capture_sessions FOR SELECT USING (auth.role() = 'authenticated');
@@ -484,3 +488,39 @@ GRANT EXECUTE ON FUNCTION public.consecom_fechar_lead(UUID, BOOLEAN, TEXT) TO se
 GRANT EXECUTE ON FUNCTION public.consecom_agent_outcome(UUID, TEXT, TEXT, TEXT, INTEGER) TO service_role;
 GRANT EXECUTE ON FUNCTION public.consecom_excluir_leads(UUID[], TEXT) TO service_role, authenticated;
 GRANT EXECUTE ON FUNCTION public.consecom_cleanup_no_interest() TO service_role;
+
+-- ===== Colunas TEXT para workspace_id/user_id (multi-tenant com slugs) =====
+-- Roda DEPOIS das policies porque lead_contacts tinha FK para auth.users
+-- e policies referenciavam a coluna. As policies em lead_contacts ja foram
+-- recriadas acima com auth.uid()::text para serem compativeis.
+DO $$
+BEGIN
+  -- whatsapp_connections: drop FK + alterar para TEXT
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='whatsapp_connections' AND column_name='user_id' AND data_type='uuid'
+  ) THEN
+    ALTER TABLE public.whatsapp_connections DROP CONSTRAINT IF EXISTS whatsapp_connections_user_id_fkey;
+    ALTER TABLE public.whatsapp_connections ALTER COLUMN user_id TYPE TEXT USING user_id::TEXT;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='whatsapp_connections' AND column_name='workspace_id' AND data_type='uuid'
+  ) THEN
+    ALTER TABLE public.whatsapp_connections ALTER COLUMN workspace_id TYPE TEXT USING workspace_id::TEXT;
+  END IF;
+  CREATE INDEX IF NOT EXISTS whatsapp_conn_workspace_idx ON public.whatsapp_connections (workspace_id);
+
+  -- lead_contacts: drop FK + alterar para TEXT
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='lead_contacts' AND column_name='user_id' AND data_type='uuid'
+  ) THEN
+    ALTER TABLE public.lead_contacts DROP CONSTRAINT IF EXISTS lead_contacts_user_id_fkey;
+    ALTER TABLE public.lead_contacts ALTER COLUMN user_id TYPE TEXT USING user_id::TEXT;
+  END IF;
+
+  -- capture_sessions: adicionar user_id TEXT
+  ALTER TABLE public.capture_sessions ADD COLUMN IF NOT EXISTS user_id TEXT;
+  CREATE INDEX IF NOT EXISTS capture_sessions_user_idx ON public.capture_sessions (user_id);
+END $$;

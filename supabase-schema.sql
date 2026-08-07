@@ -99,9 +99,11 @@ CREATE INDEX IF NOT EXISTS consecom_conversations_lead_idx
 -- Quem (qual login) já contatou um lead. Impede o MESMO usuário de
 -- enviar mensagem 2x para o mesmo lead, e serve para o painel mostrar
 -- "disponível" (ainda não enviou) vs "contatado" (já enviou).
+-- user_id é TEXT para aceitar tanto UUIDs do Supabase Auth quanto
+-- slugs custom (ex: "user-wesley"). Sem FK para auth.users por causa disso.
 CREATE TABLE IF NOT EXISTS public.lead_contacts (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      UUID NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+  user_id      TEXT NOT NULL,
   lead_id      UUID NOT NULL REFERENCES public.leads (id) ON DELETE CASCADE,
   contacted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (user_id, lead_id)
@@ -211,9 +213,9 @@ CREATE POLICY conv_auth_read  ON public.consecom_conversations FOR SELECT USING 
 CREATE POLICY conv_auth_insert ON public.consecom_conversations FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- lead_contacts: cada usuário só lê/grava os SEUS contatos (auth.uid()).
-CREATE POLICY lc_read  ON public.lead_contacts FOR SELECT USING (auth.role() = 'authenticated' AND user_id = auth.uid());
-CREATE POLICY lc_insert ON public.lead_contacts FOR INSERT WITH CHECK (auth.role() = 'authenticated' AND user_id = auth.uid());
-CREATE POLICY lc_delete ON public.lead_contacts FOR DELETE USING (auth.role() = 'authenticated' AND user_id = auth.uid());
+CREATE POLICY lc_read  ON public.lead_contacts FOR SELECT USING (auth.role() = 'authenticated' AND user_id = auth.uid()::text);
+CREATE POLICY lc_insert ON public.lead_contacts FOR INSERT WITH CHECK (auth.role() = 'authenticated' AND user_id = auth.uid()::text);
+CREATE POLICY lc_delete ON public.lead_contacts FOR DELETE USING (auth.role() = 'authenticated' AND user_id = auth.uid()::text);
 
 -- =============================================================
 -- Mídia (Supabase Storage) — bucket "consecom-media" (público).
