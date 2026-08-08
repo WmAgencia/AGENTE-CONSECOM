@@ -176,16 +176,21 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     }
     const payload = parseResult.data;
 
+    // Normaliza o nome do evento: a Evolution envia "connection.update",
+    // "qrcode.updated", "messages.upsert" (lowercase + dot). Internamente
+    // trabalhamos com o formato canônico "CONNECTION_UPDATE", etc.
+    const event = payload.event.toUpperCase().replace(/[.\s]/g, '_');
+
     // 3. Event filter
     const allowedEvents = (() => {
       try {
-        return getEnv().EVOLUTION_WEBHOOK_EVENTS;
+        return getEnv().EVOLUTION_WEBHOOK_EVENTS.map((e) => e.toUpperCase().replace(/[.\s]/g, '_'));
       } catch {
-        return ['messages.upsert'];
+        return ['MESSAGES_UPSERT'];
       }
     })();
 
-    if (!allowedEvents.includes(payload.event)) {
+    if (!allowedEvents.includes(event)) {
       log.info({ event: payload.event }, 'webhook: unsupported event ignored');
       return reply.status(200).send({
         accepted: true,
@@ -195,12 +200,8 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
 
     // 3b. Handle connection/QrCode events: atualiza status da instância no Supabase.
     // Eventos: CONNECTION_UPDATE, QRCODE_UPDATED.
-    if (
-      payload.event === 'CONNECTION_UPDATE' ||
-      payload.event === 'QRCODE_UPDATED' ||
-      payload.event === 'APPLICATION_STARTUP'
-    ) {
-      void handleInstanceEvent(payload).catch((err) => {
+    if (event === 'CONNECTION_UPDATE' || event === 'QRCODE_UPDATED' || event === 'APPLICATION_STARTUP') {
+      void handleInstanceEvent(payload, event).catch((err) => {
         const message = err instanceof Error ? err.message : 'unknown';
         log.error({ errMessage: message, event: payload.event }, 'webhook: instance event handler crashed');
       });
@@ -252,7 +253,10 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
    * APPLICATION_STARTUP) and updates the corresponding row in
    * `whatsapp_connections` so the frontend reflects the real state.
    */
-  async function handleInstanceEvent(payload: EvolutionWebhookPayload): Promise<void> {
+  async function handleInstanceEvent(
+    payload: EvolutionWebhookPayload,
+    event: string,
+  ): Promise<void> {
     const log = getLogger();
     const cfg = getSupabaseProspeccaoConfig();
     if (!cfg.url || !cfg.serviceRoleKey) return;
@@ -269,7 +273,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
 
     // ----- CONNECTION_UPDATE -----
     // data.state pode ser "open" | "close" | "connecting"
-    if (payload.event === 'CONNECTION_UPDATE') {
+    if (event === 'CONNECTION_UPDATE') {
       const state = typeof data.state === 'string' ? data.state.toLowerCase() : null;
       const reason = data.statusReason;
       if (state === 'open') {
@@ -305,7 +309,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     }
 
     // ----- QRCODE_UPDATED -----
-    if (payload.event === 'QRCODE_UPDATED') {
+    if (event === 'QRCODE_UPDATED') {
       const extracted = extractQrFromEvolution(data);
       if (extracted?.dataUri && isValidQrDataUri(extracted.dataUri)) {
         patch.qr_code = extracted.dataUri;
