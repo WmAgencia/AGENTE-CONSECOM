@@ -128,7 +128,10 @@ export function buildApp(): BuiltApp {
     if (req.method === 'OPTIONS') {
       // Preflight: short-circuit.
       reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      reply.header(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, x-user-id, x-workspace-id',
+      );
       reply.header('Access-Control-Max-Age', '86400');
       if (allowed) {
         reply.header('Access-Control-Allow-Origin', allowsAny ? '*' : origin);
