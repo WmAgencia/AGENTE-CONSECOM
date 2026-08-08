@@ -70,6 +70,8 @@ interface RunAgentLoopInput {
   directives?: string;
   /** Optional auto-trained patterns injected into the system prompt. */
   learnings?: string;
+  /** Evolution instance name (when known) passed to tools for per-user config. */
+  instance?: string;
 }
 
 export interface RunAgentLoopResult extends AgentResponse {
@@ -386,6 +388,7 @@ export async function runAgentLoop(
           conversationId: input.conversationId,
           source,
           deadlineMs: Date.now() + env.AGENT_TOOL_TIMEOUT_MS,
+          instance: input.instance,
         };
 
         log.info(
@@ -497,6 +500,7 @@ export async function runAgentLoop(
         conversationId: input.conversationId,
         source,
         deadlineMs: Date.now() + env.AGENT_TOOL_TIMEOUT_MS,
+        instance: input.instance,
       };
 
       log.info(

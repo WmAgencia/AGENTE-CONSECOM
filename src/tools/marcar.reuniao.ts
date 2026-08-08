@@ -17,6 +17,7 @@ import {
   getEnv,
 } from '../config/env.js';
 import { sendGroupText } from '../services/evolution.service.js';
+import { resolveNotificationGroupJid } from '../services/evolution.connections.js';
 import { captureLearning } from '../services/agent.learning.js';
 
 export function createMarcarReuniaoTool(): ToolBase {
@@ -52,7 +53,7 @@ export function createMarcarReuniaoTool(): ToolBase {
       },
     },
     permission: 'NETWORK',
-    async execute(args) {
+    async execute(args, ctx) {
       const leadId =
         typeof args.leadId === 'string' ? args.leadId.trim() : '';
       const phone = typeof args.phone === 'string' ? args.phone.trim() : '';
@@ -103,17 +104,24 @@ export function createMarcarReuniaoTool(): ToolBase {
         }
       }
 
-      // Notify admin group (best-effort) when configured.
-      const adminGroup = getEnv().AGENT_ADMIN_GROUP_JID;
+      // Notify the user's configured notification group (best-effort).
+      // Resolve por instância -> conexão -> notification_groups; cai para
+      // AGENT_ADMIN_GROUP_JID quando nenhum grupo por usuário está configurado.
+      const envAdminGroup = getEnv().AGENT_ADMIN_GROUP_JID;
       let notifiedAdmin = false;
-      if (adminGroup && recorded) {
-        const summary =
-          `Reunião marcada (Consecom):${leadId ? ` lead=${leadId}` : ''}` +
-          `${phone ? ` phone=${phone}` : ''}` +
-          `${meetingAt ? ` data=${meetingAt}` : ''}` +
-          `${notes ? ` obs=${notes}` : ''}`;
-        const r = await sendGroupText(adminGroup, summary);
-        notifiedAdmin = r.ok;
+      if (recorded) {
+        const targetGroup =
+          (ctx.instance ? await resolveNotificationGroupJid(ctx.instance) : null) ??
+          envAdminGroup;
+        if (targetGroup) {
+          const summary =
+            `Reunião marcada (Consecom):${leadId ? ` lead=${leadId}` : ''}` +
+            `${phone ? ` phone=${phone}` : ''}` +
+            `${meetingAt ? ` data=${meetingAt}` : ''}` +
+            `${notes ? ` obs=${notes}` : ''}`;
+          const r = await sendGroupText(targetGroup, summary);
+          notifiedAdmin = r.ok;
+        }
       }
 
       if (leadId && !recorded) {

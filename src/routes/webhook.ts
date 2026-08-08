@@ -370,6 +370,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     from: string;
     messageKeyId: string | undefined;
     pushName: string | undefined;
+    instance?: string;
   }): Promise<void> {
     const log = getLogger();
     const mockMode = isEvolutionMockMode();
@@ -425,6 +426,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         history,
         directives: (await loadAgentDirectives()) ?? undefined,
         learnings: (await loadLearningsForPrompt()) ?? undefined,
+        instance: msg.instance,
       });
 
       log.info(

@@ -13,6 +13,7 @@
 import type { ToolBase } from './registry.js';
 import { getEnv, hasEvolutionConfig } from '../config/env.js';
 import { isEvolutionMockMode, sendGroupText } from '../services/evolution.service.js';
+import { resolveNotificationGroupJid } from '../services/evolution.connections.js';
 
 export function createNotifyAdminGroupTool(): ToolBase {
   return {
@@ -36,16 +37,18 @@ export function createNotifyAdminGroupTool(): ToolBase {
       },
     },
     permission: 'WHATSAPP',
-    async execute(args) {
+    async execute(args, ctx) {
       const message = typeof args.message === 'string' ? args.message.trim() : '';
       if (!message) {
         return { ok: false, output: 'message is required.', error: 'invalid_args' };
       }
-      const groupJid = getEnv().AGENT_ADMIN_GROUP_JID;
+      const groupJid =
+        (ctx.instance ? await resolveNotificationGroupJid(ctx.instance) : null) ??
+        getEnv().AGENT_ADMIN_GROUP_JID;
       if (!groupJid) {
         return {
           ok: false,
-          output: 'AGENT_ADMIN_GROUP_JID is not configured on the server.',
+          output: 'No notification group is configured on the server.',
           error: 'tool_disabled',
         };
       }

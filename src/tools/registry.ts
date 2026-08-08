@@ -41,6 +41,8 @@ export interface ToolCallContext {
   source: 'http' | 'whatsapp' | 'internal';
   /** Soft deadline (epoch ms) for the tool execution; tool must abort after. */
   deadlineMs: number;
+  /** Evolution instance name (when known) used to resolve per-user config. */
+  instance?: string;
 }
 
 export interface ToolResult {
