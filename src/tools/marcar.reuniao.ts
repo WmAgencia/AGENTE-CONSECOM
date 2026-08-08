@@ -79,6 +79,17 @@ export function createMarcarReuniaoTool(): ToolBase {
           supabaseError = 'Supabase não configurado';
         } else {
           try {
+            // p_meeting_at é TIMESTAMPTZ no banco: só envia quando o texto
+            // for uma data ISO parseável; caso contrário a data livre vai
+            // para p_notes para não derrubar o RPC (evita erro 22007).
+            let meetingAtIso: string | null = null;
+            if (meetingAt) {
+              const parsed = Date.parse(meetingAt);
+              if (!Number.isNaN(parsed)) meetingAtIso = new Date(parsed).toISOString();
+            }
+            const combinedNotes = [notes, meetingAt && !meetingAtIso ? `Data sugerida: ${meetingAt}` : null]
+              .filter(Boolean)
+              .join(' | ');
             const res = await fetch(`${cfg.url}/rest/v1/rpc/${cfg.rpc}`, {
               method: 'POST',
               headers: {
@@ -88,8 +99,8 @@ export function createMarcarReuniaoTool(): ToolBase {
               },
               body: JSON.stringify({
                 p_lead_id: leadId,
-                p_meeting_at: meetingAt || null,
-                p_notes: notes || null,
+                p_meeting_at: meetingAtIso,
+                p_notes: combinedNotes || null,
               }),
             });
             if (res.ok) {
