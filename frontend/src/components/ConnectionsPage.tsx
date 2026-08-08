@@ -64,6 +64,7 @@ export function ConnectionsPage() {
   const [groups, setGroups] = useState<Group[]>([])
   const [notifGroup, setNotifGroup] = useState<NotifGroup | null>(null)
   const [loading, setLoading] = useState(false)
+  const [groupError, setGroupError] = useState<string | null>(null)
   const [groupSearch, setGroupSearch] = useState('')
   const [showGroupList, setShowGroupList] = useState(false)
   const [settings, setSettings] = useState<Record<string, boolean>>({
@@ -204,12 +205,22 @@ export function ConnectionsPage() {
 
   async function loadGroups() {
     if (!sessionUser) return
-    const r = await fetch(`${API}/api/connections/whatsapp/groups`, { headers: { 'x-user-id': sessionUser } })
-    if (r.ok) {
-      const data = await r.json()
-      if (data.groups) setGroups(data.groups)
+    setGroupError(null)
+    try {
+      const r = await fetch(`${API}/api/connections/whatsapp/groups`, { headers: { 'x-user-id': sessionUser } })
+      if (r.ok) {
+        const data = await r.json()
+        if (data.groups) setGroups(data.groups)
+      } else {
+        const err = await r.json().catch(() => ({}))
+        setGroupError(err.error ?? 'Falha ao carregar grupos.')
+      }
+    } catch (e) {
+      console.error('loadGroups failed', e)
+      setGroupError('Não foi possível carregar os grupos. Verifique a conexão.')
+    } finally {
+      setShowGroupList(true)
     }
-    setShowGroupList(true)
   }
 
   async function selectGroup(g: Group) {
@@ -414,7 +425,9 @@ export function ConnectionsPage() {
                 className={input}
               />
               <div className="max-h-64 overflow-auto space-y-1">
-                {filteredGroups.length === 0 ? (
+                {groupError ? (
+                  <p className="text-sm text-red-300 py-4 text-center">{groupError}</p>
+                ) : filteredGroups.length === 0 ? (
                   <p className="text-sm text-slate-500 py-4 text-center">Nenhum grupo encontrado.</p>
                 ) : (
                   filteredGroups.map((g) => (
