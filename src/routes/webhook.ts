@@ -212,7 +212,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     if (!extracted) {
       // Either fromMe=true (anti-loop) or no text (media/ephemeral)
       const data = payload.data;
-      const fromMe = data?.key.fromMe === true;
+      const fromMe = data?.key?.fromMe === true;
       const reason = fromMe ? 'from_me' : 'no_text';
       log.info({ reason, event: payload.event }, 'webhook: skipped');
       return reply.status(200).send({
