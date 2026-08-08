@@ -463,7 +463,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       // Send back via Evolution API (with agent name signature)
       const agentName = await loadAgentName();
       const finalText = formatAgentSignature(agentResult.result, agentName);
-      const send = await sendText({ to: fromJid, text: finalText });
+      const send = await sendText({ to: fromJid, text: finalText, instance: msg.instance });
       if (!send.ok) {
         log.error(
           {
@@ -493,6 +493,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         await sendText({
           to: fromJid,
           text: 'Desculpe, não consegui processar sua mensagem agora.',
+          instance: msg.instance,
         });
       } catch {
         // swallow; already logged upstream

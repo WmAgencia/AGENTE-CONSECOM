@@ -23,6 +23,8 @@ export interface SendTextParams {
   to: string;
   /** Text body to send. */
   text: string;
+  /** Optional Evolution instance name to send through (defaults to EVOLUTION_INSTANCE_NAME). */
+  instance?: string;
 }
 
 export interface SendTextResult {
@@ -141,7 +143,8 @@ export async function sendText(params: SendTextParams): Promise<SendTextResult> 
   }
 
   const cfg = getEvolutionConfig();
-  const endpoint = `${cfg.apiUrl}/message/sendText/${encodeURIComponent(cfg.instance)}`;
+  const sendInstance = params.instance || cfg.instance;
+  const endpoint = `${cfg.apiUrl}/message/sendText/${encodeURIComponent(sendInstance)}`;
 
   const body = {
     number: stripJidSuffix(to),
