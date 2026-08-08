@@ -273,9 +273,12 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
 
     // ----- CONNECTION_UPDATE -----
     // data.state pode ser "open" | "close" | "connecting"
+    // data.statusReason é um código numérico da Evolution (200 = connected,
+    // 400/401/403/408/500/501/502/503 = falha). Estado é o sinal confiável.
     if (event === 'CONNECTION_UPDATE') {
       const state = typeof data.state === 'string' ? data.state.toLowerCase() : null;
       const reason = data.statusReason;
+      const errorReasonCodes = [400, 401, 403, 408, 500, 501, 502, 503];
       if (state === 'open') {
         patch.status = 'connected';
         // Conexão bem-sucedida: limpa QR Code (já foi usado) e dados antigos.
@@ -287,9 +290,12 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         patch.qr_code = null;
       } else if (state === 'connecting') {
         patch.status = 'connecting';
-      }
-      if (typeof reason === 'number') {
+      } else if (typeof reason === 'number' && errorReasonCodes.includes(reason)) {
         patch.status = 'error';
+      } else if (typeof reason === 'number') {
+        // statusReason válido mas sem erro (ex: 200 connected durante restart)
+        // e sem state explícito — mantém o estado anterior.
+        patch.status = state ?? 'connecting';
       }
       // Telefone/owner quando disponivel (Evolution envia `ownerJid` ou `jid`)
       const ownerJid = (data.ownerJid as string | undefined) ?? (data.jid as string | undefined);
