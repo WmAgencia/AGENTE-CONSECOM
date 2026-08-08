@@ -42,3 +42,4 @@ coverage/
 
 # Railway
 .venv/
+.vercel

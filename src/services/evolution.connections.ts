@@ -372,25 +372,27 @@ export async function fetchUserGroups(userId: string): Promise<{ ok: boolean; gr
     if (!conn) return { ok: false, error: 'no_connection' };
 
     const cfg = getEvolutionConfig();
-    const res = await fetch(`${cfg.apiUrl}/chat/findGroups/${encodeURIComponent(conn.instance_name)}`, {
-      method: 'GET',
-      headers: { apikey: cfg.apiKey },
-    });
+    const res = await fetch(
+      `${cfg.apiUrl}/group/fetchAllGroups/${encodeURIComponent(conn.instance_name)}?getParticipants=false`,
+      {
+        method: 'GET',
+        headers: { apikey: cfg.apiKey },
+      },
+    );
 
     if (!res.ok) {
       return { ok: false, error: `Evolution API erro ${res.status}` };
     }
 
     const data = (await res.json()) as unknown;
-    // Evolution retorna array de { id, name } ou objeto com grupos
-    const raw = (Array.isArray(data) ? data : Object.values(data as Record<string, unknown>)) as Array<{
+    const raw = (Array.isArray(data) ? data : []) as Array<{
       id: string;
-      name?: string;
       subject?: string;
+      name?: string;
     }>;
     const groups: WhatsAppGroup[] = raw.map((g) => ({
       id: g.id,
-      name: g.name ?? g.subject ?? 'Grupo sem nome',
+      name: g.subject ?? g.name ?? 'Grupo sem nome',
     }));
 
     return { ok: true, groups };
