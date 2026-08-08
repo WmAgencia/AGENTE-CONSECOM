@@ -29,7 +29,7 @@ export const evolutionMessageBodySchema = z.object({
 }).passthrough();
 
 export const evolutionDataSchema = z.object({
-  key: evolutionMessageKeySchema,
+  key: evolutionMessageKeySchema.optional(),
   message: evolutionMessageBodySchema.optional(),
   pushName: z.string().optional(),
   messageType: z.string().optional(),
