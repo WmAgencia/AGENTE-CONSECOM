@@ -59,20 +59,21 @@
   position: fixed;
   z-index: 2147483646;
   top: 0;
-  left: 0;
+  right: 0;
   bottom: 0;
-  width: 356px;
-  max-width: 92vw;
+  width: 380px;
+  max-width: 94vw;
+  max-height: 100vh;
   background: var(--vy-panel);
-  border-right: 1px solid var(--vy-border);
+  border-left: 1px solid var(--vy-border);
   display: flex;
   flex-direction: column;
   opacity: 0;
-  transform: translateX(-110%);
+  transform: translateX(110%);
   pointer-events: none;
   transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s ease;
   font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
-  box-shadow: 24px 0 60px rgba(0, 0, 0, 0.45);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.45);
 }
 .consecom-balloon.open {
   opacity: 1;

@@ -148,17 +148,10 @@ export class MapsScanner {
   // --- cartões nativos: só nome, site, telefone e botão de selecionar ---
 
   private renderControls(): void {
-    if (this.found.length === 0) return
-    for (const pc of this.found) {
-      if (!pc.host || !document.body.contains(pc.host)) continue
-      if (pc.control && pc.control.isConnected) {
-        this.updateControl(pc)
-        continue
-      }
-      pc.control = this.buildControl(pc)
-      this.makeHostSlim(pc.host)
-      pc.host.appendChild(pc.control)
-    }
+    // Intencionalmente vazio: a seleção de leads é feita integralmente pelo
+    // painel VYNTRA (botão PROSPECTAR → seleção automática). Não injetamos
+    // controles nativos em cada card do Google Maps.
+    return
   }
 
   private makeHostSlim(host: HTMLElement): void {
@@ -311,7 +304,7 @@ export class MapsScanner {
     })
     this.enableDrag(bubble)
 
-    bubble.style.left = localStorage.getItem('consecom-bubble-x') || '20px'
+    bubble.style.right = localStorage.getItem('consecom-bubble-x') || '20px'
     bubble.style.top = localStorage.getItem('consecom-bubble-top') || '16px'
     return bubble
   }
@@ -343,9 +336,10 @@ export class MapsScanner {
       const dx = e.clientX - startX
       const dy = e.clientY - startY
       if (Math.abs(dx) + Math.abs(dy) > 4) moved.v = true
-      const left = Math.max(0, Math.min(window.innerWidth - 60, origLeft + dx))
+      const right = Math.max(0, Math.min(window.innerWidth - 60, origLeft - dx))
       const top = Math.max(0, Math.min(window.innerHeight - 60, origTop + dy))
-      elm.style.left = `${left}px`
+      elm.style.right = `${right}px`
+      elm.style.left = ''
       elm.style.top = `${top}px`
     }
     const up = (e: PointerEvent) => {
@@ -354,7 +348,7 @@ export class MapsScanner {
       // só arma o movimento para suprimir o clique se houve arrasto real
       this.suppressClick = moved.v
       this.dragging = false
-      localStorage.setItem('consecom-bubble-x', elm.style.left)
+      localStorage.setItem('consecom-bubble-x', elm.style.right)
       localStorage.setItem('consecom-bubble-top', elm.style.top)
     }
     elm.addEventListener('pointerdown', down)
@@ -500,14 +494,13 @@ export class MapsScanner {
     if (this.prospecting) return
     this.prospecting = true
     this.prospectCancel = false
-    const prevText = btn.textContent
     btn.disabled = true
 
     try {
-      // Etapa 1: análise com feedback progressivo
+      // Etapa 1: coleta incremental (scroll → lazy load) com feedback progressivo
       await this.runProspectStages(btn)
 
-      // Etapa 2: varredura forçada dos cards disponíveis
+      // Etapa 2: varredura final dos cards disponíveis
       this.scan('force')
 
       // Etapa 3: ler filtros da UI (sempre refletidos no state)
@@ -522,26 +515,52 @@ export class MapsScanner {
     } catch (err) {
       showToast(`Erro na prospecção: ${err}`, 'warn')
     } finally {
-      btn.textContent = prevText
+      btn.textContent = 'PROSPECTAR'
       btn.disabled = false
       this.prospecting = false
     }
   }
 
-  /** Feedback progressivo estilo "Alex analisando" (não bloqueia o Maps). */
+  /**
+   * Coleta resultados do Google Maps com feedback progressivo.
+   * Enquanto a página carrega lazy results (scroll), faz scroll no container
+   * de resultados para acelerar o carregamento incremental e atualiza o
+   * indicador "N / total". Interrompe ao não haver novos cards por um ciclo.
+   */
   private async runProspectStages(btn: HTMLButtonElement): Promise<void> {
     const stages: Array<[string, number]> = [
-      ['Analisando resultados do Google Maps…', 420],
-      ['Encontrando empresas…', 380],
-      ['Analisando presença digital…', 360],
-      ['Calculando oportunidades…', 320],
+      ['Coletando resultados do Google Maps…', 320],
+      ['Aprofundando a busca…', 340],
+      ['Carregando mais empresas…', 360],
+      ['Calculando oportunidades…', 380],
     ]
     for (const [text, ms] of stages) {
       if (this.prospectCancel) break
       btn.textContent = text
-      // atualiza progresso incremental dos cards enquanto mostra estágios
       this.updateProspectProgress()
+      await this.scrollAndCollect()
       await sleep(ms)
+      this.updateProspectProgress()
+    }
+  }
+
+  /** Faz scroll no container de resultados do Maps para disparar lazy-load. */
+  private async scrollAndCollect(): Promise<void> {
+    const anchors = Array.from(document.querySelectorAll<HTMLElement>(nativeCardSelector()))
+    if (anchors.length === 0) return
+    const host = closestCard(anchors[0])
+    const scrollEl = host ? findScrollParent(host) : null
+    if (!scrollEl) return
+    const before = this.found.length
+    const delta = Math.min(600, (scrollEl as HTMLElement).offsetHeight || 400)
+    scrollEl.scrollBy({ top: delta, behavior: 'smooth' })
+    await sleep(340)
+    this.scan('force')
+    // repete uma vez se não coletou nada (lazy load atrasado)
+    if (this.found.length === before) {
+      scrollEl.scrollBy({ top: delta, behavior: 'smooth' })
+      await sleep(340)
+      this.scan('force')
     }
   }
 
@@ -549,10 +568,9 @@ export class MapsScanner {
   private updateProspectProgress(): void {
     if (!this.resultPanel) return
     const total = this.found.length
-    const done = this.found.length
     const prog = document.createElement('div')
     prog.className = 'cs-result__progress'
-    prog.textContent = `Analisando: ${done} / ${total || '…'}`
+    prog.textContent = `Coletados: ${total}`
     this.resultPanel.replaceChildren(prog)
     this.resultPanel.style.display = 'block'
   }
@@ -1419,6 +1437,21 @@ function closestCard(anchor: HTMLElement): HTMLElement | null {
     el = el.parentElement
   }
   return anchor.closest('div[role="article"], [role="article"]') ?? anchor
+}
+
+function findScrollParent(el: Element): HTMLElement | null {
+  let p: HTMLElement | null = el.parentElement
+  while (p && p.tagName !== 'BODY' && p.tagName !== 'HTML') {
+    const s = getComputedStyle(p)
+    if (
+      ['auto', 'scroll'].includes(s.overflowY) ||
+      (s.overflowY === 'clip' && ['auto', 'scroll'].includes(s.overflow))
+    ) {
+      return p
+    }
+    p = p.parentElement
+  }
+  return document.scrollingElement as HTMLElement
 }
 
 function extractName(anchor: HTMLElement, card: HTMLElement | null): string | null {
