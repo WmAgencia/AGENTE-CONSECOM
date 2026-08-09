@@ -18,7 +18,14 @@ export interface LeadRow {
   category: string | null;
 }
 
-const PROSPECTING_STATUSES = ['na_fila', 'enviado', 'conversando', 'sem_interesse', 'remarketing'];
+// Apenas responde leads que já passaram da campanha (todas as mensagens
+// programadas enviadas -> status "enviado") ou que já estão em conversa real.
+// - "na_fila": campanha ainda disparando -> NÃO responder (evita conversar
+//   com uma mensagem programada que acabou de chegar).
+// - "sem_interesse": já recusou -> NÃO responder.
+// - "reuniao_marcada"/"reuniao_cancelada": segue respondendo para o lead
+//   poder ajustar/cancelar a reunião.
+const PROSPECTING_STATUSES = ['enviado', 'conversando', 'remarketing', 'reuniao_marcada', 'reuniao_cancelada'];
 
 // Normaliza um JID/número para uma forma comparável:
 //  strip @s.whatsapp.net, remove tudo que não for dígito.
@@ -218,5 +225,5 @@ export async function loadAgentName(): Promise<string | null> {
 /** Prefixa o nome do agente em *nome* acima da mensagem. Sem nome, devolve o texto puro. */
 export function formatAgentSignature(text: string, name: string | null): string {
   if (!name || !name.trim()) return text;
-  return `*${name.trim()}*\n\n${text}`;
+  return `*${name.trim()}*\n${text}`;
 }

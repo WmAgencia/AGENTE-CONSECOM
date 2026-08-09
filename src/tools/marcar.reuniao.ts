@@ -125,11 +125,14 @@ export function createMarcarReuniaoTool(): ToolBase {
           (ctx.instance ? await resolveNotificationGroupJid(ctx.instance) : null) ??
           envAdminGroup;
         if (targetGroup) {
-          const summary =
-            `Reunião marcada (Consecom):${leadId ? ` lead=${leadId}` : ''}` +
-            `${phone ? ` phone=${phone}` : ''}` +
-            `${meetingAt ? ` data=${meetingAt}` : ''}` +
-            `${notes ? ` obs=${notes}` : ''}`;
+          const leadInfo = leadId ? await fetchLeadInfo(leadId) : null;
+          const summary = buildMeetingNotification({
+            leadId,
+            phone,
+            meetingAt,
+            notes,
+            leadInfo,
+          });
           const r = await sendGroupText(targetGroup, summary, ctx.instance);
           notifiedAdmin = r.ok;
         }
@@ -160,4 +163,56 @@ export function createMarcarReuniaoTool(): ToolBase {
       };
     },
   };
+}
+
+interface LeadInfo {
+  name?: string | null;
+  email?: string | null;
+  niche?: string | null;
+  category?: string | null;
+  phone?: string | null;
+}
+
+/** Busca dados extras do lead no Supabase (best-effort) para a notificação. */
+async function fetchLeadInfo(leadId: string): Promise<LeadInfo | null> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!hasSupabaseProspeccao() || !cfg.url || !cfg.serviceRoleKey) return null;
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/leads?select=name,phone,niche,category&id=eq.${encodeURIComponent(leadId)}&limit=1`,
+      { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as LeadInfo[];
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Monta a notificação bonita de reunião marcada enviada ao grupo admin. */
+function buildMeetingNotification(params: {
+  leadId: string;
+  phone: string;
+  meetingAt: string;
+  notes: string;
+  leadInfo: LeadInfo | null;
+}): string {
+  const { leadId, phone, meetingAt, notes, leadInfo } = params;
+  const name = leadInfo?.name || 'Não informado';
+  const whatsapp = leadInfo?.phone || phone || 'Não informado';
+  const email = leadInfo?.email || '';
+  const niche = leadInfo?.niche || leadInfo?.category || 'Não informado';
+  const company = leadInfo?.name || '';
+
+  const lines = ['📅 NOVA REUNIÃO', ''];
+  lines.push(`Nome: ${name}`);
+  lines.push(`WhatsApp: ${whatsapp}`);
+  if (email) lines.push(`E-mail: ${email}`);
+  if (meetingAt) lines.push(`Data: ${meetingAt}`);
+  if (notes) lines.push(`Horário: ${notes}`);
+  lines.push(`Nicho: ${niche}`);
+  if (company) lines.push(`Empresa: ${company}`);
+  lines.push(`Ref: ${leadId}`);
+  return lines.join('\n');
 }
