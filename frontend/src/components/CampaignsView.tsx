@@ -82,6 +82,31 @@ async function loadRuns() {
     if (!error) setRuns((rs) => rs.filter((x) => x.id !== r.id))
   }
 
+  /** Enfileira TODOS os leads de uma vez (fluxo atual de send_runs, sem modal). */
+  async function autoEnqueue(c: Campaign) {
+    if (leads.length === 0) {
+      window.alert('Nenhum lead cadastrado para enfileirar.')
+      return
+    }
+    if (!window.confirm(`Enfileirar todos os ${leads.length} leads na campanha "${c.name}"?`)) return
+    const rows = leads.map((lead) => ({
+      campaign_id: c.id,
+      lead_id: lead.id,
+      status: 'pending',
+      current_position: 0,
+      next_send_at: new Date().toISOString(),
+    }))
+    const { error } = await supabase.from('send_runs').upsert(rows, {
+      onConflict: 'campaign_id,lead_id',
+      ignoreDuplicates: true,
+    })
+    if (error) {
+      window.alert(`Não foi possível enfileirar: ${error.message}`)
+      return
+    }
+    await load()
+  }
+
   async function fireCampaign(c: Campaign) {
     const running = campaigns.filter((x) => x.status === 'em_progresso' && x.id !== c.id)
     if (running.length > 0) {
@@ -135,6 +160,7 @@ async function loadRuns() {
                 messages={messagesByCampaign[c.id] ?? []}
                 onChanged={load}
                 onEnqueue={() => setEnqueueOpen(c)}
+                onAutoEnqueue={() => void autoEnqueue(c)}
                 onFire={() => void fireCampaign(c)}
                 onFinish={() => void finishCampaign(c)}
                 onDelete={() => void deleteCampaign(c)}
@@ -229,6 +255,7 @@ function CampaignCard({
   messages,
   onChanged,
   onEnqueue,
+  onAutoEnqueue,
   onFire,
   onFinish,
   onDelete,
@@ -237,6 +264,7 @@ function CampaignCard({
   messages: QueueMessage[]
   onChanged: () => void
   onEnqueue: () => void
+  onAutoEnqueue: () => void
   onFire: () => void
   onFinish: () => void
   onDelete: () => void
@@ -258,6 +286,13 @@ function CampaignCard({
             className="text-[11px] px-2 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30"
           >
             Enfileirar leads
+          </button>
+          <button
+            onClick={onAutoEnqueue}
+            title="Enfileirar todos os leads de uma vez"
+            className="text-[11px] px-2 py-1 rounded-lg bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"
+          >
+            ⚡ Enfileirar automaticamente
           </button>
           <button
             onClick={() => setOpen((o) => !o)}
