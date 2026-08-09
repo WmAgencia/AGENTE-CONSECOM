@@ -223,7 +223,11 @@ export async function loadAgentName(): Promise<string | null> {
 }
 
 /** Prefixa o nome do agente em *nome* acima da mensagem. Sem nome, devolve o texto puro. */
+const TRAILING_SIGNATURE_RE = /\s*[\u2013\u2014-]\s*[A-Za-zÀ-ÿ]{2,20}\s*$/;
+
 export function formatAgentSignature(text: string, name: string | null): string {
-  if (!name || !name.trim()) return text;
-  return `*${name.trim()}*\n${text}`;
+  let body = (text ?? '').trim();
+  body = body.replace(TRAILING_SIGNATURE_RE, '').trim();
+  if (!name || !name.trim()) return body;
+  return `*${name.trim()}*\n${body}`;
 }
