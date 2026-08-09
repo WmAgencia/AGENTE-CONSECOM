@@ -103,8 +103,11 @@ export function KanbanBoard({
   const [chatLead, setChatLead] = useState<Lead | null>(null)
   const [messagesByLead, setMessagesByLead] = useState<Map<string, ConversationMessage[]>>(new Map())
 
+  // Conversas em tempo real (métricas de engajamento) — recarrega quando uma
+  // nova mensagem entra, com debounce para não refazer o fetch a cada evento.
   useEffect(() => {
     let active = true
+    let t: number | null = null
     async function load() {
       const { data, error } = await supabase
         .from('consecom_conversations')
@@ -119,11 +122,22 @@ export function KanbanBoard({
       }
       if (active) setMessagesByLead(map)
     }
+    const debounced = () => {
+      if (t) return
+      t = window.setTimeout(() => {
+        t = null
+        void load()
+      }, 300)
+    }
     void load()
-    const t = setInterval(load, 30000)
+    const ch = supabase
+      .channel('conversations-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'consecom_conversations' }, debounced)
+      .subscribe()
     return () => {
       active = false
-      clearInterval(t)
+      if (t) window.clearTimeout(t)
+      supabase.removeChannel(ch)
     }
   }, [])
 

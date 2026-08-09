@@ -66,6 +66,17 @@ export default function App() {
     }
   }, [session])
 
+  useEffect(() => {
+    if (!session) return
+    const ch = supabase
+      .channel('campaigns')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaigns' }, loadCampaigns)
+      .subscribe()
+    return () => {
+      supabase.removeChannel(ch)
+    }
+  }, [session])
+
   async function markMeeting(id: string, meeting_at: string, notes: string) {
     const { error } = await supabase.rpc('consecom_marcar_reuniao', {
       p_lead_id: id,

@@ -93,9 +93,18 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
       if (data.user?.id) setUserId(data.user.id)
     })
     void loadMessages()
-    const t = setInterval(loadMessages, 4000)
-    return () => clearInterval(t)
-  }, [loadMessages])
+    const ch = supabase
+      .channel(`chat-${lead.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'consecom_conversations', filter: `lead_id=eq.${lead.id}` },
+        () => void loadMessages(),
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(ch)
+    }
+  }, [loadMessages, lead.id])
 
   useEffect(() => {
     const el = scrollerRef.current

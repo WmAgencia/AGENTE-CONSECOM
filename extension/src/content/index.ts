@@ -1,4 +1,5 @@
-import { getStoredConfig, saveConfig, type StoredConfig } from '../shared/config'
+import { getStoredConfig, saveConfig, getClient, type StoredConfig } from '../shared/config'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { importLeads, deleteLeads, type ScrapedLead } from '../shared/leads'
 import css from './style.css?raw'
 
@@ -11,6 +12,7 @@ interface ParsedCard {
 
 export class MapsScanner {
   private cfg: StoredConfig | null = null
+  private rtChannel: ReturnType<SupabaseClient['channel']> | null = null
   private found: ParsedCard[] = []
   private selected = new Set<string>()
   private used = new Set<string>()
@@ -38,7 +40,32 @@ export class MapsScanner {
       if (this.bubble?.contains(e.target as Node)) return
       this.toggleBalloon(false)
     })
+
+    this.subscribeRealtime()
   }
+
+  /** Assina mudanças na tabela leads p/ atualizar badges (usado/sem interesse) ao vivo. */
+  private subscribeRealtime(): void {
+    void this.rtChannel?.unsubscribe()
+    this.rtChannel = null
+    const client = this.cfg ? getClient(this.cfg) : null
+    if (!client) return
+    this.rtChannel = client
+      .channel('consecom-leads-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => this.debounceUsed())
+      .subscribe()
+  }
+
+  private debounceUsed = (() => {
+    let t: number | null = null
+    return () => {
+      if (t) return
+      t = window.setTimeout(() => {
+        t = null
+        void this.checkUsed()
+      }, 400)
+    }
+  })()
 
   private observeDom(): void {
     const obs = new MutationObserver(() => this.debounceScan())
@@ -500,6 +527,7 @@ export class MapsScanner {
     }
     await saveConfig({ supabaseUrl: url.replace(/\/+$/, ''), anonKey: key })
     this.cfg = { supabaseUrl: url.replace(/\/+$/, ''), anonKey: key }
+    this.subscribeRealtime()
   }
 
   private async doImport(btn: HTMLButtonElement): Promise<void> {

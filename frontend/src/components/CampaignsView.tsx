@@ -28,6 +28,28 @@ export function CampaignsView({ leads }: { leads: Lead[] }) {
     }
   }, [])
 
+  // atualização em tempo real de campanhas e sequências (debounce p/ não
+  // disparar a recarga inteira a cada evento individual)
+  useEffect(() => {
+    let t: number | null = null
+    const refresh = () => {
+      if (t) return
+      t = window.setTimeout(() => {
+        t = null
+        void load()
+      }, 250)
+    }
+    const ch = supabase
+      .channel('campaigns-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaigns' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_messages' }, refresh)
+      .subscribe()
+    return () => {
+      supabase.removeChannel(ch)
+      if (t) window.clearTimeout(t)
+    }
+  }, [])
+
   async function load() {
     const { data, error } = await supabase.from('campaigns').select('*').order('created_at')
     if (error || !data) return
