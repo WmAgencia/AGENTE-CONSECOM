@@ -49,8 +49,11 @@ export function isEvolutionMockMode(): boolean {
 
 /**
  * Probes the Evolution API instance to verify connectivity and auth.
- * Returns { ok, status, instance, profileName? } without leaking secrets.
- * Calls GET `${apiUrl}/instance/fetchInstances/${instance}` (v2 endpoint).
+ * Returns { ok, status, instance, state? } without leaking secrets.
+ * Calls GET `${apiUrl}/instance/connectionState/${instance}` — nesta build
+ * da Evolution (v2.3.7 "evolution_exchange") a rota
+ * `/instance/fetchInstances/{instance}` não existe (404); a que existe e
+ * responde o estado da conexão é `/instance/connectionState/{instance}`.
  */
 export interface EvolutionHealthResult {
   ok: boolean;
@@ -58,6 +61,7 @@ export interface EvolutionHealthResult {
   mock: boolean;
   instance: string;
   profileName?: string;
+  state?: string;
   error?: string;
 }
 
@@ -66,7 +70,7 @@ export async function checkEvolutionHealth(): Promise<EvolutionHealthResult> {
     return { ok: true, status: 'mock', mock: true, instance: 'mock' };
   }
   const cfg = getEvolutionConfig();
-  const endpoint = `${cfg.apiUrl}/instance/fetchInstances/${encodeURIComponent(cfg.instance)}`;
+  const endpoint = `${cfg.apiUrl}/instance/connectionState/${encodeURIComponent(cfg.instance)}`;
   try {
     const response = await fetch(endpoint, {
       method: 'GET',
@@ -85,16 +89,10 @@ export async function checkEvolutionHealth(): Promise<EvolutionHealthResult> {
       };
     }
     const raw = await response.text();
-    let profileName: string | undefined;
+    let state: string | undefined;
     try {
-      const parsed = JSON.parse(raw) as
-        | { instance?: { profileName?: string } }
-        | Array<{ instance?: { profileName?: string } }>;
-      if (Array.isArray(parsed)) {
-        profileName = parsed[0]?.instance?.profileName;
-      } else if (parsed) {
-        profileName = parsed.instance?.profileName;
-      }
+      const parsed = JSON.parse(raw) as { instance?: { state?: string } };
+      state = parsed.instance?.state;
     } catch {
       // not json, ignore
     }
@@ -103,7 +101,7 @@ export async function checkEvolutionHealth(): Promise<EvolutionHealthResult> {
       status: response.status,
       mock: false,
       instance: cfg.instance,
-      profileName,
+      state,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown network error';
