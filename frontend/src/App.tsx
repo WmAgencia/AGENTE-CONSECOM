@@ -27,7 +27,7 @@ const NAV_ITEMS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: 'app-mobile', label: 'App mobile', icon: Smartphone },
 ]
 
-const APP_VERSION = '2.0.0'
+const APP_VERSION = '2.0.1'
 
 export default function App() {
   const [session, setSession] = useState<boolean | null>(null)
