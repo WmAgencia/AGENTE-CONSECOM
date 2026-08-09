@@ -7,9 +7,11 @@ import {
   matchFilters,
   describeFilters,
   buildTagsForLead,
+  FILTER_CHIPS,
   type ProspectFilters,
   type SiteFilter,
   type DigitalFilter,
+  type QualifyFilter,
   type ScoreBand,
   type ServiceInterest,
 } from '../shared/filters'
@@ -376,11 +378,14 @@ export class MapsScanner {
     titles.className = 'cs-panel__titles'
     const name = document.createElement('div')
     name.className = 'cs-panel__name'
-    name.textContent = 'VYNTRA Prospector'
+    name.textContent = 'VYNTRA'
     const tag = document.createElement('div')
     tag.className = 'cs-panel__tag'
-    tag.textContent = 'Captura de leads do Google Maps'
-    titles.append(name, tag)
+    tag.textContent = 'Prospecção Automática'
+    const tagline = document.createElement('div')
+    tagline.className = 'cs-panel__tagline'
+    tagline.textContent = 'Encontre empresas qualificadas no Google Maps e importe os melhores leads.'
+    titles.append(name, tag, tagline)
     header.append(logo, titles)
 
     // Busca + localização
@@ -584,7 +589,7 @@ export class MapsScanner {
     }
   }
 
-  /** Constrói o painel de filtros (Encontrar oportunidades). */
+  /** Constrói o painel de filtros (chips, referência VYNTRA). */
   private buildFiltersPanel(): HTMLElement {
     const panel = document.createElement('div')
     panel.className = 'cs-filters'
@@ -594,109 +599,84 @@ export class MapsScanner {
     title.textContent = 'Encontrar oportunidades'
     panel.appendChild(title)
 
-    // ---- SITE ----
-    panel.appendChild(this.buildFilterGroup('SITE', [
-      { id: 'sem_site', label: 'Sem site', cat: 'site' },
-      { id: 'site_bom', label: 'Site bom', cat: 'site' },
-      { id: 'site_profissional', label: 'Site profissional', cat: 'site' },
-    ]))
+    // Chips (OR intra-categoria / AND inter-categoria)
+    const chipsWrap = document.createElement('div')
+    chipsWrap.className = 'cs-chips'
+    for (const chip of FILTER_CHIPS) {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'cs-chip'
+      btn.dataset.id = chip.id
+      btn.dataset.cat = chip.cat
+      btn.dataset.value = chip.value
+      btn.dataset.accent = chip.accent ?? '#8b5cf6'
+      btn.textContent = chip.label
+      btn.addEventListener('click', () => {
+        if (this.filters.activeChips.has(chip.id)) this.filters.activeChips.delete(chip.id)
+        else this.filters.activeChips.add(chip.id)
+        btn.classList.toggle('cs-chip--on')
+        this.syncChipsFromState(btn, chip.accent)
+      })
+      // estado inicial
+      this.syncChipsFromState(btn, chip.accent)
+      chipsWrap.appendChild(btn)
+    }
+    panel.appendChild(chipsWrap)
 
-    // ---- PRESENÇA DIGITAL ----
-    panel.appendChild(this.buildFilterGroup('PRESENÇA DIGITAL', [
-      { id: 'sem_instagram', label: 'Sem Instagram', cat: 'digital' },
-      { id: 'instagram_encontrado', label: 'Instagram encontrado', cat: 'digital' },
-      { id: 'sem_facebook', label: 'Sem Facebook', cat: 'digital' },
-      { id: 'sem_presenca_digital', label: 'Sem presença digital', cat: 'digital' },
-    ]))
+    // Advanced: nota/avaliações mínimas (compacto)
+    const adv = document.createElement('div')
+    adv.className = 'cs-adv'
+    const ratingWrap = document.createElement('label')
+    ratingWrap.className = 'cs-adv__item'
+    const rLab = document.createElement('span')
+    rLab.textContent = 'Nota mín.'
+    const rSel = document.createElement('select')
+    rSel.dataset.cat = 'minRating'
+    for (const v of [0, 4.0, 4.5, 4.8]) {
+      const o = document.createElement('option')
+      o.value = String(v)
+      o.textContent = v === 0 ? 'Qualquer' : `${v.toFixed(1)}+`
+      rSel.appendChild(o)
+    }
+    ratingWrap.append(rLab, rSel)
+    const revWrap = document.createElement('label')
+    revWrap.className = 'cs-adv__item'
+    const vLab = document.createElement('span')
+    vLab.textContent = 'Avaliações mín.'
+    const vSel = document.createElement('select')
+    vSel.dataset.cat = 'minReviews'
+    for (const v of [0, 10, 50, 100, 500]) {
+      const o = document.createElement('option')
+      o.value = String(v)
+      o.textContent = v === 0 ? 'Qualquer' : `${v}+`
+      vSel.appendChild(o)
+    }
+    revWrap.append(vLab, vSel)
+    adv.append(ratingWrap, revWrap)
+    panel.appendChild(adv)
 
-    // ---- GOOGLE MAPS (nota + avaliações) ----
-    panel.appendChild(this.buildMapsGroup())
-
-    // ---- VYNTRA SCORE ----
-    panel.appendChild(this.buildFilterGroup('VYNTRA SCORE', [
-      { id: 'alta', label: 'Alta oportunidade (90-100)', cat: 'score' },
-      { id: 'boa', label: 'Boa oportunidade (70-89)', cat: 'score' },
-      { id: 'media', label: 'Média oportunidade (50-69)', cat: 'score' },
-      { id: 'baixa', label: 'Baixa oportunidade (0-49)', cat: 'score' },
-    ]))
-
-    // ---- SERVIÇO ----
+    // Serviço (radio compacto)
     panel.appendChild(this.buildServiceGroup())
 
     return panel
   }
 
-  private buildFilterGroup(
-    heading: string,
-    items: Array<{ id: string; label: string; cat: 'site' | 'digital' | 'score' }>,
-  ): HTMLElement {
-    const group = document.createElement('div')
-    group.className = 'cs-fgroup'
-    const h = document.createElement('div')
-    h.className = 'cs-fgroup__h'
-    h.textContent = heading
-    group.appendChild(h)
-    for (const it of items) {
-      const row = document.createElement('label')
-      row.className = 'cs-check'
-      const cb = document.createElement('input')
-      cb.type = 'checkbox'
-      cb.dataset.cat = it.cat
-      cb.dataset.id = it.id
-      const span = document.createElement('span')
-      span.textContent = it.label
-      row.append(cb, span)
-      group.appendChild(row)
+  private syncChipsFromState(btn: HTMLButtonElement, accent?: string): void {
+    const on = btn.classList.contains('cs-chip--on')
+    if (on) {
+      btn.style.borderColor = accent ?? '#8b5cf6'
+      btn.style.background = `${accent ?? '#8b5cf6'}22`
+      btn.style.color = '#fff'
+    } else {
+      btn.style.borderColor = ''
+      btn.style.background = ''
+      btn.style.color = ''
     }
-    return group
-  }
-
-  private buildMapsGroup(): HTMLElement {
-    const group = document.createElement('div')
-    group.className = 'cs-fgroup'
-    const h = document.createElement('div')
-    h.className = 'cs-fgroup__h'
-    h.textContent = 'GOOGLE MAPS'
-    group.appendChild(h)
-
-    // Nota mínima (select)
-    const ratingRow = document.createElement('label')
-    ratingRow.className = 'cs-check cs-check--inline'
-    const ratingLab = document.createElement('span')
-    ratingLab.textContent = 'Nota mínima:'
-    const ratingSel = document.createElement('select')
-    ratingSel.dataset.cat = 'minRating'
-    for (const v of [0, 4.0, 4.5, 4.8]) {
-      const opt = document.createElement('option')
-      opt.value = String(v)
-      opt.textContent = v === 0 ? 'Qualquer' : `${v.toFixed(1)}+`
-      ratingSel.appendChild(opt)
-    }
-    ratingRow.append(ratingLab, ratingSel)
-    group.appendChild(ratingRow)
-
-    // Avaliações mínimas (select)
-    const revRow = document.createElement('label')
-    revRow.className = 'cs-check cs-check--inline'
-    const revLab = document.createElement('span')
-    revLab.textContent = 'Avaliações:'
-    const revSel = document.createElement('select')
-    revSel.dataset.cat = 'minReviews'
-    for (const v of [0, 10, 50, 100, 500]) {
-      const opt = document.createElement('option')
-      opt.value = String(v)
-      opt.textContent = v === 0 ? 'Qualquer' : `${v}+`
-      revSel.appendChild(opt)
-    }
-    revRow.append(revLab, revSel)
-    group.appendChild(revRow)
-
-    return group
   }
 
   private buildServiceGroup(): HTMLElement {
     const group = document.createElement('div')
-    group.className = 'cs-fgroup'
+    group.className = 'cs-fgroup cs-fgroup--svc'
     const h = document.createElement('div')
     h.className = 'cs-fgroup__h'
     h.textContent = 'SERVIÇO / NECESSIDADE'
@@ -729,20 +709,22 @@ export class MapsScanner {
     return group
   }
 
-  /** Lê os controles do painel de filtros e atualiza this.filters. */
+  /** Reconstrói this.filters a partir dos chips ativos + selects. */
   private readFiltersFromPanel(): void {
     if (!this.filtersPanel) return
     const site: SiteFilter[] = []
     const digital: DigitalFilter[] = []
+    const qualify: QualifyFilter[] = []
     const scoreBands: ScoreBand[] = []
 
-    this.filtersPanel.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((cb) => {
-      const cat = cb.dataset.cat
-      const id = cb.dataset.id
-      if (!cb.checked || !cat || !id) return
-      if (cat === 'site') site.push(id as SiteFilter)
-      else if (cat === 'digital') digital.push(id as DigitalFilter)
-      else if (cat === 'score') scoreBands.push(id as ScoreBand)
+    this.filtersPanel.querySelectorAll<HTMLButtonElement>('.cs-chip.cs-chip--on').forEach((chip) => {
+      const cat = chip.dataset.cat
+      const value = chip.dataset.value
+      if (!cat || !value) return
+      if (cat === 'site') site.push(value as SiteFilter)
+      else if (cat === 'digital') digital.push(value as DigitalFilter)
+      else if (cat === 'score') scoreBands.push(value as ScoreBand)
+      else if (cat === 'qualify') qualify.push(value as QualifyFilter)
     })
 
     let minRating: number | null = null
@@ -756,7 +738,16 @@ export class MapsScanner {
     const svcRadio = this.filtersPanel.querySelector<HTMLInputElement>('input[name=cs-service]:checked')
     if (svcRadio) service = svcRadio.value as ServiceInterest
 
-    this.filters = { site, digital, minRating, minReviews, scoreBands, service }
+    this.filters = {
+      site,
+      digital,
+      qualify,
+      minRating,
+      minReviews,
+      scoreBands,
+      service,
+      activeChips: this.filters.activeChips,
+    }
   }
 
   /** Renderiza o resultado da prospecção automática. */
@@ -1005,7 +996,7 @@ export class MapsScanner {
       tags.className = 'cs-result__tags'
       for (const t of r.filtersText) {
         const tag = document.createElement('span')
-        tag.className = 'cs-chip'
+        tag.className = 'cs-result__chip'
         tag.textContent = `✓ ${t}`
         tags.appendChild(tag)
       }
@@ -1061,18 +1052,49 @@ export class MapsScanner {
     card.className = 'cs-pcard'
     card.dataset.key = pc.key
 
+    const score = computeVyntraScore(pc.lead)
+
+    // Linha 1: nome + badge
     const top = document.createElement('div')
     top.className = 'cs-pcard__top'
     const nm = document.createElement('div')
     nm.className = 'cs-pcard__name'
     nm.textContent = pc.lead.name
     nm.title = pc.lead.name
-    const rt = document.createElement('div')
-    rt.className = 'cs-pcard__rating'
-    rt.innerHTML = starIcon + (pc.lead.rating != null ? pc.lead.rating.toFixed(1) : '—')
-    top.append(nm, rt)
+    const badge = document.createElement('div')
+    badge.className = 'cs-pcard__badge ' + bandClass(score.band)
+    badge.textContent = score.label
+    top.append(nm, badge)
 
-    const score = computeVyntraScore(pc.lead)
+    // Linha 2: meta (endereço • telefone • nota)
+    const meta = document.createElement('div')
+    meta.className = 'cs-pcard__meta'
+    const metaParts: HTMLElement[] = []
+    if (pc.lead.address) {
+      const s = document.createElement('span')
+      s.textContent = pc.lead.address.split(',')[0]
+      metaParts.push(s)
+    }
+    if (pc.lead.phone) {
+      const s = document.createElement('span')
+      s.textContent = pc.lead.phone
+      metaParts.push(s)
+    }
+    if (pc.lead.rating != null) {
+      const rt = document.createElement('span')
+      rt.className = 'cs-pcard__rating'
+      rt.innerHTML = starIcon + pc.lead.rating.toFixed(1)
+      metaParts.push(rt)
+    }
+    for (let i = 0; i < metaParts.length; i++) {
+      if (i > 0) meta.appendChild(document.createTextNode(' • '))
+      meta.appendChild(metaParts[i])
+    }
+    if (metaParts.length === 0) {
+      meta.textContent = '—'
+    }
+
+    // Linha 3: barra de score
     const bar = document.createElement('div')
     bar.className = 'cs-pcard__scorebar'
     const barTrack = document.createElement('div')
@@ -1083,13 +1105,10 @@ export class MapsScanner {
     barTrack.appendChild(barFill)
     const scoreTxt = document.createElement('div')
     scoreTxt.className = 'cs-pcard__score'
-    scoreTxt.innerHTML = `${score.total}/100`
+    scoreTxt.innerHTML = `${score.total}<small>/100</small>`
     bar.append(barTrack, scoreTxt)
 
-    const badge = document.createElement('div')
-    badge.className = 'cs-pcard__badge ' + bandClass(score.band)
-    badge.textContent = `${bandEmoji(score.band)} ${score.label}`
-
+    // Linha 4: ações
     const actions = document.createElement('div')
     actions.className = 'cs-pcard__actions'
     const leadBtn = document.createElement('button')
@@ -1115,7 +1134,7 @@ export class MapsScanner {
     }
     actions.append(leadBtn, siteBtn)
 
-    card.append(top, bar, badge, actions)
+    card.append(top, meta, bar, actions)
     this.updateCard(card, pc)
     return card
   }
@@ -1257,6 +1276,7 @@ export class MapsScanner {
       maps_url: href || null,
       instagram: extractInstagram(card),
       facebook: extractFacebook(card),
+      whatsapp: extractWhatsapp(card),
     }
   }
 
@@ -1484,6 +1504,27 @@ function extractFacebook(card: HTMLElement | null): string | null {
     const a = card.querySelector(sel) as HTMLAnchorElement | null
     const href = a?.href
     if (href && /facebook\.com|fb\.com/i.test(href)) return normalizeUrl(href)
+  }
+  return null
+}
+
+/** Heurística: procura no card do Maps um link/botão de WhatsApp. */
+function extractWhatsapp(card: HTMLElement | null): string | null {
+  if (!card) return null
+  const Sel = [
+    'a[data-tooltip*="WhatsApp" i]',
+    'a[aria-label*="WhatsApp" i]',
+    'a[href*="wa.me/"]',
+    'a[href*="api.whatsapp.com"]',
+    'a[href^="whatsapp:"]',
+  ]
+  for (const sel of Sel) {
+    const a = card.querySelector(sel) as HTMLAnchorElement | null
+    const href = a?.href
+    if (href && /wa\.me|whatsapp/i.test(href)) {
+      const m = href.match(/(?:wa\.me\/|phone=)(\d+)/)
+      return m ? `+${m[1]}` : href
+    }
   }
   return null
 }

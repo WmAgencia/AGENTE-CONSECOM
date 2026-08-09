@@ -18,6 +18,8 @@ export interface ScrapedLead {
   instagram: string | null
   /** URL do Facebook encontrada no card do Maps (heurística DOM). null se não achou. */
   facebook: string | null
+  /** WhatsApp detectado (telefone com whatsapp). null se não achou. */
+  whatsapp: string | null
 }
 
 /** Exclui do banco os leads cujo place_id consta em `placeIds`. */

@@ -164,11 +164,15 @@
   background: var(--vy-card);
   border: 1px solid var(--vy-border);
   border-radius: 12px;
-  padding: 11px 12px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
+.cs-pcard:hover { border-color: rgba(139,92,246,0.35); box-shadow: 0 4px 14px rgba(139,92,246,0.12); }
+
+/* Linha 1: nome + badge + score (referência VYNTRA) */
 .cs-pcard__top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .cs-pcard__name {
   flex: 1;
@@ -180,25 +184,49 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.cs-pcard__rating {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #fbbf24;
+
+/* Badge de oportunidade (direita) */
+.cs-pcard__badge {
+  font-size: 10px;
   font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   flex: 0 0 auto;
 }
-.cs-pcard__rating svg { width: 12px; height: 12px; fill: currentColor; }
+.cs-band-alta { color: #a7f3d0; background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.35); }
+.cs-band-boa { color: #bbf7d0; background: rgba(34, 197, 94, 0.16); border: 1px solid rgba(34, 197, 94, 0.35); }
+.cs-band-media { color: #fde68a; background: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.35); }
+.cs-band-baixa { color: #fecaca; background: rgba(248, 113, 113, 0.16); border: 1px solid rgba(248, 113, 113, 0.35); }
+.cs-band-nenhuma { color: #94a3b8; background: rgba(100, 116, 139, 0.14); border: 1px solid rgba(100, 116, 139, 0.3); }
 
-.cs-pcard__scorebar {
+/* Linha 2: meta (endereço • telefone • nota) */
+.cs-pcard__meta {
+  font-size: 11px;
+  color: var(--vy-muted);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.cs-pcard__rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #fbbf24;
+  font-weight: 700;
+}
+.cs-pcard__rating svg { width: 11px; height: 11px; fill: currentColor; }
+
+/* Linha 3: barra de score */
+.cs-pcard__scorebar { display: flex; align-items: center; gap: 8px; }
 .cs-pcard__bar {
   flex: 1;
-  height: 6px;
+  height: 5px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
@@ -217,21 +245,8 @@
 }
 .cs-pcard__score small { color: var(--vy-muted); font-weight: 600; }
 
-.cs-pcard__badge {
-  align-self: flex-start;
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 999px;
-  letter-spacing: 0.01em;
-}
-.cs-band-alta { color: #a7f3d0; background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.35); }
-.cs-band-boa { color: #bbf7d0; background: rgba(34, 197, 94, 0.16); border: 1px solid rgba(34, 197, 94, 0.35); }
-.cs-band-media { color: #fde68a; background: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.35); }
-.cs-band-baixa { color: #fecaca; background: rgba(248, 113, 113, 0.16); border: 1px solid rgba(248, 113, 113, 0.35); }
-.cs-band-nenhuma { color: #94a3b8; background: rgba(100, 116, 139, 0.14); border: 1px solid rgba(100, 116, 139, 0.3); }
-
-.cs-pcard__actions { display: flex; gap: 6px; margin-top: 2px; }
+/* Linha 4: ações */
+.cs-pcard__actions { display: flex; gap: 6px; margin-top: 1px; }
 .cs-pcard__btn {
   flex: 1;
   display: flex;
@@ -408,39 +423,54 @@
 .consecom-toast.cs-warn { border-color: rgba(249, 115, 22, 0.6); }
 .consecom-toast.cs-show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-/* ===== Prospecção Automática — Painel de filtros ===== */
-.cs-filters { padding: 8px 14px; border-top: 1px solid var(--vy-border); }
+/* ===== Prospecção Automática — Painel de filtros (chips) ===== */
+.cs-filters { padding: 10px 14px; border-top: 1px solid var(--vy-border); display: flex; flex-direction: column; gap: 10px; }
 .cs-filters__title {
   font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--vy-muted); margin-bottom: 6px;
+  color: var(--vy-muted);
 }
-.cs-fgroup { margin-bottom: 12px; }
+.cs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-chip {
+  font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+  background: rgba(255,255,255,0.04); color: var(--vy-text);
+  border: 1px solid var(--vy-border); cursor: pointer;
+  transition: all 0.15s; white-space: nowrap; font-family: 'Inter', sans-serif;
+}
+.cs-chip:hover { border-color: var(--vy-accent); color: var(--vy-accent2); }
+.cs-chip--on {
+  background: var(--vy-gradient) !important; color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: 0 2px 8px rgba(139,92,246,0.35);
+}
+.cs-chip:focus-visible { outline: 2px solid var(--vy-accent); outline-offset: 1px; }
+
+.cs-adv { display: flex; gap: 10px; padding-top: 8px; border-top: 1px solid var(--vy-border); }
+.cs-adv__item { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.cs-adv__item span { font-size: 9px; font-weight: 700; color: var(--vy-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.cs-adv__item select {
+  background: var(--vy-card); color: var(--vy-text); border: 1px solid var(--vy-border);
+  border-radius: 7px; padding: 6px 8px; font-size: 12px; font-family: 'Inter', sans-serif;
+  cursor: pointer; outline: none;
+}
+.cs-adv__item select:focus { border-color: var(--vy-accent); }
+
+.cs-fgroup { margin-bottom: 4px; }
 .cs-fgroup__h {
   font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--vy-accent2); margin-bottom: 4px;
 }
-.cs-check {
-  display: flex; align-items: center; gap: 8px; padding: 5px 0;
-  font-size: 13px; cursor: pointer; color: var(--vy-text); font-family: 'Inter', sans-serif;
+.cs-radio { display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-radio__item {
+  display: flex; align-items: center; gap: 5px; padding: 4px 9px;
+  border: 1px solid var(--vy-border); border-radius: 999px;
+  font-size: 11px; cursor: pointer; color: var(--vy-text); background: rgba(255,255,255,0.04);
+  transition: all 0.15s;
 }
-.cs-check input[type=checkbox] {
-  appearance: none; width: 16px; height: 16px; border-radius: 5px;
-  border: 1.5px solid rgba(255,255,255,0.2); background: transparent;
-  cursor: pointer; transition: all 0.15s; flex-shrink: 0;
-}
-.cs-check input[type=checkbox]:checked {
-  background: var(--vy-gradient); border-color: transparent;
-}
-.cs-check--inline { display: inline-flex; margin-right: 14px; }
-.cs-check--inline span { font-size: 12px; }
-.cs-check--inline select {
-  background: var(--vy-card); color: var(--vy-text); border: 1px solid var(--vy-border);
-  border-radius: 6px; padding: 3px 6px; font-size: 12px; font-family: 'Inter', sans-serif;
-  cursor: pointer; outline: none;
-}
-.cs-radio { display: flex; flex-wrap: wrap; gap: 10px; }
-.cs-radio__item { display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; color: var(--vy-text); }
+.cs-radio__item:hover { border-color: var(--vy-accent); }
 .cs-radio__item input { accent-color: var(--vy-accent); }
+.cs-radio__item:has(input:checked) {
+  border-color: var(--vy-accent); background: rgba(139,92,246,0.18); color: var(--vy-accent2);
+}
 
 /* ===== Resultado da prospecção (Alex) ===== */
 .cs-result { padding: 12px 14px; }
@@ -480,7 +510,7 @@
 .cs-result__crit { margin: 8px 0; }
 .cs-result__crit-h { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--vy-muted); margin-bottom: 4px; }
 .cs-result__tags { display: flex; flex-wrap: wrap; gap: 5px; }
-.cs-chip {
+.cs-result__chip {
   font-size: 11px; padding: 3px 8px; border-radius: 999px;
   background: rgba(139,92,246,0.15); color: var(--vy-accent2); border: 1px solid rgba(139,92,246,0.3);
 }
