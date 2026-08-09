@@ -149,14 +149,33 @@ export async function resolveNotificationGroupJid(instanceName: string): Promise
     const conn = conns[0];
     if (!conn) return null;
 
-    // 2) Busca o grupo de notificações ativo (por workspace_id, senão user_id).
-    const groupCandidates = conn.workspace_id
-      ? `${url}/rest/v1/notification_groups?select=group_id&workspace_id=eq.${encodeURIComponent(conn.workspace_id)}&enabled=eq.true&order=created_at.desc&limit=1`
-      : `${url}/rest/v1/notification_groups?select=group_id&user_id=eq.${encodeURIComponent(conn.user_id ?? '')}&enabled=eq.true&order=created_at.desc&limit=1`;
-    const gRes = await fetch(groupCandidates, { headers: hdrs });
-    if (!gRes.ok) return null;
-    const groups = (await gRes.json()) as Array<{ group_id: string }>;
-    return groups[0]?.group_id ?? null;
+    // 2) Busca o grupo de notificações ativo. Algumas conexões têm
+    //    workspace_id preenchido mas o grupo foi gravado só com user_id
+    //    (workspace null): tenta workspace_id e user_id.
+    const connUserId = conn.user_id ?? '';
+    const seen = new Set<string>();
+    for (const cand of [conn.workspace_id, connUserId]) {
+      if (!cand || seen.has(cand)) continue;
+      seen.add(cand);
+      const groupCandidates = `${url}/rest/v1/notification_groups?select=group_id&workspace_id=eq.${encodeURIComponent(cand)}&enabled=eq.true&order=created_at.desc&limit=1`;
+      const gRes = await fetch(groupCandidates, { headers: hdrs });
+      if (gRes.ok) {
+        const groups = (await gRes.json()) as Array<{ group_id: string }>;
+        if (groups[0]?.group_id) return groups[0].group_id;
+      }
+    }
+    // Fallback: grupo vinculado apenas ao user_id.
+    if (connUserId) {
+      const gRes = await fetch(
+        `${url}/rest/v1/notification_groups?select=group_id&user_id=eq.${encodeURIComponent(connUserId)}&enabled=eq.true&order=created_at.desc&limit=1`,
+        { headers: hdrs },
+      );
+      if (gRes.ok) {
+        const groups = (await gRes.json()) as Array<{ group_id: string }>;
+        if (groups[0]?.group_id) return groups[0].group_id;
+      }
+    }
+    return null;
   } catch (e) {
     log.warn({ err: e instanceof Error ? e.message : 'unknown' }, 'connections: resolveNotificationGroupJid failed');
     return null;
