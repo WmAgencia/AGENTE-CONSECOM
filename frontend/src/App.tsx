@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone } from 'lucide-react'
+import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone, Puzzle } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
 import { KanbanBoard } from './components/KanbanBoard'
@@ -9,8 +9,9 @@ import { DashboardView } from './components/DashboardView'
 import { AgentConfig } from './components/AgentConfig'
 import { ConnectionsPage } from './components/ConnectionsPage'
 import { MobileAppView } from './components/MobileAppView'
+import { ExtensionView } from './components/ExtensionView'
 
-type Tab = 'dashboard' | 'kanban' | 'campanhas' | 'leads' | 'conexoes' | 'agente' | 'app-mobile'
+type Tab = 'dashboard' | 'kanban' | 'campanhas' | 'leads' | 'conexoes' | 'agente' | 'extensao' | 'app-mobile'
 
 const NAV_ITEMS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -19,6 +20,7 @@ const NAV_ITEMS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: 'leads', label: 'Leads', icon: Users },
   { key: 'conexoes', label: 'Conexões', icon: Plug },
   { key: 'agente', label: 'Config. do Agente', icon: Settings },
+  { key: 'extensao', label: 'Extensão', icon: Puzzle },
   { key: 'app-mobile', label: 'App mobile', icon: Smartphone },
 ]
 
@@ -235,6 +237,7 @@ export default function App() {
         {tab === 'dashboard' && <DashboardView leads={leads} />}
         {tab === 'agente' && <AgentConfig />}
         {tab === 'conexoes' && <ConnectionsPage />}
+        {tab === 'extensao' && <ExtensionView />}
         {tab === 'app-mobile' && <MobileAppView />}
       </main>
     </div>
