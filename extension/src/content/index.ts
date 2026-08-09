@@ -442,37 +442,25 @@ export class MapsScanner {
     list.className = 'cs-panel__list'
     this.listEl = list
 
-    // Rodapé: ações
-    const footer = document.createElement('div')
-    footer.className = 'cs-panel__footer'
-    const row1 = document.createElement('div')
-    row1.className = 'cs-footer__row'
-    const importBtn = document.createElement('button')
-    importBtn.type = 'button'
-    importBtn.className = 'cs-footer__btn cs-foot-import'
-    importBtn.innerHTML = `<span data-role="import-label">Importar</span>` + downloadIcon
-    importBtn.addEventListener('click', () => void this.doImport(importBtn))
-    const allBtn = document.createElement('button')
-    allBtn.type = 'button'
-    allBtn.className = 'cs-footer__btn cs-foot-all'
-    allBtn.innerHTML = 'Selecionar todos' + listCheckIcon
-    allBtn.addEventListener('click', () => this.selectAllAvailable())
-    row1.append(importBtn, allBtn)
-    const row2 = document.createElement('div')
-    row2.className = 'cs-footer__row'
-    const deleteBtn = document.createElement('button')
-    deleteBtn.type = 'button'
-    deleteBtn.className = 'cs-footer__btn cs-foot-delete'
-    deleteBtn.innerHTML = 'Excluir selecionados' + trashIcon
-    deleteBtn.addEventListener('click', () => void this.doDelete(deleteBtn))
-    const configBtn = document.createElement('button')
-    configBtn.type = 'button'
-    configBtn.className = 'cs-footer__btn cs-foot-config'
-    configBtn.title = 'Configurar Supabase'
-    configBtn.innerHTML = 'Configurar' + gearIcon
-    configBtn.addEventListener('click', () => void this.promptConfig())
-    row2.append(deleteBtn, configBtn)
-    footer.append(row1, row2)
+     // Rodapé: apenas ações de manutenção (o prospecting é via PROSPECTAR +
+     // IMPORTAR no painel de resultado — não há botões de prospecção concorrentes)
+     const footer = document.createElement('div')
+     footer.className = 'cs-panel__footer'
+     const row2 = document.createElement('div')
+     row2.className = 'cs-footer__row'
+     const deleteBtn = document.createElement('button')
+     deleteBtn.type = 'button'
+     deleteBtn.className = 'cs-footer__btn cs-foot-delete'
+     deleteBtn.innerHTML = 'Excluir selecionados' + trashIcon
+     deleteBtn.addEventListener('click', () => void this.doDelete(deleteBtn))
+     const configBtn = document.createElement('button')
+     configBtn.type = 'button'
+     configBtn.className = 'cs-footer__btn cs-foot-config'
+     configBtn.title = 'Configurar Supabase'
+     configBtn.innerHTML = 'Configurar' + gearIcon
+     configBtn.addEventListener('click', () => void this.promptConfig())
+     row2.append(deleteBtn, configBtn)
+     footer.appendChild(row2)
 
     balloon.append(header, search, prospectBtn, filtersPanel, resultPanel, list, footer)
     this.balloon = balloon
@@ -529,14 +517,16 @@ export class MapsScanner {
    */
   private async runProspectStages(btn: HTMLButtonElement): Promise<void> {
     const stages: Array<[string, number]> = [
-      ['Coletando resultados do Google Maps…', 320],
-      ['Aprofundando a busca…', 340],
-      ['Carregando mais empresas…', 360],
-      ['Calculando oportunidades…', 380],
+      ['Coletando resultados', 320],
+      ['Aprofundando a busca', 340],
+      ['Carregando mais empresas', 360],
+      ['Calculando oportunidades', 380],
     ]
-    for (const [text, ms] of stages) {
+    for (const [sub, ms] of stages) {
       if (this.prospectCancel) break
-      btn.textContent = text
+      // Botão principal mostra "PROSPECTANDO..." + contagem (§6 UX)
+      const n = this.found.length
+      btn.textContent = n > 0 ? `PROSPECTANDO… ${n} resultados` : `PROSPECTANDO…`
       this.updateProspectProgress()
       await this.scrollAndCollect()
       await sleep(ms)
@@ -1040,10 +1030,6 @@ export class MapsScanner {
 
   private renderBalloonList(): void {
     if (!this.balloon || !this.listEl) return
-    const importLabel = this.balloon.querySelector('[data-role="import-label"]') as HTMLElement | null
-    if (importLabel) {
-      importLabel.textContent = this.selected.size > 0 ? `Importar (${this.selected.size})` : 'Importar'
-    }
     this.updateCounts()
     this.renderCardList()
   }
