@@ -7,14 +7,16 @@ import android.content.Intent;
 import android.os.Build;
 import android.util.Log;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.List;
 
 /**
  * Agendador nativo de alarmes de reunião usando AlarmManager.
- * - setExactAndAllowWhileIdle (dispara mesmo em modo Doze)
+ * - setAlarmClock: o alarme aparece na interface nativa de relógio do Android
+ *   (status bar + tela de bloqueio "Próximo alarme") e tem garantia máxima de
+ *   disparo — funciona em Doze, com o app fechado e sem depender da permissão
+ *   de alarme exato (API 31+).
  * - registra no VyntraAlarmStore para restaurar após reboot
  * - cada alarme vira um BroadcastReceiver (VyntraAlarmReceiver)
  */
@@ -39,7 +41,10 @@ public final class VyntraAlarmScheduler {
         if (am == null) return;
         PendingIntent pi = buildPendingIntent(context, id);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAtMs, pi);
+            // Relógio nativo: mostra "Próximo alarme HH:MM" na barra de status /
+            // tela de bloqueio e dispara com prioridade máxima (Doze-proof).
+            AlarmManager.AlarmClockInfo info = new AlarmManager.AlarmClockInfo(fireAtMs, pi);
+            am.setAlarmClock(info, pi);
         } else {
             am.setExact(AlarmManager.RTC_WAKEUP, fireAtMs, pi);
         }
