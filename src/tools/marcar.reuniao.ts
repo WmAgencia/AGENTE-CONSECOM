@@ -130,7 +130,7 @@ export function createMarcarReuniaoTool(): ToolBase {
             `${phone ? ` phone=${phone}` : ''}` +
             `${meetingAt ? ` data=${meetingAt}` : ''}` +
             `${notes ? ` obs=${notes}` : ''}`;
-          const r = await sendGroupText(targetGroup, summary);
+          const r = await sendGroupText(targetGroup, summary, ctx.instance);
           notifiedAdmin = r.ok;
         }
       }

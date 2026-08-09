@@ -252,6 +252,7 @@ function stripJidSuffix(jid: string): string {
 export async function sendGroupText(
   to: string,
   text: string,
+  instance?: string,
 ): Promise<SendTextResult> {
   const log = getLogger();
   if (!to || !text) {
@@ -268,7 +269,8 @@ export async function sendGroupText(
   }
 
   const cfg = getEvolutionConfig();
-  const endpoint = `${cfg.apiUrl}/message/sendText/${encodeURIComponent(cfg.instance)}`;
+  const sendInstance = instance || cfg.instance;
+  const endpoint = `${cfg.apiUrl}/message/sendText/${encodeURIComponent(sendInstance)}`;
   const body = {
     number: to,
     text,

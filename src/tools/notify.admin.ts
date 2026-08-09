@@ -59,7 +59,7 @@ export function createNotifyAdminGroupTool(): ToolBase {
           error: 'tool_disabled',
         };
       }
-      const result = await sendGroupText(groupJid, message);
+      const result = await sendGroupText(groupJid, message, ctx.instance);
       if (!result.ok) {
         return {
           ok: false,
