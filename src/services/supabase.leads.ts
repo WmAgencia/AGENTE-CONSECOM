@@ -101,6 +101,31 @@ export function isProspectingStatus(status: string | null | undefined): boolean 
   return !!status && PROSPECTING_STATUSES.includes(status);
 }
 
+/**
+ * Atualiza campos analíticos do lead (score, interesse, serviço, problema).
+ * Best-effort: nunca lança erro (não quebra o fluxo do agente).
+ */
+export async function updateLeadAnalytics(
+  leadId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!leadId || !cfg.url || !cfg.serviceRoleKey) return;
+  try {
+    await fetch(`${cfg.url}/rest/v1/leads?id=eq.${leadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: cfg.serviceRoleKey,
+        Authorization: `Bearer ${cfg.serviceRoleKey}`,
+      },
+      body: JSON.stringify(patch),
+    });
+  } catch {
+    // best-effort: ignore
+  }
+}
+
 // ---- conversation persistence (consecom_conversations table) ----
 
 async function postConversationRow(cfg: ReturnType<typeof getSupabaseProspeccaoConfig>, row: Record<string, unknown>): Promise<void> {

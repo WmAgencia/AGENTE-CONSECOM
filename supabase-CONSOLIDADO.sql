@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS public.campaigns (
   name         TEXT NOT NULL,
   description  TEXT,
   is_active    BOOLEAN NOT NULL DEFAULT true,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public.queue_messages (

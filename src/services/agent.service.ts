@@ -74,6 +74,8 @@ interface RunAgentLoopInput {
   instance?: string;
   /** Contexto do lead (nome/nicho/telefone) para personalizar a resposta. */
   leadContext?: string;
+  /** Estratégia de abordagem vinculada ao lead (estilo a seguir). */
+  strategyDirective?: string;
 }
 
 export interface RunAgentLoopResult extends AgentResponse {
@@ -108,6 +110,7 @@ function buildSystemPrompt(opts: {
   directives?: string;
   learnings?: string;
   leadContext?: string;
+  strategyDirective?: string;
 }): string {
   const agoraBrasilia = new Date(Date.now() - 3 * 3600_000);
   const dataAtual = agoraBrasilia.toISOString().slice(0, 10);
@@ -131,6 +134,13 @@ const base = [
       '=== LEAD (dados que VOCE tem sobre este cliente; use para personalizar e NUNCA peça o que ja tem) ===',
       opts.leadContext,
       '=== FIM DO LEAD ===',
+    );
+  }
+  if (opts.strategyDirective) {
+    base.push(
+      '=== ESTRATÉGIA DE ABORDAGEM (siga este estilo nesta conversa) ===',
+      opts.strategyDirective,
+      '=== FIM DA ESTRATÉGIA ===',
     );
   }
   if (opts.directives) {
@@ -264,6 +274,7 @@ export async function runAgentLoop(
       directives: input.directives,
       learnings: input.learnings,
       leadContext: input.leadContext,
+      strategyDirective: input.strategyDirective,
     }),
   });
   if (input.history && input.history.length > 0) {
@@ -291,6 +302,7 @@ export async function runAgentLoop(
         directives: input.directives,
         learnings: input.learnings,
         leadContext: input.leadContext,
+        strategyDirective: input.strategyDirective,
       });
     }
 

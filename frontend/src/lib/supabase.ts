@@ -46,8 +46,20 @@ export interface Lead {
   closed_at: string | null
   remarket_at: string | null
   first_msg_sent_at: string | null
+  score?: number | null
+  score_factors?: unknown
+  strategy_id?: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ConversationMessage {
+  id: string
+  lead_id: string
+  role: 'user' | 'assistant'
+  content: string
+  agent_model: string | null
+  created_at: string
 }
 
 export interface Campaign {

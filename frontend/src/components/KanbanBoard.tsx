@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
-import { type Lead, type LeadStatus, type Campaign } from '../lib/supabase'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase, type Lead, type LeadStatus, type Campaign, type ConversationMessage } from '../lib/supabase'
+import { computeEngagement, type Engagement } from '../lib/engagement'
+import { LeadChat } from './LeadChat'
 
 type Section =
   | 'enviados'
@@ -30,6 +32,40 @@ const SECTION_COLOR: Record<Section, string> = {
   concluidos: 'bg-green-500',
 }
 
+const NO_CAMPAIGN = '__none__'
+
+const BAR_COLOR: Record<Engagement['band'], string> = {
+  alto: '#22c55e',
+  bom: '#10b981',
+  medio: '#f59e0b',
+  baixo: '#f97316',
+  nenhum: '#f43f5e',
+}
+
+function emptySections(): Record<Section, number> {
+  return {
+    enviados: 0,
+    conversando: 0,
+    sem_interesse: 0,
+    remarketing: 0,
+    reuniao_marcada: 0,
+    reuniao_cancelada: 0,
+    concluidos: 0,
+  }
+}
+
+function engagementTooltip(e: Engagement | undefined): string | undefined {
+  if (!e) return undefined
+  const rows = [
+    `${e.emoji} ${e.total}% · ${e.label}`,
+    `⚡ Resposta rápida ${e.sub.velocidade}%`,
+    `💬 Volume de conversa ${e.sub.volume}%`,
+    `🎯 Interesse ${e.sub.interesse}%`,
+  ]
+  if (e.sub.reuniao !== null) rows.push(`📅 Interesse na reunião ${e.sub.reuniao}%`)
+  return rows.join('\n')
+}
+
 export function KanbanBoard({
   leads,
   campaigns,
@@ -44,65 +80,179 @@ export function KanbanBoard({
   const [campaignFilter, setCampaignFilter] = useState<'all' | string>('all')
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [modal, setModal] = useState<'meeting' | 'close' | null>(null)
+  const [chatLead, setChatLead] = useState<Lead | null>(null)
+  const [messagesByLead, setMessagesByLead] = useState<Map<string, ConversationMessage[]>>(new Map())
+
+  useEffect(() => {
+    let active = true
+    async function load() {
+      const { data, error } = await supabase
+        .from('consecom_conversations')
+        .select('id, lead_id, role, content, agent_model, created_at')
+        .order('created_at', { ascending: true })
+      if (error || !data) return
+      const map = new Map<string, ConversationMessage[]>()
+      for (const m of data as ConversationMessage[]) {
+        const arr = map.get(m.lead_id) ?? []
+        arr.push(m)
+        map.set(m.lead_id, arr)
+      }
+      if (active) setMessagesByLead(map)
+    }
+    void load()
+    const t = setInterval(load, 30000)
+    return () => {
+      active = false
+      clearInterval(t)
+    }
+  }, [])
+
+  const engagement = useMemo(() => {
+    const map = new Map<string, Engagement>()
+    for (const l of leads) {
+      map.set(l.id, computeEngagement(l, messagesByLead.get(l.id) ?? []))
+    }
+    return map
+  }, [leads, messagesByLead])
 
   const list = useMemo(() => {
     if (campaignFilter === 'all') return leads
+    if (campaignFilter === NO_CAMPAIGN) return leads.filter((l) => !l.campaign_id)
     return leads.filter((l) => l.campaign_id === campaignFilter)
   }, [leads, campaignFilter])
+
+  const perCampaign = useMemo(() => {
+    const map = new Map<string | null, { total: number; sections: Record<Section, number> }>()
+    for (const c of campaigns) map.set(c.id, { total: 0, sections: emptySections() })
+    if (!map.has(null)) map.set(null, { total: 0, sections: emptySections() })
+    for (const l of leads) {
+      const key = l.campaign_id ?? null
+      if (!map.has(key)) map.set(key, { total: 0, sections: emptySections() })
+      const entry = map.get(key)!
+      entry.total++
+      for (const sec of SECTIONS) {
+        if (sec.statuses.includes(l.status)) entry.sections[sec.key]++
+      }
+    }
+    return map
+  }, [leads, campaigns])
+
+  const selectedCampaign = campaignFilter !== 'all'
+    ? campaigns.find((c) => c.id === campaignFilter)
+    : undefined
 
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-lg font-semibold">Pipeline de prospecção</h1>
-          <p className="text-sm text-slate-400">Leads que saíram das campanhas</p>
+          <p className="text-sm text-slate-400">
+            {campaignFilter === 'all'
+              ? 'Visão geral por campanha — clique numa campanha para abrir a pipeline'
+              : selectedCampaign
+                ? `Leads da campanha "${selectedCampaign.name}"`
+                : 'Leads sem campanha vinculada'}
+          </p>
         </div>
         <div className="flex items-center gap-3">
+          {campaignFilter !== 'all' && (
+            <button onClick={() => setCampaignFilter('all')}
+              className="text-xs text-indigo-300 hover:text-white transition">
+              ← Todas as campanhas
+            </button>
+          )}
           <label className="text-xs text-slate-400">
             Filtrar por campanha
             <select value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)}
               className="ml-2 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none focus:border-indigo-500">
               <option value="all">Todos</option>
+              <option value={NO_CAMPAIGN}>Sem campanha</option>
               {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
         </div>
       </div>
 
-      <div className="flex-1 flex gap-4 px-6 py-5 overflow-x-auto">
-        {SECTIONS.map((sec) => {
-          const items = list.filter((l) => sec.statuses.includes(l.status))
-          const ordered = sec.key === 'reuniao_marcada'
-            ? [...items].sort((a, b) => (a.meeting_at ?? '9999').localeCompare(b.meeting_at ?? '9999'))
-            : sec.key === 'concluidos'
-              ? [...items].sort((a, b) => (b.closed_at ?? '').localeCompare(a.closed_at ?? ''))
-              : items
-          return (
-            <div key={sec.key} className="w-72 shrink-0 rounded-xl border border-white/5 bg-white/[0.02] flex flex-col">
-              <div className="px-4 py-3 flex items-center gap-2">
-                <span className="text-sm">{sec.icon}</span>
-                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">{sec.label}</span>
-                <span className={`w-2 h-2 rounded-full ${SECTION_COLOR[sec.key]}`} />
-                <span className="ml-auto text-xs text-slate-500 bg-white/5 rounded-full px-2 py-0.5">{items.length}</span>
+      {campaignFilter === 'all' ? (
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {Array.from(perCampaign.entries()).map(([cid, c]) => {
+              const campaign = campaigns.find((x) => x.id === cid)
+              const isNone = cid === null
+              const name = isNone ? 'Sem campanha' : campaign?.name ?? 'Campanha removida'
+              const visibleSections = SECTIONS.filter((s) => c.sections[s.key] > 0)
+              return (
+                <button
+                  key={cid ?? NO_CAMPAIGN}
+                  onClick={() => setCampaignFilter(cid ?? NO_CAMPAIGN)}
+                  className="text-left rounded-xl border border-white/5 bg-white/[0.02] hover:border-indigo-500/40 hover:bg-white/[0.04] transition p-4 group"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm truncate group-hover:text-indigo-200">{name}</div>
+                      {campaign?.description && (
+                        <div className="text-[11px] text-slate-500 truncate mt-0.5">{campaign.description}</div>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-xs text-slate-400 bg-white/5 rounded-full px-2 py-0.5">
+                      {c.total} lead{c.total === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  {visibleSections.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {visibleSections.map((s) => (
+                        <span key={s.key} className="inline-flex items-center gap-1 text-[11px] text-slate-300 bg-white/5 rounded-full px-2 py-0.5">
+                          <span className="text-[10px]">{s.icon}</span>
+                          {s.label} <span className="text-slate-400 font-semibold">{c.sections[s.key]}</span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-[11px] text-slate-600">Sem leads</div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex gap-4 px-6 py-5 overflow-x-auto">
+          {SECTIONS.map((sec) => {
+            const items = list.filter((l) => sec.statuses.includes(l.status))
+            const ordered = sec.key === 'reuniao_marcada'
+              ? [...items].sort((a, b) => (a.meeting_at ?? '9999').localeCompare(b.meeting_at ?? '9999'))
+              : sec.key === 'concluidos'
+                ? [...items].sort((a, b) => (b.closed_at ?? '').localeCompare(a.closed_at ?? ''))
+                : items
+            return (
+              <div key={sec.key} className="w-72 shrink-0 rounded-xl border border-white/5 bg-white/[0.02] flex flex-col">
+                <div className="px-4 py-3 flex items-center gap-2">
+                  <span className="text-sm">{sec.icon}</span>
+                  <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">{sec.label}</span>
+                  <span className={`w-2 h-2 rounded-full ${SECTION_COLOR[sec.key]}`} />
+                  <span className="ml-auto text-xs text-slate-500 bg-white/5 rounded-full px-2 py-0.5">{items.length}</span>
+                </div>
+                <div className="flex-1 px-2 pb-2 space-y-2 overflow-y-auto">
+                  {ordered.map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      engagement={engagement.get(lead.id)}
+                      onAction={() => setChatLead(lead)}
+                      onChat={() => setChatLead(lead)}
+                      onMeeting={() => { setSelectedLead(lead); setModal('meeting') }}
+                      onClose={() => { setSelectedLead(lead); setModal('close') }}
+                    />
+                  ))}
+                  {ordered.length === 0 && (
+                    <div className="text-xs text-slate-600 text-center py-6 border border-dashed border-white/5 rounded-lg">Sem leads</div>
+                  )}
+                </div>
               </div>
-              <div className="flex-1 px-2 pb-2 space-y-2 overflow-y-auto">
-                {ordered.map((lead) => (
-                  <LeadCard
-                    key={lead.id}
-                    lead={lead}
-                    onAction={() => setSelectedLead(lead)}
-                    onMeeting={() => { setSelectedLead(lead); setModal('meeting') }}
-                    onClose={() => { setSelectedLead(lead); setModal('close') }}
-                  />
-                ))}
-                {ordered.length === 0 && (
-                  <div className="text-xs text-slate-600 text-center py-6 border border-dashed border-white/5 rounded-lg">Sem leads</div>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
       {selectedLead && modal === 'meeting' && (
         <MeetingModal
@@ -126,6 +276,9 @@ export function KanbanBoard({
           }}
         />
       )}
+      {chatLead && (
+        <LeadChat lead={chatLead} onClose={() => setChatLead(null)} />
+      )}
     </div>
   )
 }
@@ -143,25 +296,41 @@ const STATUS_BADGE: Record<LeadStatus, { label: string; cls: string }> = {
   nao_fechado: { label: 'Não fechado', cls: 'bg-rose-500/15 text-rose-300' },
 }
 
-export function LeadCard({ lead, onAction, onMeeting, onClose }: {
+export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClose }: {
   lead: Lead
+  engagement?: Engagement
   onAction: () => void
+  onChat: () => void
   onMeeting: () => void
   onClose: () => void
 }) {
   const badge = STATUS_BADGE[lead.status]
+  const tooltip = engagementTooltip(engagement)
   return (
-    <div className="group relative rounded-lg bg-[#16161f] border border-white/5 p-3 hover:border-white/10 transition">
+    <div className="group relative rounded-lg bg-[#16161f] border border-white/5 p-3 hover:border-white/10 transition cursor-pointer"
+      onClick={onChat}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{lead.name || 'Sem nome'}</div>
           {lead.niche && <div className="text-[11px] text-indigo-300/80 truncate">{lead.niche}</div>}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <button onClick={onAction} title="Ver detalhes" className="text-slate-600 hover:text-white text-xs">•••</button>
+          <button onClick={(e) => { e.stopPropagation(); onAction() }} title="Abrir conversa (WhatsApp)"
+            className="text-slate-600 hover:text-white text-xs">•••</button>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
         </div>
       </div>
+
+      {engagement && (
+        <div title={tooltip} className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <span className="text-sm leading-none">{engagement.emoji}</span>
+          <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+            <div className="h-full rounded-full transition-all"
+              style={{ width: `${engagement.total}%`, background: BAR_COLOR[engagement.band] }} />
+          </div>
+          <span className="text-[11px] font-semibold text-slate-300">{engagement.total}%</span>
+        </div>
+      )}
 
       {lead.status === 'reuniao_marcada' && lead.meeting_at && (
         <div className="mt-2 text-[11px] text-emerald-300 bg-emerald-500/10 rounded-md px-2 py-1">
@@ -182,13 +351,13 @@ export function LeadCard({ lead, onAction, onMeeting, onClose }: {
         {lead.city && <div className="truncate">📍 {lead.city}{lead.state ? ', ' + lead.state : ''}</div>}
       </div>
 
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
+      <div className="mt-2.5 flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
         {lead.status === 'reuniao_marcada' && (
           <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-emerald-300">
             Reagendar
           </button>
         )}
-        {onMeeting && (
+        {lead.status !== 'reuniao_marcada' && lead.status !== 'fechado' && lead.status !== 'nao_fechado' && (
           <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-indigo-300">
             Marcar reunião
           </button>

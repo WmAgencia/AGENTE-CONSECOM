@@ -48,7 +48,13 @@ import {
   loadAgentDirectives,
   loadAgentName,
   formatAgentSignature,
+  updateLeadAnalytics,
 } from '../services/supabase.leads.js';
+import {
+  loadLeadStrategy,
+  buildStrategyDirective,
+} from '../services/strategy.service.js';
+import { computeLeadScore } from '../services/scoring.js';
 
 const IDEMPOTENCY_MAX_ENTRIES = 1000;
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -380,6 +386,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     // (na_fila / mensagem_enviada / respondendo). Desconhecidos são ignorados.
     let leadId: string | undefined;
     let leadContext: string | undefined;
+    let strategyDirective: string | undefined;
     try {
       const lead = await findLeadByPhone(fromJid);
       if (lead && isProspectingStatus(lead.status)) {
@@ -397,6 +404,9 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
           `telefone=${fromJid.replace(/@.*$/, '')}`,
         ].filter(Boolean).join('; ');
         leadContext = bits;
+        // Estratégia vinculada ao lead (se houver) para guiar o estilo da abordagem.
+        const strategy = await loadLeadStrategy(lead.id);
+        strategyDirective = buildStrategyDirective(strategy) ?? undefined;
       } else {
         log.info({ from: maskFrom(fromJid) }, 'webhook: inbound ignored (not a prospecting lead)');
         return;
@@ -438,6 +448,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         learnings: (await loadLearningsForPrompt()) ?? undefined,
         instance: msg.instance,
         leadContext,
+        strategyDirective,
       });
 
       log.info(
@@ -469,6 +480,25 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       if (leadId) {
         await appendConversationTurn(leadId, 'user', msg.text).catch(() => {});
         await appendConversationTurn(leadId, 'assistant', agentResult.result, agentResult.model).catch(() => {});
+      }
+
+      // Lead score: atualiza score/fatores no lead (best-effort) para alimentar
+      // o funil analítico sem depender do humano.
+      if (leadId) {
+        const score = computeLeadScore({
+          status: 'conversando',
+          hasConversation: true,
+          messagesCount: history.length + 1,
+          meetingBooked: false,
+          meetingOutcome: null,
+          saleStatus: null,
+          problemIdentified: false,
+          interestLevel: null,
+        });
+        void updateLeadAnalytics(leadId, {
+          score: score.score,
+          score_factors: score.factors,
+        }).catch(() => {});
       }
 
       // Send back via Evolution API (with agent name signature)

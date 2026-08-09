@@ -52,6 +52,12 @@ GRANT EXECUTE ON FUNCTION public.consecom_excluir_leads(UUID[], TEXT)
   TO service_role, authenticated;
 
 -- 6) Garante que as tabelas críticas têm updated_at automático.
+-- A tabela campaigns não tinha a coluna updated_at, mas o trigger
+-- set_updated_at() referencia NEW.updated_at — todo UPDATE falhava com
+-- 'record "new" has no field "updated_at"'. Corrige adicionando a coluna.
+ALTER TABLE public.campaigns
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
 DROP TRIGGER IF EXISTS leads_updated_at ON public.leads;
 CREATE TRIGGER leads_updated_at BEFORE UPDATE ON public.leads
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();

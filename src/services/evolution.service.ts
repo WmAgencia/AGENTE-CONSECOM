@@ -359,7 +359,11 @@ export async function sendMedia(params: SendMediaParams): Promise<SendTextResult
   }
 
   const cfg = getEvolutionConfig();
-  const endpoint = `${cfg.apiUrl}/message/send${capitalize(MEDIA_TYPE[kind])}/${encodeURIComponent(cfg.instance)}`;
+  // Algumas builds da Evolution API (ex: "evolution_exchange" v2.3.7) não
+  // expõem rotas individuais (/message/sendVideo, /message/sendImage, ...).
+  // A rota consolidada /message/sendMedia/{instance} + campo `mediatype`
+  // funciona para áudio, vídeo, imagem e documento.
+  const endpoint = `${cfg.apiUrl}/message/sendMedia/${encodeURIComponent(cfg.instance)}`;
 
   const mediaBody: Record<string, unknown> = { media };
   if (caption) mediaBody.caption = caption;
@@ -415,8 +419,4 @@ export async function sendMedia(params: SendMediaParams): Promise<SendTextResult
     }
   }
   return { ok: false, status: 0, error: lastError ?? 'sendMedia failed' };
-}
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }

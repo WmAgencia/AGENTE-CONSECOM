@@ -18,6 +18,12 @@ import { getSupabaseProspeccaoConfig, getEnv } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { sendText, sendMedia, type MediaKind } from './evolution.service.js';
 import { loadAgentName, formatAgentSignature } from './supabase.leads.js';
+import {
+  loadCampaignStrategies,
+  pickStrategyForLead,
+  loadStrategiesByIds,
+  type Strategy,
+} from './strategy.service.js';
 
 const TICK_MS = Number(getEnv().CONSECOM_WORKER_TICK_MS ?? 5000);
 
@@ -54,6 +60,7 @@ interface LeadRow {
   reviews: number | null;
   niche: string | null;
   status: string | null;
+  strategy_id?: string | null;
 }
 
 /** Substitutes dynamic placeholders ({nome_empresa}, {telefone}, ...) in a string. */
@@ -107,7 +114,7 @@ export class SendWorker {
     // Só dispara campanhas em andamento (status 'em_progresso'). Assim,
     // campanhas "prontas" ficam enfileiradas e uma dispara por vez.
     const r = await fetch(
-      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at,campaign!inner(status)&campaign.status=eq.em_progresso&status=in.("pending","running")&order=created_at.asc`,
+      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at,campaign:campaigns!inner(status)&campaign.status=eq.em_progresso&status=in.("pending","running")&order=created_at.asc`,
       { headers: this.headers() },
     );
     if (!r.ok) return [];
@@ -164,6 +171,14 @@ export class SendWorker {
     });
   }
 
+  private async patchLeadStrategy(leadId: string, strategyId: string): Promise<void> {
+    await fetch(`${this.url}/rest/v1/leads?id=eq.${leadId}`, {
+      method: 'PATCH',
+      headers: this.headers(true),
+      body: JSON.stringify({ strategy_id: strategyId }),
+    });
+  }
+
   private async processRun(run: SendRunRow): Promise<void> {
     const log = getLogger();
     const msgs = await this.getQueueMessages(run.campaign_id);
@@ -194,24 +209,55 @@ export class SendWorker {
       return;
     }
 
+    // Estratégia: na 1ª mensagem do lead, garante um strategy_id sorteado pela
+    // campanha (A/B) e, quando a estratégia define uma first_message, usa-a no
+    // lugar da mensagem 1 da sequência. Demais mensagens seguem o template.
+    let strategyText = next.text ?? '';
+    let strategyKind = next.kind;
+    let strategyMediaUrl = next.media_url;
+    let strategyCaption = next.media_caption;
+    try {
+      const links = await loadCampaignStrategies(run.campaign_id);
+      const chosen = pickStrategyForLead(links, (lead as { strategy_id?: string | null }).strategy_id ?? null);
+      if (chosen && chosen !== (lead as { strategy_id?: string | null }).strategy_id) {
+        await this.patchLeadStrategy(run.lead_id, chosen);
+      }
+      if (chosen && position === 0) {
+        const strategies = await loadStrategiesByIds([chosen]);
+        const st: Strategy | undefined = strategies[0];
+        if (st?.first_message && st.first_message.trim().length > 0) {
+          strategyText = st.first_message.trim();
+          strategyKind = 'text';
+          strategyMediaUrl = null;
+          strategyCaption = null;
+          log.info({ runId: run.id, strategy: st.code }, 'send-worker: using strategy first_message');
+        }
+      }
+    } catch (err) {
+      log.warn(
+        { runId: run.id, err: err instanceof Error ? err.message : 'unknown' },
+        'send-worker: strategy assignment failed; continuing with default sequence',
+      );
+    }
+
     log.info({ runId: run.id, position, kind: next.kind, phone }, 'send-worker: sending');
     const agentName = await loadAgentName();
     let ok: boolean;
-    if (next.kind === 'text' && next.text) {
-      ok = (await sendText({ to: phone, text: formatAgentSignature(applyPlaceholders(next.text, lead), agentName) })).ok;
-    } else if (next.media_url) {
-      const mediaUrl = next.media_url.startsWith('http')
-        ? next.media_url
-        : `${this.url}/storage/v1/object/public/${next.media_url.replace(/^\/+/, '')}`;
+    if (strategyKind === 'text' && strategyText) {
+      ok = (await sendText({ to: phone, text: formatAgentSignature(applyPlaceholders(strategyText, lead), agentName) })).ok;
+    } else if (strategyMediaUrl) {
+      const mediaUrl = strategyMediaUrl.startsWith('http')
+        ? strategyMediaUrl
+        : `${this.url}/storage/v1/object/public/${strategyMediaUrl.replace(/^\/+/, '')}`;
       ok = (
         await sendMedia({
           to: phone,
-          kind: next.kind as MediaKind,
+          kind: strategyKind as MediaKind,
           media: mediaUrl,
-          caption: next.media_caption
-            ? formatAgentSignature(applyPlaceholders(next.media_caption, lead), agentName)
+          caption: strategyCaption
+            ? formatAgentSignature(applyPlaceholders(strategyCaption, lead), agentName)
             : undefined,
-          mimetype: guessMimetype(mediaUrl, next.kind),
+          mimetype: guessMimetype(mediaUrl, strategyKind),
           filename: basename(mediaUrl),
         })
       ).ok;

@@ -24,6 +24,7 @@ import { createListDirTool } from './list.dir.js';
 import { createMarcarReuniaoTool } from './marcar.reuniao.js';
 import { createNotifyAdminGroupTool } from './notify.admin.js';
 import { createFinalizeProspectingTool } from './finalizar.sem.interesse.js';
+import { createRegistrarInsightTool } from './registrar.insight.js';
 import { getEnv } from '../config/env.js';
 
 let buildCalled = false;
@@ -65,6 +66,7 @@ export function buildDefaultRegistry(): ToolRegistry {
   const marcarReuniao = createMarcarReuniaoTool();
   const notifyAdminGroup = createNotifyAdminGroupTool();
   const finalizeProspecting = createFinalizeProspectingTool();
+  const registrarInsight = createRegistrarInsightTool();
 
   const all = [
     { name: fileRead.definition.name, tool: fileRead },
@@ -73,6 +75,7 @@ export function buildDefaultRegistry(): ToolRegistry {
     { name: marcarReuniao.definition.name, tool: marcarReuniao },
     { name: notifyAdminGroup.definition.name, tool: notifyAdminGroup },
     { name: finalizeProspecting.definition.name, tool: finalizeProspecting },
+    { name: registrarInsight.definition.name, tool: registrarInsight },
   ];
 
   for (const { name, tool } of all) {
