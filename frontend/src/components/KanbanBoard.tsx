@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, type Lead, type LeadStatus, type Campaign, type ConversationMessage } from '../lib/supabase'
 import { computeEngagement, type Engagement } from '../lib/engagement'
 import { LeadChat } from './LeadChat'
@@ -33,6 +33,26 @@ const SECTION_COLOR: Record<Section, string> = {
 }
 
 const NO_CAMPAIGN = '__none__'
+
+// Permite navegar horizontalmente na pipeline segurando Ctrl + scroll.
+// Precisa de listener nativo com passive:false (o onWheel do React é passivo,
+// então preventDefault não cancelaria o zoom do navegador).
+function useCtrlWheelHorizontalScroll() {
+  const elRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = elRef.current
+    if (!el) return
+    const scroller: HTMLDivElement = el
+    function onWheel(e: WheelEvent) {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      scroller.scrollLeft += e.deltaY + e.deltaX
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  })
+  return elRef
+}
 
 const BAR_COLOR: Record<Engagement['band'], string> = {
   alto: '#22c55e',
@@ -141,6 +161,8 @@ export function KanbanBoard({
     ? campaigns.find((c) => c.id === campaignFilter)
     : undefined
 
+  const pipelineRef = useCtrlWheelHorizontalScroll()
+
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between gap-3 flex-wrap">
@@ -152,6 +174,9 @@ export function KanbanBoard({
               : selectedCampaign
                 ? `Leads da campanha "${selectedCampaign.name}"`
                 : 'Leads sem campanha vinculada'}
+            {campaignFilter !== 'all' && (
+              <span className="text-slate-500"> · Ctrl + scroll navega pelas etapas</span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -216,7 +241,7 @@ export function KanbanBoard({
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex gap-4 px-6 py-5 overflow-x-auto">
+        <div ref={pipelineRef} className="flex-1 flex gap-4 px-6 py-5 overflow-x-auto">
           {SECTIONS.map((sec) => {
             const items = list.filter((l) => sec.statuses.includes(l.status))
             const ordered = sec.key === 'reuniao_marcada'

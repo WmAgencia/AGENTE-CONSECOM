@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import { supabase, type Campaign, type QueueMessage, type Lead, type SendRun } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 
@@ -73,6 +74,19 @@ async function loadRuns() {
     if (!error) await load()
   }
 
+  async function deleteCampaign(c: Campaign) {
+    const active = runs.filter((r) => r.campaign_id === c.id && r.status !== 'done').length
+    let msg = `Excluir a campanha "${c.name}"?\n\nIsso apaga a sequência e o histórico de envios desta campanha. Os leads permanecem cadastrados (apenas desvinculados dela).`
+    if (active > 0) msg += `\n\nAtenção: ${active} envio(s) pendente(s)/em andamento serão cancelados.`
+    if (!window.confirm(msg)) return
+    const { error } = await supabase.from('campaigns').delete().eq('id', c.id)
+    if (error) {
+      window.alert(`Não foi possível excluir a campanha: ${error.message}`)
+      return
+    }
+    await load()
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
@@ -101,6 +115,7 @@ async function loadRuns() {
                 onEnqueue={() => setEnqueueOpen(c)}
                 onFire={() => void fireCampaign(c)}
                 onFinish={() => void finishCampaign(c)}
+                onDelete={() => void deleteCampaign(c)}
               />
             ))}
             {campaigns.length === 0 && (
@@ -194,6 +209,7 @@ function CampaignCard({
   onEnqueue,
   onFire,
   onFinish,
+  onDelete,
 }: {
   campaign: Campaign
   messages: QueueMessage[]
@@ -201,6 +217,7 @@ function CampaignCard({
   onEnqueue: () => void
   onFire: () => void
   onFinish: () => void
+  onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -225,6 +242,13 @@ function CampaignCard({
             className="text-[11px] px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10"
           >
             {open ? 'Fechar' : 'Montar sequência'}
+          </button>
+          <button
+            onClick={onDelete}
+            title="Excluir campanha"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       </div>
