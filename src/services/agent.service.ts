@@ -72,6 +72,8 @@ interface RunAgentLoopInput {
   learnings?: string;
   /** Evolution instance name (when known) passed to tools for per-user config. */
   instance?: string;
+  /** Contexto do lead (nome/nicho/telefone) para personalizar a resposta. */
+  leadContext?: string;
 }
 
 export interface RunAgentLoopResult extends AgentResponse {
@@ -105,6 +107,7 @@ function buildSystemPrompt(opts: {
   toolNames: string[];
   directives?: string;
   learnings?: string;
+  leadContext?: string;
 }): string {
   const agoraBrasilia = new Date(Date.now() - 3 * 3600_000);
   const dataAtual = agoraBrasilia.toISOString().slice(0, 10);
@@ -122,6 +125,13 @@ const base = [
     'OUTCOME RULE: when the prospect clearly refuses/interrupts or says they are not interested, call finalizar_sem_interesse with the lead id (when known) or phone and outcome="sem_interesse" in the SAME turn, then reply gracefully and stop. When the prospect cancels an already-scheduled meeting, call finalizar_sem_interesse with outcome="reuniao_cancelada" and a short motive.',
   ];
   base.push(SALES_PLAYBOOK);
+  if (opts.leadContext) {
+    base.push(
+      '=== LEAD (dados que VOCE tem sobre este cliente; use para personalizar e NUNCA peça o que ja tem) ===',
+      opts.leadContext,
+      '=== FIM DO LEAD ===',
+    );
+  }
   if (opts.directives) {
     base.push(
       '=== PROSPECTION DIRECTIVES (always follow these rules) ===',
@@ -252,6 +262,7 @@ export async function runAgentLoop(
       toolNames,
       directives: input.directives,
       learnings: input.learnings,
+      leadContext: input.leadContext,
     }),
   });
   if (input.history && input.history.length > 0) {
@@ -278,6 +289,7 @@ export async function runAgentLoop(
         toolNames,
         directives: input.directives,
         learnings: input.learnings,
+        leadContext: input.leadContext,
       });
     }
 

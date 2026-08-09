@@ -379,6 +379,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     // Prospecção Consecom: só respondemos leads que estejam na jornada
     // (na_fila / mensagem_enviada / respondendo). Desconhecidos são ignorados.
     let leadId: string | undefined;
+    let leadContext: string | undefined;
     try {
       const lead = await findLeadByPhone(fromJid);
       if (lead && isProspectingStatus(lead.status)) {
@@ -387,6 +388,15 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         if (lead.status !== 'conversando') {
           await updateLeadStatus(lead.id, 'conversando').catch(() => {});
         }
+        // Contexto do lead para personalizar a conversa (nome/nicho/telefone).
+        const bits = [
+          `leadId=${lead.id}`,
+          lead.name ? `nome=${lead.name}` : null,
+          lead.niche ? `nicho/negocio=${lead.niche}` : null,
+          lead.category ? `categoria=${lead.category}` : null,
+          `telefone=${fromJid.replace(/@.*$/, '')}`,
+        ].filter(Boolean).join('; ');
+        leadContext = bits;
       } else {
         log.info({ from: maskFrom(fromJid) }, 'webhook: inbound ignored (not a prospecting lead)');
         return;
@@ -427,6 +437,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         directives: (await loadAgentDirectives()) ?? undefined,
         learnings: (await loadLearningsForPrompt()) ?? undefined,
         instance: msg.instance,
+        leadContext,
       });
 
       log.info(
