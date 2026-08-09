@@ -22,11 +22,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Auto-login: consecom://auth?access_token=...&refresh_token=... -->
+            <!-- Auto-login: vyntra://auth?access_token=...&refresh_token=... (consecom:// mantido por compat.) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vyntra" />
                 <data android:scheme="consecom" />
             </intent-filter>
 
@@ -41,12 +42,34 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Alarme de reunião: dispara mesmo com o app fechado (AlarmManager) -->
+        <receiver
+            android:name=".VyntraAlarmReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".VyntraBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Alarme exato (AlarmManager setExactAndAllowWhileIdle) p/ lembretes confiáveis -->
+    <!-- Alarme exato (AlarmManager setExactAndAllowWhileIdle) p/ lembretes confiǭveis -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Restaurar alarmes após reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Vibração do alarme -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Dismiss do alarme (fazer o app soar/alto) -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
 </manifest>

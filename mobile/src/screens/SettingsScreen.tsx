@@ -4,16 +4,18 @@ import { supabase } from '../lib/supabase'
 import type { ReminderPrefs } from '../lib/types'
 import { formatReminder } from '../lib/format'
 import { syncAlarms } from '../services/alarms'
+import { AlarmSoundPicker } from '../components/AlarmSoundPicker'
 
 interface Props {
   reminder: ReminderPrefs | null
   onReminderChange: (minutes: number) => void
+  onSoundChanged: () => void
   lastSync: number | null
 }
 
 const OPTIONS = [5, 10, 15, 30, 60, 120]
 
-export function SettingsScreen({ reminder, onReminderChange, lastSync }: Props) {
+export function SettingsScreen({ reminder, onReminderChange, onSoundChanged, lastSync }: Props) {
   const [confirming, setConfirming] = useState(false)
   const [rebuilt, setRebuilt] = useState(false)
 
@@ -57,6 +59,18 @@ export function SettingsScreen({ reminder, onReminderChange, lastSync }: Props) 
           <p className="text-[11px] text-slate-500 mt-2">
             Aplica-se a novas reuniões e às que usam o padrão. É possível mudar por reunião na aba
             Reuniões.
+          </p>
+        </div>
+      </section>
+
+      {/* Som/volume/vibração padrão */}
+      <section>
+        <h2 className="text-sm font-semibold text-slate-300 mb-2">Som do alarme (padrão)</h2>
+        <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3">
+          <AlarmSoundPicker reminder={reminder} onChanged={onSoundChanged} />
+          <p className="text-[11px] text-slate-500 mt-3">
+            Vale para novas reuniões e para as que usam o padrão. Dá para personalizar o som de cada
+            reunião na aba Reuniões.
           </p>
         </div>
       </section>
@@ -123,7 +137,7 @@ export function SettingsScreen({ reminder, onReminderChange, lastSync }: Props) 
       <section className="rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3">
         <div className="flex items-center gap-2 text-slate-300 mb-1">
           <Info className="w-4 h-4 text-indigo-300" />
-          <span className="text-sm font-medium">Consecom Alex — app mobile</span>
+          <span className="text-sm font-medium">Vyntra — app mobile</span>
         </div>
         <div className="text-[11px] text-slate-500">
           v{version}

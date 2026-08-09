@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
   appId: 'com.consecom.mobile',
-  appName: 'Consecom Alex',
+  appName: 'Vyntra Mobile',
   webDir: 'dist',
   android: {
     allowMixedContent: false,

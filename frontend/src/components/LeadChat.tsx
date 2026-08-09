@@ -271,7 +271,7 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
             </button>
           </div>
           <div className="text-center text-[10px] text-slate-500 mt-1.5">
-            Enviando como <span className="text-slate-300">você</span> · via WhatsApp da Consecom
+            Enviando como <span className="text-slate-300">você</span> · via WhatsApp da Vyntra
           </div>
         </div>
       </div>

@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase'
 //
 // Fluxo de auto-login (#deep-link):
 //   1. Usuário (logado no painel) toca "Conectar neste aparelho".
-//   2. Geramos consecom://auth?access_token=...&refresh_token=...
+//   2. Geramos vyntra://auth?access_token=...&refresh_token=...
 //      usando a sessão ativa.
 //   3. O app (instalado) recebe o link, troca por sessão permanente
 //      e entra sem pedir senha.
@@ -27,7 +27,7 @@ export function MobileAppView() {
       return
     }
     const { access_token, refresh_token } = data.session
-    const url = `consecom://auth?access_token=${encodeURIComponent(
+    const url = `vyntra://auth?access_token=${encodeURIComponent(
       access_token,
     )}&refresh_token=${encodeURIComponent(refresh_token)}`
 
@@ -49,7 +49,7 @@ export function MobileAppView() {
             <Smartphone className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold">App mobile</h2>
+            <h2 className="text-lg font-semibold">Vyntra Mobile</h2>
             <p className="text-sm text-slate-400">
               Acompanhe reuniões, alarmes e alertas no celular.
             </p>

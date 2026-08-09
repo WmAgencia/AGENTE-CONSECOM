@@ -2,8 +2,10 @@ import { App } from '@capacitor/app'
 import { supabase } from './supabase'
 
 // Deep-link de auto-login: o site (já logado) abre
-//   consecom://auth?access_token=...&refresh_token=...&expires_in=...
+//   vyntra://auth?access_token=...&refresh_token=...
 // e o app troca isso por uma sessão permanente (via setSession), sem login.
+
+const AUTH_SCHEMES = ['vyntra://', 'consecom://']
 
 export function parseAuthUrl(url: string): {
   accessToken?: string
@@ -33,15 +35,16 @@ export async function applyAuthUrl(url: string): Promise<boolean> {
 
 export function registerDeepLinkHandler(onAuthed: () => void): () => void {
   let disposed = false
+  const isAuthUrl = (u: string) => AUTH_SCHEMES.some((s) => u.startsWith(s))
   void (async () => {
     const initial = await App.getLaunchUrl()
-    if (initial?.url && initial.url.startsWith('consecom://')) {
+    if (initial?.url && isAuthUrl(initial.url)) {
       if (await applyAuthUrl(initial.url)) onAuthed()
     }
   })()
 
   void App.addListener('appUrlOpen', ({ url }) => {
-    if (!url.startsWith('consecom://') || disposed) return
+    if (!isAuthUrl(url) || disposed) return
     void (async () => {
       if (await applyAuthUrl(url)) onAuthed()
     })()

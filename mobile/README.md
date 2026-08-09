@@ -1,21 +1,27 @@
-# Consecom Alex — App mobile (Android)
+# Vyntra Mobile — App Android
 
-App Android nativo (Capacitor) que acompanha a operação do painel: reuniões,
-alarmes locais, notificações de eventos e status da operação.
+App Android nativo (Capacitor) que acompanha a operação do painel Vyntra:
+reuniões, alarmes reais, notificações de eventos e status da operação.
 
 ## Como funciona
 
 - **Mesmo backend e banco** do painel web: Supabase (auth, RLS, REST, realtime).
   Nenhum serviço novo. Nada de push externo — as notificações de eventos usam o
   **Supabase Realtime** já habilitado na publicação `supabase_realtime`.
-- **Alarme de reunião** é **local** (AlarmManager nativo via
-  `@capacitor/local-notifications`): agenda com `setExactAndAllowWhileIdle`
-  (quando a permissão de alarme exato existe), cria canal dedicado de reuniões
-  e **restaura os alarmes após reboot** (receiver `BOOT_COMPLETED` do plugin).
-  Funciona com o app fechado e sem internet.
+- **Alarme de reunião** é **nativo** (`VyntraAlarmPlugin`, em
+  `android/app/src/main/java/com/consecom/mobile/`): agenda com
+  `AlarmManager.setExactAndAllowWhileIdle` (soa mesmo em modo Doze), cria canal
+  dedicado com **som, volume e vibração configuráveis por reunião**,
+  **restaura os alarmes após reboot** (`VyntraBootReceiver`, `BOOT_COMPLETED`)
+  e funciona com o app fechado e sem internet.
+  - **Sons nativos do aparelho** via `RingtoneManager` (tipos de alarme) +
+    **importação de som personalizado** (copiado para `filesDir/sounds`).
+  - **Permissão de alarme exato** (API 31+): o app detecta quando está negada e
+    oferece o botão para abrir as configurações e explicar o porquê.
 - **Auto-login via deep-link**: o usuário logado no painel toca em
-  "Conectar neste aparelho" → o site abre `consecom://auth?access_token=...&refresh_token=...`
-  → o app troca o link por sessão permanente e entra sem pedir senha.
+  "Conectar neste aparelho" → o site abre `vyntra://auth?access_token=...&refresh_token=...`
+  (o scheme `consecom://` antigo continua aceito por compatibilidade) → o app
+  troca o link por sessão permanente e entra sem pedir senha.
 - **Sync de reuniões → alarmes**: motor puro (`src/core/syncEngine.ts`) decide
   criar/alterar/cancelar/reagendar alarmes com ID determinístico por lead
   (não duplica). Roda ao abrir, ao voltar do background, em realtime e a cada
@@ -28,14 +34,22 @@ mobile/
   src/
     core/syncEngine.ts        motor de sincronização (puro, testável)
     lib/supabase.ts           client Supabase (sessão em Capacitor Preferences)
-    lib/deeplink.ts           auto-login via consecom://auth
+    lib/deeplink.ts           auto-login via vyntra://auth
     lib/types.ts              tipos + preferências locais (alarmes/notificações)
-    services/alarms.ts        Local Notifications (canais, permissões, sync)
+    services/alarms.ts        serviço de alarmes (nativo ou fallback)
     services/realtime.ts      Realtime -> notificações configuráveis
     services/data.ts          consultas REST do painel
+    native/vyntraAlarm.ts     bridge TS do módulo nativo VyntraAlarm
+    components/AlarmSoundPicker.tsx  som/volume/vibração + importar som
     screens/                  Hoje, Reuniões, Meus alarmes, Notificações, Ajustes, Connect
   tests/syncEngine.test.ts    Vitest (15 testes)
-  android/                    projeto nativo (gera o APK)
+  android/
+    app/src/main/java/com/consecom/mobile/
+      VyntraAlarmPlugin.java  bridge Capacitor (schedule/cancel/sons/permissão)
+      VyntraAlarmScheduler.java   AlarmManager exato + boot restore
+      VyntraAlarmReceiver.java    dispara a notificação de alarme
+      VyntraBootReceiver.java     restaura alarmes após reboot
+      VyntraAlarmStore.java       registro persistente dos alarmes
 ```
 
 ## Desenvolvimento
@@ -71,16 +85,16 @@ cd mobile/android
 1. Gere o keystore uma única vez e guarde em local seguro (fora do git):
 
 ```bash
-keytool -genkeypair -v -keystore consecom-release.keystore -alias consecom \
+keytool -genkeypair -v -keystore vyntra-release.keystore -alias vyntra \
   -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 2. Crie `mobile/android/keystore.properties` (nunca commitar):
 
 ```properties
-storeFile=..\\consecom-release.keystore
+storeFile=..\\vyntra-release.keystore
 storePassword=SUA_SENHA
-keyAlias=consecom
+keyAlias=vyntra
 keyPassword=SUA_SENHA
 ```
 
@@ -98,7 +112,7 @@ cd mobile/android
    (`versionCode`/`versionName`).
 2. `npm run build && npx cap sync android`
 3. `.\gradlew.bat assembleRelease` (ou debug para teste).
-4. Copie o APK para `frontend/public/apk/consecom-alex-<versão>.apk`.
+4. Copie o APK para `frontend/public/apk/vyntra-mobile-<versão>.apk`.
 5. Atualize `APK_URL` em `frontend/src/components/MobileAppView.tsx`.
 6. Commit + push (backend deploys automático na Railway; frontend via
    `vercel --prod --yes --project frontend`).

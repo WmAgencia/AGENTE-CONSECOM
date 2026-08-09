@@ -1,19 +1,23 @@
-import { CalendarClock, RefreshCw, AlarmClock } from 'lucide-react'
+import { useState } from 'react'
+import { CalendarClock, RefreshCw, AlarmClock, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Lead, ReminderPrefs } from '../lib/types'
 import { MEETING_STATUS } from '../core/syncEngine'
 import { formatReminder } from '../lib/format'
+import { AlarmSoundPicker } from '../components/AlarmSoundPicker'
 
 interface Props {
   leads: Lead[]
   reminder: ReminderPrefs | null
   onLeadReminderChange: (leadId: string, minutes: number) => void
   onClearLeadReminder: (leadId: string) => void
+  onSoundChanged: () => void
   onRefresh: () => void
 }
 
 const REMINDER_OPTIONS = [5, 10, 15, 30, 60, 120]
 
-export function MeetingsScreen({ leads, reminder, onLeadReminderChange, onClearLeadReminder, onRefresh }: Props) {
+export function MeetingsScreen({ leads, reminder, onLeadReminderChange, onClearLeadReminder, onSoundChanged, onRefresh }: Props) {
+  const [openSound, setOpenSound] = useState<string | null>(null)
   const meetings = leads
     .filter((l) => l.status === MEETING_STATUS && l.meeting_at)
     .sort((a, b) => (a.meeting_at! < b.meeting_at! ? -1 : 1))
@@ -90,6 +94,31 @@ export function MeetingsScreen({ leads, reminder, onLeadReminderChange, onClearL
                     </button>
                   )}
                 </div>
+
+                {/* Som/volume/vibração da reunião */}
+                <button
+                  onClick={() => setOpenSound(openSound === m.id ? null : m.id)}
+                  className="mt-2 w-full flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-xs text-slate-300 hover:bg-white/[0.06] transition"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <AlarmClock className="w-3.5 h-3.5 text-indigo-300" />
+                    Som, volume e vibração
+                  </span>
+                  {openSound === m.id ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                </button>
+                {openSound === m.id && (
+                  <div className="mt-2 rounded-lg border border-white/5 bg-black/20 p-3">
+                    <AlarmSoundPicker
+                      leadId={m.id}
+                      reminder={reminder}
+                      onChanged={onSoundChanged}
+                    />
+                  </div>
+                )}
               </div>
             )
           })}

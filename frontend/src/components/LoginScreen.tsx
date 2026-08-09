@@ -23,7 +23,7 @@ export function LoginScreen() {
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center text-2xl font-bold mx-auto mb-4">
             C
           </div>
-          <h1 className="text-xl font-semibold">Consecom</h1>
+          <h1 className="text-xl font-semibold">Vyntra</h1>
           <p className="text-sm text-slate-400">Entre no painel de prospecção</p>
         </div>
 

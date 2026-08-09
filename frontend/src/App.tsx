@@ -145,10 +145,12 @@ export default function App() {
           <Menu className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center text-xs font-bold">
-            C
-          </div>
-          <div className="font-semibold text-sm leading-none">Consecom</div>
+          <img
+            src="/vyntra-logo.png"
+            alt="Vyntra"
+            className="w-7 h-7 rounded-lg object-contain bg-white"
+          />
+          <div className="font-semibold text-sm leading-none">Vyntra</div>
         </div>
       </div>
 
@@ -167,11 +169,13 @@ export default function App() {
       >
         <div className="px-5 py-5 border-b border-white/5">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center text-sm font-bold">
-              C
-            </div>
+            <img
+              src="/vyntra-logo.png"
+              alt="Vyntra"
+              className="w-8 h-8 rounded-lg object-contain bg-white"
+            />
             <div>
-              <div className="font-semibold leading-none">Consecom</div>
+              <div className="font-semibold leading-none">Vyntra</div>
               <div className="text-[11px] text-slate-500 mt-1">Alex · Prospecção</div>
             </div>
           </div>

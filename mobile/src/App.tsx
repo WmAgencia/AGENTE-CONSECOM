@@ -151,6 +151,13 @@ export default function App() {
     if (dataRef.current) await syncAlarms(dataRef.current.leads)
   }, [])
 
+  // Som/volume/vibração mudou (padrão ou por reunião) -> reaplica o plano
+  const handleSoundChanged = useCallback(async () => {
+    const p = await loadReminderPrefs()
+    setReminder(p)
+    if (dataRef.current) await syncAlarms(dataRef.current.leads)
+  }, [])
+
   if (auth === 'loading') {
     return (
       <div className="h-full flex items-center justify-center">
@@ -182,6 +189,7 @@ export default function App() {
             reminder={reminder}
             onLeadReminderChange={handleLeadReminderChange}
             onClearLeadReminder={handleClearLeadReminder}
+            onSoundChanged={() => void handleSoundChanged()}
             onRefresh={() => void runSync()}
           />
         )}
@@ -201,6 +209,7 @@ export default function App() {
           <SettingsScreen
             reminder={reminder}
             onReminderChange={handleReminderChange}
+            onSoundChanged={() => void handleSoundChanged()}
             lastSync={lastSync}
           />
         )}

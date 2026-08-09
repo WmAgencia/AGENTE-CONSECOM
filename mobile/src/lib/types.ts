@@ -93,6 +93,12 @@ export interface ReminderPrefs {
   defaultMinutes: number
   // antecedência por lead (override), chave = lead id
   perLead: Record<string, number>
+  // som/volume/vibração por lead (override), chave = lead id
+  perLeadSound?: Record<string, { soundUri: string | null; volume: number; vibrate: boolean }>
+  // configurações padrão (fallback)
+  defaultSoundUri?: string | null
+  defaultVolume?: number
+  defaultVibrate?: boolean
 }
 
 export interface NotifPrefs {
@@ -122,6 +128,10 @@ export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
 export const DEFAULT_REMINDER_PREFS: ReminderPrefs = {
   defaultMinutes: 30,
   perLead: {},
+  perLeadSound: {},
+  defaultSoundUri: null,
+  defaultVolume: 80,
+  defaultVibrate: true,
 }
 
 const NOTIF_LABELS: Record<keyof NotifPrefs, string> = {
@@ -148,6 +158,10 @@ export async function loadReminderPrefs(): Promise<ReminderPrefs> {
     return {
       defaultMinutes: parsed.defaultMinutes ?? DEFAULT_REMINDER_PREFS.defaultMinutes,
       perLead: parsed.perLead ?? {},
+      perLeadSound: parsed.perLeadSound ?? {},
+      defaultSoundUri: parsed.defaultSoundUri ?? null,
+      defaultVolume: parsed.defaultVolume ?? DEFAULT_REMINDER_PREFS.defaultVolume,
+      defaultVibrate: parsed.defaultVibrate ?? DEFAULT_REMINDER_PREFS.defaultVibrate,
     }
   } catch {
     return { ...DEFAULT_REMINDER_PREFS }
