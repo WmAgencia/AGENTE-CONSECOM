@@ -16,6 +16,13 @@ import type { Lead, ReminderPrefs } from '../lib/types'
 export const MEETING_STATUS = 'reuniao_marcada'
 export const CANCELED_STATUS = 'reuniao_cancelada'
 
+/**
+ * Faixa de IDs reservada para eventos pontuais (não-reunião) disparados
+ * pelo módulo nativo. O motor de sync de reuniões ignora esses IDs no loop
+ * de "leads sumiram" — senão cancelaria os alarmes efêmeros de evento.
+ */
+export const EVENT_ALARM_ID_BASE = 2_000_000_000
+
 /** ID de alarme determinístico derivado do lead (evita duplicação). */
 export function alarmIdFor(leadId: string): number {
   let h = 2166136261
@@ -159,6 +166,8 @@ export function computeAlarmPlan(input: SyncInput): SyncResult {
 
   // Leads que sumiram da listagem e tinham alarme -> cancela
   for (const [alarmId] of input.scheduled) {
+    // Ignora IDs da faixa de eventos pontuais (não pertencem a leads)
+    if (alarmId >= EVENT_ALARM_ID_BASE) continue
     const owner = [...input.leads].find((l) => alarmIdFor(l.id) === alarmId)
     if (!owner || !seenLeads.has(owner.id)) {
       toCancel.push(alarmId)

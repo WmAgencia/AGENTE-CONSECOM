@@ -5,6 +5,7 @@ import type { ReminderPrefs } from '../lib/types'
 import { formatReminder } from '../lib/format'
 import { syncAlarms } from '../services/alarms'
 import { AlarmSoundPicker } from '../components/AlarmSoundPicker'
+import { VoiceSettings } from '../components/VoiceSettings'
 
 interface Props {
   reminder: ReminderPrefs | null
@@ -73,6 +74,12 @@ export function SettingsScreen({ reminder, onReminderChange, onSoundChanged, las
             reunião na aba Reuniões.
           </p>
         </div>
+      </section>
+
+      {/* Notificações de voz */}
+      <section>
+        <h2 className="text-sm font-semibold text-slate-300 mb-2">Notificações de voz</h2>
+        <VoiceSettings />
       </section>
 
       {/* Reconstruir alarmes */}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone, Puzzle } from 'lucide-react'
+import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone, Puzzle, BellRing } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
 import { KanbanBoard } from './components/KanbanBoard'
@@ -10,8 +10,10 @@ import { AgentConfig } from './components/AgentConfig'
 import { ConnectionsPage } from './components/ConnectionsPage'
 import { MobileAppView } from './components/MobileAppView'
 import { ExtensionView } from './components/ExtensionView'
+import { VoiceSettings } from './components/VoiceSettings'
+import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
 
-type Tab = 'dashboard' | 'kanban' | 'campanhas' | 'leads' | 'conexoes' | 'agente' | 'extensao' | 'app-mobile'
+type Tab = 'dashboard' | 'kanban' | 'campanhas' | 'leads' | 'conexoes' | 'agente' | 'voz' | 'extensao' | 'app-mobile'
 
 const NAV_ITEMS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -20,6 +22,7 @@ const NAV_ITEMS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: 'leads', label: 'Leads', icon: Users },
   { key: 'conexoes', label: 'Conexões', icon: Plug },
   { key: 'agente', label: 'Config. do Agente', icon: Settings },
+  { key: 'voz', label: 'Voz', icon: BellRing },
   { key: 'extensao', label: 'Extensão', icon: Puzzle },
   { key: 'app-mobile', label: 'App mobile', icon: Smartphone },
 ]
@@ -80,6 +83,16 @@ export default function App() {
       supabase.removeChannel(ch)
     }
   }, [session])
+
+  useEffect(() => {
+    if (!session) return
+    const stop = subscribeVoiceNotifications()
+    return stop
+  }, [session])
+
+  useEffect(() => {
+    scheduleMeetingReminders(leads)
+  }, [leads])
 
   async function markMeeting(id: string, meeting_at: string, notes: string) {
     const { error } = await supabase.rpc('consecom_marcar_reuniao', {
@@ -240,6 +253,7 @@ export default function App() {
         {tab === 'campanhas' && <CampaignsView leads={leads} />}
         {tab === 'dashboard' && <DashboardView leads={leads} />}
         {tab === 'agente' && <AgentConfig />}
+        {tab === 'voz' && <VoiceSettings />}
         {tab === 'conexoes' && <ConnectionsPage />}
         {tab === 'extensao' && <ExtensionView />}
         {tab === 'app-mobile' && <MobileAppView />}

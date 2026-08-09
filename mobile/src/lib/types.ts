@@ -111,6 +111,21 @@ export interface NotifPrefs {
   campanha_erro: boolean
   whatsapp_desconectado: boolean
   alex_evento: boolean
+  // Narrações de voz (ElevenLabs) — toggle por notificação
+  voz_reuniao_30min: boolean
+  voz_reuniao_15min: boolean
+  voz_reuniao_10min: boolean
+  voz_reuniao_5min: boolean
+  voz_reuniao_1min: boolean
+  voz_reuniao_marcada: boolean
+  voz_reuniao_cancelada: boolean
+  voz_reuniao_reagendada: boolean
+  voz_campanha_iniciada: boolean
+  voz_campanha_concluida: boolean
+  voz_campanha_atencao: boolean
+  voz_lead_atencao: boolean
+  voz_whatsapp_desconectado: boolean
+  voz_resumo_diario: boolean
 }
 
 export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
@@ -123,6 +138,21 @@ export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
   campanha_erro: true,
   whatsapp_desconectado: true,
   alex_evento: true,
+  // Narrações de voz — padrão: ativadas
+  voz_reuniao_30min: true,
+  voz_reuniao_15min: true,
+  voz_reuniao_10min: true,
+  voz_reuniao_5min: true,
+  voz_reuniao_1min: true,
+  voz_reuniao_marcada: true,
+  voz_reuniao_cancelada: true,
+  voz_reuniao_reagendada: true,
+  voz_campanha_iniciada: true,
+  voz_campanha_concluida: true,
+  voz_campanha_atencao: true,
+  voz_lead_atencao: true,
+  voz_whatsapp_desconectado: true,
+  voz_resumo_diario: true,
 }
 
 export const DEFAULT_REMINDER_PREFS: ReminderPrefs = {
@@ -144,6 +174,20 @@ const NOTIF_LABELS: Record<keyof NotifPrefs, string> = {
   campanha_erro: 'Campanha com erro',
   whatsapp_desconectado: 'WhatsApp desconectado',
   alex_evento: 'Eventos do Alex',
+  voz_reuniao_30min: 'Reunião em 30 min',
+  voz_reuniao_15min: 'Reunião em 15 min',
+  voz_reuniao_10min: 'Reunião em 10 min',
+  voz_reuniao_5min: 'Reunião em 5 min',
+  voz_reuniao_1min: 'Reunião em 1 min',
+  voz_reuniao_marcada: 'Nova reunião agendada',
+  voz_reuniao_cancelada: 'Reunião cancelada',
+  voz_reuniao_reagendada: 'Reunião reagendada',
+  voz_campanha_iniciada: 'Campanha iniciada',
+  voz_campanha_concluida: 'Campanha concluída',
+  voz_campanha_atencao: 'Campanha precisa de atenção',
+  voz_lead_atencao: 'Lead precisa de atenção',
+  voz_whatsapp_desconectado: 'WhatsApp desconectado',
+  voz_resumo_diario: 'Resumo diário',
 }
 
 export function notifPrefLabel(key: keyof NotifPrefs): string {

@@ -1,6 +1,7 @@
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { loadNotifPrefs, type NotifPrefs } from '../lib/types'
+import { EVENT_ALARM_ID_BASE } from '../core/syncEngine'
 import { notifyEvent } from './alarms'
 
 // =====================================================================
@@ -12,7 +13,9 @@ import { notifyEvent } from './alarms'
 
 type Row = Record<string, unknown>
 let idSeq = 1
-const nextId = () => 10_000 + idSeq++
+// IDs de eventos na faixa reservada (> EVENT_ALARM_ID_BASE) para que o
+// motor de sync de reuniões nunca os cancele como "órfãos".
+const nextId = () => EVENT_ALARM_ID_BASE + idSeq++
 
 const has = (o: Row, k: string) => o[k] != null
 
@@ -94,6 +97,7 @@ async function handleLeadUpdate(
         'Reunião marcada',
         `Nova reunião: ${String(next.name ?? 'sem nome')}`,
         nextId(),
+        'reuniao_marcada',
       )
     }
   } else if (status === 'reuniao_cancelada') {
@@ -102,6 +106,7 @@ async function handleLeadUpdate(
         'Reunião cancelada',
         `${String(next.name ?? 'Lead')} cancelou a reunião.`,
         nextId(),
+        'reuniao_cancelada',
       )
     }
   } else if (
@@ -112,7 +117,12 @@ async function handleLeadUpdate(
     old.meeting_at !== next.meeting_at
   ) {
     if (await enabled(prefs, 'reuniao_reagendada')) {
-      await notifyEvent('Reunião reagendada', `${String(next.name ?? 'Lead')} mudou o horário.`, nextId())
+      await notifyEvent(
+        'Reunião reagendada',
+        `${String(next.name ?? 'Lead')} mudou o horário.`,
+        nextId(),
+        'reuniao_reagendada',
+      )
     }
   }
 }
@@ -128,6 +138,7 @@ async function handleLeadReply(
       'Lead respondeu',
       `${String(row.content ?? 'Nova mensagem do lead').slice(0, 90)}`,
       nextId(),
+      'lead_atencao',
     )
   }
 }
@@ -146,11 +157,11 @@ async function handleCampaign(
 
   if (status === 'em_progresso' && prev !== 'em_progresso') {
     if (await enabled(prefs, 'campanha_iniciada')) {
-      await notifyEvent('Campanha iniciada', `${name} começou a rodar.`, nextId())
+      await notifyEvent('Campanha iniciada', `${name} começou a rodar.`, nextId(), 'campanha_iniciada')
     }
   } else if (status === 'finalizada' && prev !== 'finalizada') {
     if (await enabled(prefs, 'campanha_concluida')) {
-      await notifyEvent('Campanha concluída', `${name} terminou.`, nextId())
+      await notifyEvent('Campanha concluída', `${name} terminou.`, nextId(), 'campanha_concluida')
     }
   } else if (status === 'cancelada') {
     if (await enabled(prefs, 'campanha_erro')) {
@@ -175,6 +186,7 @@ async function handleConnection(
         'WhatsApp desconectado',
         `Instância ${String(next.instance_name ?? '')} caiu. Reconecte no painel.`,
         nextId(),
+        'whatsapp_desconectado',
       )
     }
   }

@@ -58,9 +58,18 @@ public class VyntraAlarmReceiver extends BroadcastReceiver {
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
 
+        Uri sound = soundUri != null && !soundUri.isEmpty()
+                ? Uri.parse(soundUri)
+                : RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+
+        // Canal por som distinto: o Android ignora createNotificationChannel
+        // para um canal já existente (o som ficaria travado no primeiro),
+        // então cada narração/URI de som tem seu próprio canal.
+        String channelId = sound != null ? channelForSound(sound) : CHANNEL_ALARM;
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ALARM, "Alarme de reunião",
+                    channelId, "Alarme de reunião",
                     NotificationManager.IMPORTANCE_HIGH);
             channel.setDescription("Toque para reuniões agendadas (soa mesmo em modo silencioso)");
             channel.enableVibration(vibrate);
@@ -68,9 +77,6 @@ public class VyntraAlarmReceiver extends BroadcastReceiver {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 channel.setAllowBubbles(false);
             }
-            Uri sound = soundUri != null && !soundUri.isEmpty()
-                    ? Uri.parse(soundUri)
-                    : RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
             if (sound != null) {
                 channel.setSound(sound, new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ALARM)
@@ -91,7 +97,7 @@ public class VyntraAlarmReceiver extends BroadcastReceiver {
 
         Notification.Builder builder;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder = new Notification.Builder(context, CHANNEL_ALARM);
+            builder = new Notification.Builder(context, channelId);
         } else {
             builder = new Notification.Builder(context);
             builder.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
@@ -113,5 +119,19 @@ public class VyntraAlarmReceiver extends BroadcastReceiver {
         }
 
         nm.notify(id, builder.build());
+    }
+
+    /**
+     * Canal estável e único por URI de som: `vyntra_sound_<hash>`.
+     * Assim cada narração/URI tem canal próprio e o som não fica travado
+     * no primeiro áudio que criou o canal padrão.
+     */
+    private static String channelForSound(Uri sound) {
+        String s = sound.toString();
+        int h = 0;
+        for (int i = 0; i < s.length(); i++) {
+            h = (h * 31 + s.charAt(i)) % 1_000_000;
+        }
+        return "vyntra_sound_" + Math.abs(h);
     }
 }

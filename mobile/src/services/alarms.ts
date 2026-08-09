@@ -2,10 +2,14 @@ import { LocalNotifications, type ScheduleOptions } from '@capacitor/local-notif
 import {
   loadReminderPrefs,
   saveReminderPrefs,
+  loadNotifPrefs,
   type Lead,
+  type NotifPrefs,
   type ReminderPrefs,
 } from '../lib/types'
 import { computeAlarmPlan, alarmIdFor } from '../core/syncEngine'
+import { reminderFor } from '../core/syncEngine'
+import { VOICE_MAP } from '../lib/voiceEvents'
 import VyntraAlarm, {
   isNativeAlarmAvailable,
   type ScheduleAlarmOptions,
@@ -16,12 +20,22 @@ import VyntraAlarm, {
 // Serviço de alarmes.
 //   - No Android nativo: usa o módulo VyntraAlarm (AlarmManager exato,
 //     soa em Doze, restaura após reboot, som/volume/vibração por reunião).
+//     O som de alarme é a narração de voz (ElevenLabs) que bate com a
+//     antecedência configurada (ex.: 5 min → "reunião em 5 minutos").
 //   - Fallback (browser/dev): Local Notifications.
 //   - `syncAlarms()` aplica o plano do motor de sync (criar/alterar/cancelar).
 // =====================================================================
 
 const CHANNEL_MEETINGS = 'consecom-meetings'
 const CHANNEL_EVENTS = 'consecom-events'
+
+/** URI nativa (android.resource://) para o arquivo raw/<name>.mp3 */
+function nativeVoiceUri(key: string): string | null {
+  const file = VOICE_MAP[key]?.file
+  if (!file) return null
+  const name = file.replace(/\.mp3$/i, '')
+  return `android.resource://com.consecom.mobile/raw/${name}`
+}
 
 // ---------------------------------------------------------------------
 // Canais (fallback Local Notifications — no nativo o canal é do plugin)
@@ -87,6 +101,7 @@ async function currentScheduledMap(): Promise<Map<number, string>> {
 
 export async function syncAlarms(leads: Lead[], now?: number) {
   const reminder = await loadReminderPrefs()
+  const notifPrefs = await loadNotifPrefs()
   const scheduled = await currentScheduledMap()
 
   const plan = computeAlarmPlan({ leads, scheduled, reminder, now })
@@ -112,7 +127,7 @@ export async function syncAlarms(leads: Lead[], now?: number) {
         fireAt: a.fireAt,
         title: a.title,
         body: a.body,
-        soundUri: alarmSoundFor(reminder, a.leadId),
+        soundUri: voiceUriForLead(reminder, notifPrefs, a.leadId) ?? alarmSoundFor(reminder, a.leadId),
         volume: alarmVolumeFor(reminder, a.leadId),
         vibrate: alarmVibrateFor(reminder, a.leadId),
       }))
@@ -158,6 +173,27 @@ function alarmVolumeFor(prefs: ReminderPrefs, leadId: string): number {
 
 function alarmVibrateFor(prefs: ReminderPrefs, leadId: string): boolean {
   return prefs.perLeadSound?.[leadId]?.vibrate ?? prefs.defaultVibrate ?? DEFAULT_SOUND.vibrate
+}
+
+// Narração de voz conforme a antecedência da reunião (se ativada no NotifPrefs).
+const REMINDER_VOICE_MAP: Record<number, string> = {
+  30: 'voz_reuniao_30min',
+  15: 'voz_reuniao_15min',
+  10: 'voz_reuniao_10min',
+  5: 'voz_reuniao_5min',
+  1: 'voz_reuniao_1min',
+}
+
+function voiceUriForLead(
+  reminder: ReminderPrefs,
+  notifPrefs: NotifPrefs,
+  leadId: string,
+): string | null {
+  const minutes = reminderFor(reminder, leadId)
+  const voiceKey = REMINDER_VOICE_MAP[minutes]
+  if (!voiceKey) return null
+  if (!notifPrefs[voiceKey as keyof NotifPrefs]) return null
+  return nativeVoiceUri(voiceKey)
 }
 
 export function getMeetingSoundPrefs(prefs: ReminderPrefs, leadId: string): MeetingSoundPrefs {
@@ -216,14 +252,34 @@ export async function requestExactAlarmPermission(): Promise<void> {
   await VyntraAlarm.requestExactAlarmPermission()
 }
 
-/** Agenda imediatamente uma notificação pontual (evento realtime). */
+/**
+ * Agenda imediatamente uma notificação pontual (evento realtime).
+ * Se `voiceKey` for informado e estiver ativado, a narração correspondente
+ * soa como som da notificação.
+ */
 export async function notifyEvent(
   title: string,
   body: string,
   id: number,
+  voiceKey?: string,
 ): Promise<void> {
-  if (isNativeAlarmAvailable()) {
-    // Eventos continuam no canal de notificações (não é alarme de reunião).
+  if (voiceKey && isNativeAlarmAvailable()) {
+    const prefs = await loadNotifPrefs()
+    const key = `voz_${voiceKey}` as keyof NotifPrefs
+    if (prefs[key]) {
+      const soundUri = nativeVoiceUri(key)
+      if (soundUri) {
+        // Usa o alarme nativo com disparo imediato: o receiver toca a narração.
+        await VyntraAlarm.schedule({
+          id,
+          fireAt: new Date(Date.now() + 1500).toISOString(),
+          title,
+          body,
+          soundUri,
+        })
+        return
+      }
+    }
   }
   await LocalNotifications.schedule({
     notifications: [
