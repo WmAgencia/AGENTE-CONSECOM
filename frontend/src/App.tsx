@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu } from 'lucide-react'
+import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
 import { KanbanBoard } from './components/KanbanBoard'
@@ -8,8 +8,9 @@ import { LeadsView } from './components/LeadsView'
 import { DashboardView } from './components/DashboardView'
 import { AgentConfig } from './components/AgentConfig'
 import { ConnectionsPage } from './components/ConnectionsPage'
+import { MobileAppView } from './components/MobileAppView'
 
-type Tab = 'dashboard' | 'kanban' | 'campanhas' | 'leads' | 'conexoes' | 'agente'
+type Tab = 'dashboard' | 'kanban' | 'campanhas' | 'leads' | 'conexoes' | 'agente' | 'app-mobile'
 
 const NAV_ITEMS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -18,6 +19,7 @@ const NAV_ITEMS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: 'leads', label: 'Leads', icon: Users },
   { key: 'conexoes', label: 'Conexões', icon: Plug },
   { key: 'agente', label: 'Config. do Agente', icon: Settings },
+  { key: 'app-mobile', label: 'App mobile', icon: Smartphone },
 ]
 
 const APP_VERSION = '2.0.0'
@@ -233,6 +235,7 @@ export default function App() {
         {tab === 'dashboard' && <DashboardView leads={leads} />}
         {tab === 'agente' && <AgentConfig />}
         {tab === 'conexoes' && <ConnectionsPage />}
+        {tab === 'app-mobile' && <MobileAppView />}
       </main>
     </div>
   )
