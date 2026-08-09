@@ -78,6 +78,25 @@ export class MapsScanner {
     })
 
     this.subscribeRealtime()
+
+    // Estado inicial: nada aberto → mostra o launcher flutuante (botão "V")
+    // sobre o Maps, garantindo que o usuário sempre tenha como abrir a sidebar.
+    this.ensureLauncher()
+  }
+
+  /** Garante que o launcher (botão "V") flutuante esteja visível quando a sidebar estiver fechada. */
+  private ensureLauncher(): void {
+    if (this.balloon && this.balloon.classList.contains('open')) return
+    // Se a sidebar estiver aberta, nada a fazer. Se minimizada, o floatBtn já existe.
+    if (this.floatBtn && document.body.contains(this.floatBtn)) return
+    if (!this.floatBtn || !document.body.contains(this.floatBtn)) {
+      this.floatBtn = this.buildFloatBtn()
+      document.body.appendChild(this.floatBtn)
+    }
+    const pos = this.readPosition()
+    this.floatBtn.style.right = `${pos.right}px`
+    this.floatBtn.style.top = `${pos.top}px`
+    requestAnimationFrame(() => this.floatBtn?.classList.add('open'))
   }
 
   /** Assina mudanças na tabela leads p/ atualizar badges (usado/sem interesse) ao vivo. */
@@ -1276,18 +1295,19 @@ export class MapsScanner {
   }
 
   private toggleBalloon(open?: boolean): void {
-    // Se minimizado (botão flutuante ativo), restaura ao invés de toggle
-    if (this.floatBtn) {
+    // Se minimizado (botão flutuante ativo) e pedido para ABRIR → restaura
+    if (open && this.floatBtn) {
       this.restoreBalloon()
       return
     }
     const shouldOpen = open ?? !this.balloon?.classList.contains('open')
     if (!this.balloon || !document.body.contains(this.balloon)) {
-      this.ensureBalloon()
+      if (shouldOpen) this.ensureBalloon()
       return
     }
     this.balloon.classList.toggle('open', shouldOpen)
     if (shouldOpen) this.renderBalloonList()
+    else this.ensureLauncher()
   }
 
   /** Reposiciona o painel dentro da viewport caso a posição salva esteja inválida. */
