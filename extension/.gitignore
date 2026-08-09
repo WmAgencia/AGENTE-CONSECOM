@@ -4,4 +4,5 @@ dist/
 # Build artifacts (zip bundles / unpacked builds)
 consecom-extension-*.zip
 consecom-extension-*/
+vyntra-prospector.zip
 

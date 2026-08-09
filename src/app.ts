@@ -22,6 +22,7 @@ import { registerEvolutionRoutes } from './routes/evolution.js';
 import { registerConnectionsRoutes } from './routes/connections.js';
 import { registerLeadsRoutes } from './routes/leads.js';
 import { registerUiRoutes } from './routes/ui.js';
+import { registerExtensionRoutes } from './routes/extension.js';
 import { buildDefaultRegistry } from './tools/index.js';
 import { ensureSchema, isDbEnabled } from './services/db.js';
 
@@ -191,6 +192,7 @@ export function buildApp(): BuiltApp {
   registerConnectionsRoutes(app);
   registerLeadsRoutes(app);
   registerUiRoutes(app);
+  registerExtensionRoutes(app);
 
   return { app };
 }

@@ -171,6 +171,17 @@ const envSchema = z.object({
         .filter(Boolean),
     ),
 
+  // === Extensão Vyntra Prospector (download do build) ===
+
+  // Bucket do Supabase Storage que armazena o .zip público da extensão.
+  EXTENSION_BUCKET: z.string().optional().default('consecom-media'),
+
+  // Caminho do objeto (.zip) dentro do bucket.
+  EXTENSION_OBJECT_PATH: z
+    .string()
+    .optional()
+    .default('extensions/vyntra-prospector.zip'),
+
   // === Scheduling / availability (site agenda) ===
 
   // Endpoint on the site that returns already-booked appointments so the agent
