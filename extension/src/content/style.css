@@ -11,74 +11,124 @@
   --vy-gradient: linear-gradient(135deg, #8b5cf6, #a855f7);
 }
 
-/* ===== Bolha flutuante Vyntra (arrastável) ===== */
-.consecom-bubble {
+/* ===== Botão flutuante Vyntra (quando painel minimizado) ===== */
+.consecom-floatbtn {
   position: fixed;
   z-index: 2147483647;
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
   background: var(--vy-gradient);
   color: #fff;
   cursor: grab;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 28px rgba(139, 92, 246, 0.5);
+  box-shadow: 0 12px 32px rgba(139, 92, 246, 0.45);
   user-select: none;
   touch-action: none;
   font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
-}
-.consecom-bubble:active { cursor: grabbing; }
-.consecom-bubble__icon {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 800;
   line-height: 1;
-  font-style: italic;
+  border: none;
+  transition: transform 0.12s, filter 0.15s;
+  padding: 0;
 }
-.consecom-bubble__count {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #ef4444;
-  border: 2px solid #fff;
-  font-size: 11px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-}
+.consecom-floatbtn:active { cursor: grabbing; }
+.consecom-floatbtn:hover { filter: brightness(1.1); transform: translateY(-1px); }
 
-/* ===== Painel lateral Vyntra (sidebar fixa à esquerda) ===== */
+/* ===== Painel flutuante Vyntra (compacto, arrastável) ===== */
 .consecom-balloon {
   position: fixed;
-  z-index: 2147483646;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 380px;
-  max-width: 94vw;
-  max-height: 100vh;
+  z-index: 2147483647;
+  top: 20px;
+  right: 20px;
+  width: min(370px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  min-height: 60px;
   background: var(--vy-panel);
-  border-left: 1px solid var(--vy-border);
+  border: 1px solid var(--vy-border);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(139, 92, 246, 0.45);
   display: flex;
   flex-direction: column;
   opacity: 0;
-  transform: translateX(110%);
+  transform: translateX(calc(110% + 20px)) scale(0.96);
   pointer-events: none;
-  transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s ease;
+  transition: transform 0.18s ease, opacity 0.16s ease;
   font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
-  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
 }
 .consecom-balloon.open {
   opacity: 1;
-  transform: translateX(0);
+  transform: translateX(0) scale(1);
   pointer-events: auto;
+}
+
+/* Header arrastável (grip + titulo + controles) */
+.cs-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--vy-border);
+  cursor: grab;
+  flex-shrink: 0;
+}
+.cs-panel__header:active { cursor: grabbing; }
+.cs-panel__grip {
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px 4px;
+  color: var(--vy-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+.cs-panel__grip:active { cursor: grabbing; }
+
+.cs-panel__logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--vy-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 16px;
+  font-style: italic;
+  color: #fff;
+  flex: 0 0 auto;
+}
+.cs-panel__titles { flex: 1; min-width: 0; }
+.cs-panel__name { font-size: 14px; font-weight: 800; color: var(--vy-text); letter-spacing: -0.01em; }
+.cs-panel__tag { font-size: 10px; color: var(--vy-muted); margin-top: 1px; }
+
+/* Controles do header (minimizar / fechar) */
+.cs-panel__controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.cs-panel__btn {
+  width: 26px; height: 26px; border-radius: 8px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--vy-border);
+  color: var(--vy-muted); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 12px; transition: all 0.12s;
+}
+.cs-panel__btn:hover { background: rgba(255,255,255,0.08); color: var(--vy-text); border-color: var(--vy-accent); }
+.cs-panel__btn svg { width: 13px; height: 13px; fill: currentColor; }
+
+/* Body com scroll interno */
+.cs-panel__body { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
+.cs-panel__body::-webkit-scrollbar { width: 6px; }
+.cs-panel__body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
+
+/* Rodapé fixo */
+.cs-panel__footer {
+  border-top: 1px solid var(--vy-border);
+  padding: 8px 12px;
+  flex-shrink: 0;
 }
 
 .cs-panel__header {

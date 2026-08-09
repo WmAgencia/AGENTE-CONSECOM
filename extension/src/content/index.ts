@@ -35,13 +35,14 @@ export class MapsScanner {
 
   private bubble: HTMLElement | null = null
   private balloon: HTMLElement | null = null
-  private bCount: HTMLElement | null = null
+  private floatBtn: HTMLElement | null = null
+  private headerEl: HTMLElement | null = null
   private listEl: HTMLElement | null = null
   private locEl: HTMLElement | null = null
 
   private lastQuery = ''
   private dragging = false
-  private suppressClick = false
+  private minimized = false
 
   // === Prospecção automática (Vyntra Prospector) ===
   private filters: ProspectFilters = { ...DEFAULT_FILTERS }
@@ -55,14 +56,14 @@ export class MapsScanner {
   async init(): Promise<void> {
     this.cfg = await getStoredConfig()
     injectStyles()
-    this.ensureBubble()
     this.observeDom()
     this.scan('force')
 
     window.addEventListener('click', (e) => {
       if (!this.balloon?.classList.contains('open')) return
       if (this.balloon.contains(e.target as Node)) return
-      if (this.bubble?.contains(e.target as Node)) return
+      if (this.floatBtn?.contains(e.target as Node)) return
+      // clique fora do painel (e do botão minimizado) → fecha
       this.toggleBalloon(false)
     })
 
@@ -70,6 +71,11 @@ export class MapsScanner {
       if (msg?.type === 'consecom:open' || msg?.type === 'consecom:ping') {
         this.toggleBalloon(true)
       }
+    })
+
+    // reajusta posição/size quando a viewport mudar
+    window.addEventListener('resize', () => {
+      if (this.balloon?.classList.contains('open')) this.positionBalloon()
     })
 
     this.subscribeRealtime()
@@ -278,66 +284,122 @@ export class MapsScanner {
 
   // --- bolha flutuante (arrastável) + painel vertical ---
 
-  private buildBubble(): HTMLElement {
-    const bubble = document.createElement('div')
-    bubble.className = 'consecom-bubble'
-    bubble.title = 'Vyntra Prospector'
-
-    const icon = document.createElement('span')
-    icon.className = 'consecom-bubble__icon'
-    icon.textContent = 'V'
-
-    const count = document.createElement('span')
-    count.className = 'consecom-bubble__count'
-    count.textContent = '0'
-    this.bCount = count
-
-    bubble.append(icon, count)
-    this.bubble = bubble
-
-    bubble.addEventListener('click', () => {
-      if (this.suppressClick) {
-        this.suppressClick = false
-        return
-      }
-      this.toggleBalloon()
-    })
-    this.enableDrag(bubble)
-
-    bubble.style.right = localStorage.getItem('consecom-bubble-x') || '20px'
-    bubble.style.top = localStorage.getItem('consecom-bubble-top') || '16px'
-    return bubble
+  private ensureBalloon(): void {
+    if (this.balloon && document.body.contains(this.balloon)) {
+      const pos = this.readPosition()
+      this.balloon.style.right = `${pos.right}px`
+      this.balloon.style.top = `${pos.top}px`
+      requestAnimationFrame(() => this.balloon?.classList.add('open'))
+      return
+    }
+    this.balloon = this.buildBalloon()
+    const pos = this.readPosition()
+    this.balloon.style.right = `${pos.right}px`
+    this.balloon.style.top = `${pos.top}px`
+    document.body.appendChild(this.balloon)
+    this.positionBalloon()
+    // animação de abertura suave (fade + slide)
+    requestAnimationFrame(() => this.balloon?.classList.add('open'))
   }
 
-  private ensureBubble(): void {
-    if (this.bubble && document.body.contains(this.bubble)) return
-    const b = this.buildBubble()
-    document.body.appendChild(b)
+  /** Minimiza o painel para um botão flutuante no mesmo canto. */
+  private minimizeBalloon(): void {
+    if (!this.balloon || !this.headerEl) return
+    this.balloon.classList.remove('open')
+    this.balloon.style.display = 'none'
+    this.balloon.dataset.minimized = 'true'
+    if (!this.floatBtn || !document.body.contains(this.floatBtn)) {
+      this.floatBtn = this.buildFloatBtn()
+      document.body.appendChild(this.floatBtn)
+    }
+    const pos = this.readPosition()
+    this.floatBtn.style.right = `${pos.right}px`
+    this.floatBtn.style.top = `${pos.top}px`
+    requestAnimationFrame(() => this.floatBtn?.classList.add('open'))
   }
 
+  private buildFloatBtn(): HTMLElement {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'consecom-floatbtn'
+    btn.title = 'Abrir Vyntra'
+    btn.textContent = 'V'
+    btn.addEventListener('click', () => this.restoreBalloon())
+    this.enableDrag(btn)
+    return btn
+  }
+
+  /** Restaura o painel a partir do botão minimizado. */
+  private restoreBalloon(): void {
+    if (!this.balloon) {
+      this.balloon = this.buildBalloon()
+      document.body.appendChild(this.balloon)
+    }
+    this.balloon.style.display = 'flex'
+    this.balloon.dataset.minimized = 'false'
+    const pos = this.floatBtn
+      ? { right: parseFloat(this.floatBtn.style.right) || 20, top: parseFloat(this.floatBtn.style.top) || 20 }
+      : this.readPosition()
+    this.balloon.style.right = `${pos.right}px`
+    this.balloon.style.top = `${pos.top}px`
+    requestAnimationFrame(() => this.balloon?.classList.add('open'))
+    if (this.floatBtn) {
+      this.floatBtn.classList.remove('open')
+      this.floatBtn.remove()
+      this.floatBtn = null
+    }
+    this.renderBalloonList()
+  }
+
+  private readPosition(): { right: number; top: number } {
+    const right = parseFloat(localStorage.getItem('consecom-float-right') || '20')
+    const top = parseFloat(localStorage.getItem('consecom-float-top') || '20')
+    return {
+      right: Math.max(12, Number.isFinite(right) ? right : 20),
+      top: Math.max(12, Number.isFinite(top) ? top : 20),
+    }
+  }
+
+  private savePosition(el: HTMLElement): void {
+    const r = parseFloat(el.style.right) || 20
+    const t = parseFloat(el.style.top) || 20
+    localStorage.setItem('consecom-float-right', String(Math.max(12, r)))
+    localStorage.setItem('consecom-float-top', String(Math.max(12, t)))
+  }
+
+  /**
+   * Drag genérico para o header do painel ou para o botão minimizado.
+   * Mantém o elemento dentro da viewport e persiste a posição.
+   */
   private enableDrag(elm: HTMLElement): void {
     let startX = 0
     let startY = 0
-    let origLeft = 0
-    let origTop = 0
-    const moved = { v: false }
+    let startRight = 0
+    let startTop = 0
+    let moved = false
 
     const down = (e: PointerEvent) => {
+      // só arrasta com o principal (botão esquerdo)
+      if (e.button !== 0) return
+      e.preventDefault()
       this.dragging = true
-      moved.v = false
+      moved = false
       startX = e.clientX
       startY = e.clientY
-      origLeft = elm.offsetLeft
-      origTop = elm.offsetTop
+      startRight = parseFloat(elm.style.right) || 0
+      startTop = parseFloat(elm.style.top) || 0
       elm.setPointerCapture(e.pointerId)
     }
     const move = (e: PointerEvent) => {
       if (!this.dragging) return
       const dx = e.clientX - startX
       const dy = e.clientY - startY
-      if (Math.abs(dx) + Math.abs(dy) > 4) moved.v = true
-      const right = Math.max(0, Math.min(window.innerWidth - 60, origLeft - dx))
-      const top = Math.max(0, Math.min(window.innerHeight - 60, origTop + dy))
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true
+      const minEdge = 12
+      const maxRight = window.innerWidth - minEdge - elm.offsetWidth
+      const maxTop = window.innerHeight - minEdge - elm.offsetHeight
+      const right = Math.max(minEdge, Math.min(maxRight, startRight - dx))
+      const top = Math.max(minEdge, Math.min(maxTop, startTop + dy))
       elm.style.right = `${right}px`
       elm.style.left = ''
       elm.style.top = `${top}px`
@@ -345,26 +407,29 @@ export class MapsScanner {
     const up = (e: PointerEvent) => {
       if (!this.dragging) return
       if (elm.hasPointerCapture(e.pointerId)) elm.releasePointerCapture(e.pointerId)
-      // só arma o movimento para suprimir o clique se houve arrasto real
-      this.suppressClick = moved.v
       this.dragging = false
-      localStorage.setItem('consecom-bubble-x', elm.style.right)
-      localStorage.setItem('consecom-bubble-top', elm.style.top)
+      this.savePosition(elm)
     }
     elm.addEventListener('pointerdown', down)
     elm.addEventListener('pointermove', move)
     elm.addEventListener('pointerup', up)
     elm.addEventListener('pointercancel', up)
-    void { v: moved.v }
   }
 
   private buildBalloon(): HTMLElement {
     const balloon = document.createElement('aside')
     balloon.className = 'consecom-balloon'
 
-    // Header
+    // Header (área de drag: grip + título + controles)
     const header = document.createElement('div')
     header.className = 'cs-panel__header'
+    this.headerEl = header
+
+    const grip = document.createElement('div')
+    grip.className = 'cs-panel__grip'
+    grip.title = 'Arrastar painel'
+    grip.innerHTML = '&#8230;<br>&#8230;<br>&#8230;'
+
     const logo = document.createElement('div')
     logo.className = 'cs-panel__logo'
     logo.textContent = 'V'
@@ -380,7 +445,37 @@ export class MapsScanner {
     tagline.className = 'cs-panel__tagline'
     tagline.textContent = 'Encontre empresas qualificadas no Google Maps e importe os melhores leads.'
     titles.append(name, tag, tagline)
-    header.append(logo, titles)
+
+    // Controles do header: minimizar + fechar
+    const controls = document.createElement('div')
+    controls.className = 'cs-panel__controls'
+    const minimizeBtn = document.createElement('button')
+    minimizeBtn.type = 'button'
+    minimizeBtn.className = 'cs-panel__btn'
+    minimizeBtn.title = 'Minimizar'
+    minimizeBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M19 13h-4v4h-2v-4H5v-2h4V7h2v4h4z"/></svg>'
+    minimizeBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.minimizeBalloon()
+    })
+    const closeBtn = document.createElement('button')
+    closeBtn.type = 'button'
+    closeBtn.className = 'cs-panel__btn'
+    closeBtn.title = 'Fechar'
+    closeBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1 1L12 14l-6.3 6.3-1-1L10.8 12 4.5 5.7l1-1L12 10.8l6.3-6.3z"/></svg>'
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      this.toggleBalloon(false)
+    })
+    controls.append(minimizeBtn, closeBtn)
+    header.append(grip, logo, titles, controls)
+    this.enableDrag(header)
+
+    // Corpo com scroll interno
+    const body = document.createElement('div')
+    body.className = 'cs-panel__body'
 
     // Busca + localização
     const search = document.createElement('div')
@@ -459,10 +554,12 @@ export class MapsScanner {
      configBtn.title = 'Configurar Supabase'
      configBtn.innerHTML = 'Configurar' + gearIcon
      configBtn.addEventListener('click', () => void this.promptConfig())
-     row2.append(deleteBtn, configBtn)
-     footer.appendChild(row2)
+      row2.append(deleteBtn, configBtn)
+      footer.appendChild(row2)
 
-    balloon.append(header, search, prospectBtn, filtersPanel, resultPanel, list, footer)
+    body.append(search, prospectBtn, filtersPanel, resultPanel, list)
+
+    balloon.append(header, body, footer)
     this.balloon = balloon
     return balloon
   }
@@ -1170,30 +1267,41 @@ export class MapsScanner {
   }
 
   private updateCounts(): void {
-    if (this.bCount) this.bCount.textContent = `${this.selected.size}`
-    if (this.listEl) {
-      const cards = this.listEl.querySelectorAll<HTMLElement>('.cs-pcard')
-      cards.forEach((c) => {
-        const key = c.dataset.key
-        const pc = key ? this.found.find((f) => f.key === key) : undefined
-        if (pc) this.updateCard(c, pc)
-      })
-    }
+    if (!this.listEl) return
+    const cards = this.listEl.querySelectorAll<HTMLElement>('.cs-pcard')
+    cards.forEach((c) => {
+      const key = c.dataset.key
+      const pc = key ? this.found.find((f) => f.key === key) : undefined
+      if (pc) this.updateCard(c, pc)
+    })
   }
 
   private toggleBalloon(open?: boolean): void {
-    if (!this.balloon || !document.body.contains(this.balloon)) {
-      this.balloon = this.buildBalloon()
-      document.body.appendChild(this.balloon)
+    // Se minimizado (botão flutuante ativo), restaura ao invés de toggle
+    if (this.floatBtn) {
+      this.restoreBalloon()
+      return
     }
-    const shouldOpen = open ?? !this.balloon.classList.contains('open')
+    const shouldOpen = open ?? !this.balloon?.classList.contains('open')
+    if (!this.balloon || !document.body.contains(this.balloon)) {
+      this.ensureBalloon()
+      return
+    }
     this.balloon.classList.toggle('open', shouldOpen)
     if (shouldOpen) this.renderBalloonList()
   }
 
-  /** Posiciona o retângulo logo acima do balão (ou abaixo quando não há espaço), com a seta apontando para ele. */
+  /** Reposiciona o painel dentro da viewport caso a posição salva esteja inválida. */
   private positionBalloon(): void {
-    // Sidebar fixa — sem posicionamento dinâmico.
+    if (!this.balloon) return
+    const pos = this.readPosition()
+    const maxRight = window.innerWidth - 12 - (this.balloon.offsetWidth || 1)
+    const maxTop = window.innerHeight - 12 - (this.balloon.offsetHeight || 1)
+    const right = Math.min(pos.right, maxRight)
+    const top = Math.min(pos.top, maxTop)
+    this.balloon.style.right = `${Math.max(12, right)}px`
+    this.balloon.style.top = `${Math.max(12, top)}px`
+    this.savePosition(this.balloon)
   }
 
   // --- varredura dos cards nativos ---
