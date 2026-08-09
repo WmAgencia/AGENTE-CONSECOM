@@ -42,7 +42,6 @@ export class MapsScanner {
 
   private lastQuery = ''
   private dragging = false
-  private minimized = false
 
   // === Prospecção automática (Vyntra Prospector) ===
   private filters: ProspectFilters = { ...DEFAULT_FILTERS }
