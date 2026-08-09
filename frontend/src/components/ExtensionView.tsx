@@ -2,13 +2,24 @@ import { useEffect, useState } from 'react'
 import { Puzzle, Download } from 'lucide-react'
 
 // =====================================================================
-// Extensão Chrome — download do build atual publicado no Supabase Storage.
-// A URL é obtida do backend (/api/extension/download) que retorna a URL
-// pública do .zip já empacotado e publicado por `extension/scripts/publish.mjs`.
+// Extensão Chrome — download do build atual.
+//
+// Estratégia de duas fontes (robustez):
+//   1) Principal: arquivo estático versionado no próprio repo do frontend
+//      (public/downloads/consecom-extension.zip), sempre disponível.
+//   2) Metadados (versão) via backend /api/extension/download — opcional;
+//      se o backend não responder, o botão continua funcionando usando a
+//      fonte estática.
 // =====================================================================
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL as string | undefined
 const API = BACKEND ?? 'https://consecom-backend-production.up.railway.app'
+
+// Versão estática do build publicado (deve ser mantida em sync com vite.config /
+// manifest da extensão).
+export const EXTENSION_VERSION = '1.3.0'
+
+export const EXTENSION_ZIP_URL = '/downloads/consecom-extension.zip'
 
 interface ExtensionDownload {
   url: string
@@ -18,26 +29,28 @@ interface ExtensionDownload {
 }
 
 export function ExtensionView() {
-  const [data, setData] = useState<ExtensionDownload | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [backendVersion, setBackendVersion] = useState<string | null>(null)
+  const [backendError, setBackendError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
-    fetch(`${API}/api/extension/download`)
+    fetch(`${API}/api/extension/download`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d: ExtensionDownload) => {
-        if (alive) setData(d)
+        if (alive) setBackendVersion(d.version)
       })
       .catch((e: unknown) => {
-        if (alive) setError(e instanceof Error ? e.message : 'erro')
+        // Backend indisponível: não é fatal. A fonte estática (zip versionado no
+        // repo) garante que o botão de download sempre funcione.
+        if (alive) setBackendError(e instanceof Error ? e.message : 'indisponível')
       })
     return () => {
       alive = false
     }
   }, [])
 
-  const href = data?.url ?? '#'
-  const version = data?.version ? `v${data.version}` : ''
+  const version = backendVersion ?? EXTENSION_VERSION
+  const href = EXTENSION_ZIP_URL
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -48,7 +61,7 @@ export function ExtensionView() {
           </div>
           <div>
             <h2 className="text-lg font-semibold">
-              Extensão Chrome {version && <span className="text-slate-400 text-sm font-normal">· {version}</span>}
+              Extensão Chrome <span className="text-slate-400 text-sm font-normal">· v{version}</span>
             </h2>
             <p className="text-sm text-slate-400">
               Capture empresas do Google Maps e importe como leads — agora com Prospecção Automática.
@@ -58,21 +71,16 @@ export function ExtensionView() {
 
         <a
           href={href}
-          download
-          aria-disabled={!data}
-          className={`mt-4 flex items-center gap-2 justify-center px-4 py-3 rounded-xl text-white text-sm font-medium transition ${
-            data
-              ? 'bg-emerald-600 hover:bg-emerald-500'
-              : 'bg-slate-600 opacity-70 cursor-not-allowed'
-          }`}
+          download="consecom-extension.zip"
+          className="mt-4 flex items-center gap-2 justify-center px-4 py-3 rounded-xl text-white text-sm font-medium transition bg-emerald-600 hover:bg-emerald-500 focus:ring-2 focus:ring-emerald-400 focus:outline-none"
         >
           <Download className="w-4 h-4" />
-          {data ? 'Baixar extensão (.zip)' : 'Carregando link…'}
+          Baixar extensão (.zip)
         </a>
 
-        {error && (
-          <p className="mt-3 text-xs text-rose-400">
-            Não foi possível obter o link de download: {error}
+        {backendError && (
+          <p className="mt-3 text-xs text-slate-500">
+            Metadados via backend {backendError}. Usando build estático versionado (v{EXTENSION_VERSION}).
           </p>
         )}
 

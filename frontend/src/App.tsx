@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone, Puzzle, BellRing } from 'lucide-react'
+import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone, Puzzle, BellRing, Download } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
 import { KanbanBoard } from './components/KanbanBoard'
@@ -226,6 +226,18 @@ export default function App() {
         <div className="px-5 py-4 border-t border-white/5 space-y-2">
           <div className="text-[11px] text-slate-500">{leads.length} leads no total</div>
           <div className="text-[11px] text-slate-500">v{APP_VERSION}</div>
+
+          {/* Atalho rápido — download da extensão (fonte estática versionada no repo) */}
+          <a
+            href="/downloads/consecom-extension.zip"
+            download="consecom-extension.zip"
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+            title="Baixar extensão Chrome (.zip)"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Baixar extensão (.zip)
+          </a>
+
           <button
             onClick={() => {
               setSidebarOpen(false)
