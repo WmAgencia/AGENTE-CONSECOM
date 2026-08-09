@@ -407,3 +407,81 @@
 }
 .consecom-toast.cs-warn { border-color: rgba(249, 115, 22, 0.6); }
 .consecom-toast.cs-show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ===== Prospecção Automática — Painel de filtros ===== */
+.cs-filters { padding: 8px 14px; border-top: 1px solid var(--vy-border); }
+.cs-filters__title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--vy-muted); margin-bottom: 6px;
+}
+.cs-fgroup { margin-bottom: 12px; }
+.cs-fgroup__h {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--vy-accent2); margin-bottom: 4px;
+}
+.cs-check {
+  display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  font-size: 13px; cursor: pointer; color: var(--vy-text); font-family: 'Inter', sans-serif;
+}
+.cs-check input[type=checkbox] {
+  appearance: none; width: 16px; height: 16px; border-radius: 5px;
+  border: 1.5px solid rgba(255,255,255,0.2); background: transparent;
+  cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+}
+.cs-check input[type=checkbox]:checked {
+  background: var(--vy-gradient); border-color: transparent;
+}
+.cs-check--inline { display: inline-flex; margin-right: 14px; }
+.cs-check--inline span { font-size: 12px; }
+.cs-check--inline select {
+  background: var(--vy-card); color: var(--vy-text); border: 1px solid var(--vy-border);
+  border-radius: 6px; padding: 3px 6px; font-size: 12px; font-family: 'Inter', sans-serif;
+  cursor: pointer; outline: none;
+}
+.cs-radio { display: flex; flex-wrap: wrap; gap: 10px; }
+.cs-radio__item { display: flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; color: var(--vy-text); }
+.cs-radio__item input { accent-color: var(--vy-accent); }
+
+/* ===== Resultado da prospecção (Alex) ===== */
+.cs-result { padding: 12px 14px; }
+.cs-result__card {
+  background: var(--vy-card); border: 1px solid var(--vy-border); border-radius: 14px;
+  padding: 14px; animation: cs-fadein 0.3s ease;
+}
+@keyframes cs-fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.cs-result__head { text-align: center; margin-bottom: 10px; }
+.cs-result__big { font-size: 34px; font-weight: 800; color: var(--vy-accent2); line-height: 1; }
+.cs-result__sub { font-size: 12px; color: var(--vy-muted); margin-top: 2px; }
+.cs-result__head--ok .cs-result__title { color: #10b981; font-weight: 800; letter-spacing: 0.04em; }
+.cs-result__stats { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--vy-muted); margin-bottom: 10px; }
+.cs-result__stats span { color: var(--vy-text); font-weight: 700; }
+.cs-result__dup { color: #f59e0b; }
+.cs-alex {
+  display: flex; gap: 10px; background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.2);
+  border-radius: 10px; padding: 10px; margin-bottom: 12px;
+}
+.cs-alex__avatar { font-size: 18px; }
+.cs-alex__name { font-size: 12px; font-weight: 700; color: var(--vy-accent2); }
+.cs-alex__msg { font-size: 12px; color: var(--vy-text); line-height: 1.4; margin-top: 2px; }
+.cs-result__cta {
+  width: 100%; padding: 13px; border: none; border-radius: 12px;
+  background: var(--vy-gradient); color: #fff; font-size: 14px; font-weight: 800;
+  letter-spacing: 0.04em; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  font-family: 'Inter', sans-serif;
+}
+.cs-result__cta:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(139,92,246,0.45); }
+.cs-result__cta:disabled { opacity: 0.7; cursor: default; transform: none; }
+.cs-result__cta--ghost { background: transparent; border: 1px solid var(--vy-border); color: var(--vy-text); }
+.cs-result__empty { text-align: center; color: var(--vy-muted); font-size: 13px; padding: 12px; }
+
+/* Relatório final */
+.cs-result__lines { list-style: none; padding: 0; margin: 8px 0; font-size: 12px; color: var(--vy-text); }
+.cs-result__lines li { padding: 3px 0; border-bottom: 1px dashed rgba(255,255,255,0.05); }
+.cs-result__crit { margin: 8px 0; }
+.cs-result__crit-h { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--vy-muted); margin-bottom: 4px; }
+.cs-result__tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.cs-chip {
+  font-size: 11px; padding: 3px 8px; border-radius: 999px;
+  background: rgba(139,92,246,0.15); color: var(--vy-accent2); border: 1px solid rgba(139,92,246,0.3);
+}
+.cs-result__progress { font-size: 12px; color: var(--vy-muted); text-align: center; padding: 8px; }

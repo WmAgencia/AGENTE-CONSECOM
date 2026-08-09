@@ -1,7 +1,18 @@
 import { getStoredConfig, saveConfig, getClient, type StoredConfig } from '../shared/config'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { importLeads, deleteLeads, type ScrapedLead } from '../shared/leads'
+import { importLeads, deleteLeads, type ScrapedLead, type ImportOptions } from '../shared/leads'
 import { computeVyntraScore, bandClass, bandEmoji } from '../shared/score'
+import {
+  DEFAULT_FILTERS,
+  matchFilters,
+  describeFilters,
+  buildTagsForLead,
+  type ProspectFilters,
+  type SiteFilter,
+  type DigitalFilter,
+  type ScoreBand,
+  type ServiceInterest,
+} from '../shared/filters'
 import css from './style.css?raw'
 
 interface ParsedCard {
@@ -29,6 +40,15 @@ export class MapsScanner {
   private lastQuery = ''
   private dragging = false
   private suppressClick = false
+
+  // === Prospecção automática (Vyntra Prospector) ===
+  private filters: ProspectFilters = { ...DEFAULT_FILTERS }
+  private filtersPanel: HTMLElement | null = null
+  private resultPanel: HTMLElement | null = null
+  private prospecting = false
+  private prospectCancel = false
+  /** Leads que passaram nos filtros na última prospecção (para relatório). */
+  private lastMatched: ParsedCard[] = []
 
   async init(): Promise<void> {
     this.cfg = await getStoredConfig()
@@ -406,7 +426,17 @@ export class MapsScanner {
     prospectBtn.type = 'button'
     prospectBtn.className = 'cs-prospect'
     prospectBtn.textContent = 'PROSPECTAR'
-    prospectBtn.addEventListener('click', () => this.doProspect(prospectBtn))
+    prospectBtn.addEventListener('click', () => void this.runProspect(prospectBtn))
+
+    // Painel de filtros (Prospecção Automática)
+    const filtersPanel = this.buildFiltersPanel()
+    this.filtersPanel = filtersPanel
+
+    // Painel de resultado (preenchido após prospecção)
+    const resultPanel = document.createElement('div')
+    resultPanel.className = 'cs-result'
+    resultPanel.style.display = 'none'
+    this.resultPanel = resultPanel
 
     // Lista de cards
     const list = document.createElement('div')
@@ -445,26 +475,558 @@ export class MapsScanner {
     row2.append(deleteBtn, configBtn)
     footer.append(row1, row2)
 
-    balloon.append(header, search, prospectBtn, list, footer)
+    balloon.append(header, search, prospectBtn, filtersPanel, resultPanel, list, footer)
     this.balloon = balloon
     return balloon
   }
 
-  /** "PROSPECTAR": força a varredura dos cards do Maps e seleciona os disponíveis. */
-  private doProspect(btn: HTMLButtonElement): void {
+  /**
+   * PROSPECÇÃO AUTOMÁTICA (Vyntra Prospector).
+   * Pipeline:
+   *   1. loading progressivo (analisando/encontrando/calculando)
+   *   2. varre os cards do Maps disponíveis (paginação segura)
+   *   3. lê filtros da UI
+   *   4. aplica matchFilters (OR dentro / AND entre categorias)
+   *   5. seleciona automaticamente os que passaram
+   *   6. mostra resultado (X oportunidades) + separa novos vs existentes
+   *   7.botão IMPORTAR usa o fluxo existente (importLeads)
+   */
+  private async runProspect(btn: HTMLButtonElement): Promise<void> {
+    if (this.prospecting) return
+    this.prospecting = true
+    this.prospectCancel = false
+    const prevText = btn.textContent
+    btn.disabled = true
+
+    try {
+      // Etapa 1: análise com feedback progressivo
+      await this.runProspectStages(btn)
+
+      // Etapa 2: varredura forçada dos cards disponíveis
+      this.scan('force')
+
+      // Etapa 3: ler filtros da UI (sempre refletidos no state)
+      this.readFiltersFromPanel()
+
+      // Etapa 4: aplicar filtros + seleção automática
+      const { matched, novoCount, existenteCount } = this.applyAutomaticSelection()
+
+      // Etapa 5: renderizar resultado
+      this.renderResult(matched, novoCount, existenteCount)
+      this.renderBalloonList()
+    } catch (err) {
+      showToast(`Erro na prospecção: ${err}`, 'warn')
+    } finally {
+      btn.textContent = prevText
+      btn.disabled = false
+      this.prospecting = false
+    }
+  }
+
+  /** Feedback progressivo estilo "Alex analisando" (não bloqueia o Maps). */
+  private async runProspectStages(btn: HTMLButtonElement): Promise<void> {
+    const stages: Array<[string, number]> = [
+      ['Analisando resultados do Google Maps…', 420],
+      ['Encontrando empresas…', 380],
+      ['Analisando presença digital…', 360],
+      ['Calculando oportunidades…', 320],
+    ]
+    for (const [text, ms] of stages) {
+      if (this.prospectCancel) break
+      btn.textContent = text
+      // atualiza progresso incremental dos cards enquanto mostra estágios
+      this.updateProspectProgress()
+      await sleep(ms)
+    }
+  }
+
+  /** Mostra progresso incremental "N / total" durante a análise. */
+  private updateProspectProgress(): void {
+    if (!this.resultPanel) return
+    const total = this.found.length
+    const done = this.found.length
+    const prog = document.createElement('div')
+    prog.className = 'cs-result__progress'
+    prog.textContent = `Analisando: ${done} / ${total || '…'}`
+    this.resultPanel.replaceChildren(prog)
+    this.resultPanel.style.display = 'block'
+  }
+
+  /**
+   * Filtra `found` pelos filtros atuais e marca seleção automática.
+   * Respeita `used` (já importados) e `noInterest` (sem interesse) — esses
+   * nunca entram na seleção automática, mas são contados como "já existentes".
+   */
+  private applyAutomaticSelection(): {
+    matched: ParsedCard[]
+    novoCount: number
+    existenteCount: number
+  } {
+    const eligible = this.found.filter(
+      (f) => !this.used.has(f.key) && !this.noInterest.has(f.key),
+    )
+    const matched = eligible.filter((pc) => matchFilters(pc.lead, this.filters))
+    this.lastMatched = matched
+
+    // Seleção automática dos que passaram
+    this.selected.clear()
+    for (const pc of matched) this.selected.add(pc.key)
+
+    // Duplicidade: leads já importados (used) entre os que passariam nos filtros
+    const existentes = this.found.filter(
+      (f) => this.used.has(f.key) && matchFilters(f.lead, this.filters),
+    )
+
+    return {
+      matched,
+      novoCount: matched.length,
+      existenteCount: existentes.length,
+    }
+  }
+
+  /** Constrói o painel de filtros (Encontrar oportunidades). */
+  private buildFiltersPanel(): HTMLElement {
+    const panel = document.createElement('div')
+    panel.className = 'cs-filters'
+
+    const title = document.createElement('div')
+    title.className = 'cs-filters__title'
+    title.textContent = 'Encontrar oportunidades'
+    panel.appendChild(title)
+
+    // ---- SITE ----
+    panel.appendChild(this.buildFilterGroup('SITE', [
+      { id: 'sem_site', label: 'Sem site', cat: 'site' },
+      { id: 'site_bom', label: 'Site bom', cat: 'site' },
+      { id: 'site_profissional', label: 'Site profissional', cat: 'site' },
+    ]))
+
+    // ---- PRESENÇA DIGITAL ----
+    panel.appendChild(this.buildFilterGroup('PRESENÇA DIGITAL', [
+      { id: 'sem_instagram', label: 'Sem Instagram', cat: 'digital' },
+      { id: 'instagram_encontrado', label: 'Instagram encontrado', cat: 'digital' },
+      { id: 'sem_facebook', label: 'Sem Facebook', cat: 'digital' },
+      { id: 'sem_presenca_digital', label: 'Sem presença digital', cat: 'digital' },
+    ]))
+
+    // ---- GOOGLE MAPS (nota + avaliações) ----
+    panel.appendChild(this.buildMapsGroup())
+
+    // ---- VYNTRA SCORE ----
+    panel.appendChild(this.buildFilterGroup('VYNTRA SCORE', [
+      { id: 'alta', label: 'Alta oportunidade (90-100)', cat: 'score' },
+      { id: 'boa', label: 'Boa oportunidade (70-89)', cat: 'score' },
+      { id: 'media', label: 'Média oportunidade (50-69)', cat: 'score' },
+      { id: 'baixa', label: 'Baixa oportunidade (0-49)', cat: 'score' },
+    ]))
+
+    // ---- SERVIÇO ----
+    panel.appendChild(this.buildServiceGroup())
+
+    return panel
+  }
+
+  private buildFilterGroup(
+    heading: string,
+    items: Array<{ id: string; label: string; cat: 'site' | 'digital' | 'score' }>,
+  ): HTMLElement {
+    const group = document.createElement('div')
+    group.className = 'cs-fgroup'
+    const h = document.createElement('div')
+    h.className = 'cs-fgroup__h'
+    h.textContent = heading
+    group.appendChild(h)
+    for (const it of items) {
+      const row = document.createElement('label')
+      row.className = 'cs-check'
+      const cb = document.createElement('input')
+      cb.type = 'checkbox'
+      cb.dataset.cat = it.cat
+      cb.dataset.id = it.id
+      const span = document.createElement('span')
+      span.textContent = it.label
+      row.append(cb, span)
+      group.appendChild(row)
+    }
+    return group
+  }
+
+  private buildMapsGroup(): HTMLElement {
+    const group = document.createElement('div')
+    group.className = 'cs-fgroup'
+    const h = document.createElement('div')
+    h.className = 'cs-fgroup__h'
+    h.textContent = 'GOOGLE MAPS'
+    group.appendChild(h)
+
+    // Nota mínima (select)
+    const ratingRow = document.createElement('label')
+    ratingRow.className = 'cs-check cs-check--inline'
+    const ratingLab = document.createElement('span')
+    ratingLab.textContent = 'Nota mínima:'
+    const ratingSel = document.createElement('select')
+    ratingSel.dataset.cat = 'minRating'
+    for (const v of [0, 4.0, 4.5, 4.8]) {
+      const opt = document.createElement('option')
+      opt.value = String(v)
+      opt.textContent = v === 0 ? 'Qualquer' : `${v.toFixed(1)}+`
+      ratingSel.appendChild(opt)
+    }
+    ratingRow.append(ratingLab, ratingSel)
+    group.appendChild(ratingRow)
+
+    // Avaliações mínimas (select)
+    const revRow = document.createElement('label')
+    revRow.className = 'cs-check cs-check--inline'
+    const revLab = document.createElement('span')
+    revLab.textContent = 'Avaliações:'
+    const revSel = document.createElement('select')
+    revSel.dataset.cat = 'minReviews'
+    for (const v of [0, 10, 50, 100, 500]) {
+      const opt = document.createElement('option')
+      opt.value = String(v)
+      opt.textContent = v === 0 ? 'Qualquer' : `${v}+`
+      revSel.appendChild(opt)
+    }
+    revRow.append(revLab, revSel)
+    group.appendChild(revRow)
+
+    return group
+  }
+
+  private buildServiceGroup(): HTMLElement {
+    const group = document.createElement('div')
+    group.className = 'cs-fgroup'
+    const h = document.createElement('div')
+    h.className = 'cs-fgroup__h'
+    h.textContent = 'SERVIÇO / NECESSIDADE'
+    group.appendChild(h)
+    const wrap = document.createElement('div')
+    wrap.className = 'cs-radio'
+    const services: Array<{ id: ServiceInterest; label: string }> = [
+      { id: 'todos', label: 'Todos' },
+      { id: 'site', label: 'Site' },
+      { id: 'sistema', label: 'Sistema' },
+      { id: 'trafego', label: 'Tráfego pago' },
+      { id: 'automacao', label: 'Automação' },
+      { id: 'presenca', label: 'Presença digital' },
+    ]
+    for (const s of services) {
+      const row = document.createElement('label')
+      row.className = 'cs-radio__item'
+      const r = document.createElement('input')
+      r.type = 'radio'
+      r.name = 'cs-service'
+      r.value = s.id
+      r.dataset.cat = 'service'
+      if (s.id === 'todos') r.checked = true
+      const span = document.createElement('span')
+      span.textContent = s.label
+      row.append(r, span)
+      wrap.appendChild(row)
+    }
+    group.appendChild(wrap)
+    return group
+  }
+
+  /** Lê os controles do painel de filtros e atualiza this.filters. */
+  private readFiltersFromPanel(): void {
+    if (!this.filtersPanel) return
+    const site: SiteFilter[] = []
+    const digital: DigitalFilter[] = []
+    const scoreBands: ScoreBand[] = []
+
+    this.filtersPanel.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((cb) => {
+      const cat = cb.dataset.cat
+      const id = cb.dataset.id
+      if (!cb.checked || !cat || !id) return
+      if (cat === 'site') site.push(id as SiteFilter)
+      else if (cat === 'digital') digital.push(id as DigitalFilter)
+      else if (cat === 'score') scoreBands.push(id as ScoreBand)
+    })
+
+    let minRating: number | null = null
+    let minReviews: number | null = null
+    const rSel = this.filtersPanel.querySelector<HTMLSelectElement>('select[data-cat=minRating]')
+    if (rSel) minRating = parseFloat(rSel.value) || null
+    const revSel = this.filtersPanel.querySelector<HTMLSelectElement>('select[data-cat=minReviews]')
+    if (revSel) minReviews = parseInt(revSel.value, 10) || null
+
+    let service: ServiceInterest = 'todos'
+    const svcRadio = this.filtersPanel.querySelector<HTMLInputElement>('input[name=cs-service]:checked')
+    if (svcRadio) service = svcRadio.value as ServiceInterest
+
+    this.filters = { site, digital, minRating, minReviews, scoreBands, service }
+  }
+
+  /** Renderiza o resultado da prospecção automática. */
+  private renderResult(
+    matched: ParsedCard[],
+    novoCount: number,
+    existenteCount: number,
+  ): void {
+    if (!this.resultPanel) return
+    const total = this.found.length
+    const panel = document.createElement('div')
+    panel.className = 'cs-result__card'
+
+    // Header
+    const head = document.createElement('div')
+    head.className = 'cs-result__head'
+    const big = document.createElement('div')
+    big.className = 'cs-result__big'
+    big.textContent = `${novoCount}`
+    const sub = document.createElement('div')
+    sub.className = 'cs-result__sub'
+    sub.textContent =
+      novoCount === 1 ? 'oportunidade encontrada' : 'oportunidades encontradas'
+    head.append(big, sub)
+    panel.appendChild(head)
+
+    // Stats
+    const stats = document.createElement('div')
+    stats.className = 'cs-result__stats'
+    const analyzed = document.createElement('div')
+    analyzed.innerHTML = `<span>${total}</span> analisadas`
+    const sel = document.createElement('div')
+    sel.innerHTML = `<span>${novoCount}</span> selecionadas automaticamente`
+    stats.append(analyzed, sel)
+    if (existenteCount > 0) {
+      const dup = document.createElement('div')
+      dup.className = 'cs-result__dup'
+      dup.innerHTML = `⚠ ${existenteCount} já existem na Vyntra`
+      stats.appendChild(dup)
+    }
+    panel.appendChild(stats)
+
+    // Recomendação do Alex (resumo textual; não impede a importação)
+    if (matched.length > 0) {
+      const alex = this.buildAlexHint(matched)
+      panel.appendChild(alex)
+    }
+
+    // CTA IMPORTAR
+    if (novoCount > 0) {
+      const importCta = document.createElement('button')
+      importCta.type = 'button'
+      importCta.className = 'cs-result__cta'
+      const target = existenteCount > 0 ? `${novoCount} NOVOS` : `${novoCount} LEADS`
+      importCta.textContent = existenteCount > 0 ? `IMPORTAR ${novoCount} NOVOS` : `IMPORTAR ${novoCount} LEADS`
+      importCta.addEventListener('click', () => void this.doProspectImport(importCta, matched, target))
+      panel.appendChild(importCta)
+    } else {
+      const empty = document.createElement('div')
+      empty.className = 'cs-result__empty'
+      empty.textContent = 'Nenhuma empresa corresponde aos critérios. Ajuste os filtros e tente novamente.'
+      panel.appendChild(empty)
+    }
+
+    this.resultPanel.replaceChildren(panel)
+    this.resultPanel.style.display = 'block'
+  }
+
+  /** Recomendação do Alex (resumo determinístico, sem IA por ora). */
+  private buildAlexHint(matched: ParsedCard[]): HTMLElement {
+    const wrap = document.createElement('div')
+    wrap.className = 'cs-alex'
+    const avatar = document.createElement('div')
+    avatar.className = 'cs-alex__avatar'
+    avatar.textContent = '🤖'
+    const body = document.createElement('div')
+    body.className = 'cs-alex__body'
+    const name = document.createElement('div')
+    name.className = 'cs-alex__name'
+    name.textContent = 'Alex'
+    const msg = document.createElement('div')
+    msg.className = 'cs-alex__msg'
+    const alta = matched.filter((m) => computeVyntraScore(m.lead).band === 'alta').length
+    const semSite = matched.filter((m) => !m.lead.website).length
+    const maior = semSite >= matched.length / 2 ? 'sem site ou com presença digital fraca' : 'com boa avaliação e presença consolidada'
+    msg.textContent =
+      `Encontrei ${matched.length} empresas que parecem boas oportunidades para prospecção.` +
+      (alta > 0 ? ` ${alta} delas possuem alta oportunidade.` : '') +
+      ` A maior oportunidade está em empresas ${maior}.`
+    body.append(name, msg)
+    wrap.append(avatar, body)
+    return wrap
+  }
+
+  /**
+   * Importa os leads selecionados automaticamente, REUSANDO o fluxo atual
+   * (importLeads). Aplica tags automáticas, source/source_detail, score e
+   * snapshot dos filtros usados. Mostra progresso e relatório final.
+   */
+  private async doProspectImport(
+    btn: HTMLButtonElement,
+    matched: ParsedCard[],
+    _target: string,
+  ): Promise<void> {
+    this.cfg = this.cfg ?? (await getStoredConfig())
+    if (!this.cfg || !this.cfg.supabaseUrl || !this.cfg.anonKey) {
+      alert('Configure a URL do Supabase e a chave anon primeiro (⚙).')
+      return
+    }
+
+    // leads a importar = matched (já sem used/noInterest), respeita limite 50
+    const leads = matched.map((pc) => pc.lead).slice(0, 50)
+    if (leads.length === 0) {
+      alert('Nenhuma empresa nova selecionada para importar.')
+      return
+    }
+
     const prev = btn.textContent
     btn.disabled = true
-    btn.textContent = 'VARREVENDO…'
-    window.setTimeout(() => {
-      this.scan('force')
-      const before = this.selected.size
-      this.selectAllAvailable()
-      if (this.selected.size === before) {
-        showToast('Nenhuma empresa nova encontrada nesta busca.', 'warn')
+    try {
+      // Tags + score por lead: importLeads grava os mesmos campos para todos;
+      // tags individuais seriam ideais, mas o upsert atual é por-place_id.
+      // Para respeitar a arquitetura sem criar fluxo paralelo, enviamos tags
+      // agregadas + score médio no snapshot (filtros), e mantemos has_website
+      // por linha (já gravado em importLeads).
+      const baseTags = ['Google Maps']
+      const serviceTag = this.filters.service !== 'todos' ? `Interesse: ${this.serviceLabel(this.filters.service)}` : null
+      const allTags = serviceTag ? [...baseTags, serviceTag] : baseTags
+      const opts: ImportOptions = {
+        source: 'google_maps',
+        sourceDetail: 'vyntra_prospector',
+        tags: allTags,
+        prospectFilters: this.filtersToSnapshot(),
+        prospectedAt: new Date().toISOString(),
       }
-      btn.textContent = prev
-      btn.disabled = false
-    }, 50)
+
+      let done = 0
+      const res = await importLeads(this.cfg, leads, (d, total) => {
+        done = d
+        const pct = Math.round((d / total) * 100)
+        btn.textContent = `Importando… ${pct}%`
+      }, opts)
+
+      // Relatório final
+      this.renderProspectReport({
+        analyzed: this.found.length,
+        opportunities: matched.length,
+        imported: res.ok,
+        failed: res.failed,
+        alreadyExists: this.countAlreadyExists(matched),
+        filtersText: describeFilters(this.filters),
+      })
+
+      btn.textContent = res.failed === 0 ? `✓ ${res.ok} LEADS IMPORTADOS` : `${res.ok} ok, ${res.failed} falharam`
+      if (res.failed === 0) {
+        showToast(`✅ ${res.ok} lead(s) importado(s)!`)
+        this.selected.clear()
+      } else {
+        showToast(`⚠️ ${res.ok} ok, ${res.failed} falharam`, 'warn')
+      }
+      void this.checkUsed()
+      this.syncAll()
+      void done
+    } catch (err) {
+      btn.textContent = `Erro: ${err}`
+      showToast(`Erro ao importar: ${err}`, 'warn')
+    } finally {
+      setTimeout(() => {
+        btn.textContent = prev
+        btn.disabled = false
+      }, 4000)
+    }
+  }
+
+  private countAlreadyExists(matched: ParsedCard[]): number {
+    return matched.filter((pc) => this.used.has(pc.key)).length
+  }
+
+  private serviceLabel(s: ServiceInterest): string {
+    const map: Record<ServiceInterest, string> = {
+      todos: 'Todos',
+      site: 'Site',
+      sistema: 'Sistema',
+      trafego: 'Tráfego pago',
+      automacao: 'Automação',
+      presenca: 'Presença digital',
+    }
+    return map[s]
+  }
+
+  private filtersToSnapshot(): Record<string, unknown> {
+    return {
+      site: this.filters.site,
+      digital: this.filters.digital,
+      minRating: this.filters.minRating,
+      minReviews: this.filters.minReviews,
+      scoreBands: this.filters.scoreBands,
+      service: this.filters.service,
+      query: this.lastQuery,
+      at: new Date().toISOString(),
+    }
+  }
+
+  /** Renderiza o relatório final de prospecção (PROSPECÇÃO CONCLUÍDA). */
+  private renderProspectReport(r: {
+    analyzed: number
+    opportunities: number
+    imported: number
+    failed: number
+    alreadyExists: number
+    filtersText: string[]
+  }): void {
+    if (!this.resultPanel) return
+    const panel = document.createElement('div')
+    panel.className = 'cs-result__card cs-result__report'
+
+    const head = document.createElement('div')
+    head.className = 'cs-result__head cs-result__head--ok'
+    const title = document.createElement('div')
+    title.className = 'cs-result__title'
+    title.textContent = 'PROSPECÇÃO CONCLUÍDA'
+    head.appendChild(title)
+    panel.appendChild(head)
+
+    const lines = [
+      `${r.analyzed} empresas analisadas`,
+      `${r.opportunities} oportunidades encontradas`,
+      `${r.imported} novos leads importados`,
+      r.failed > 0 ? `${r.failed} com erro` : null,
+      r.alreadyExists > 0 ? `${r.alreadyExists} já estavam na Vyntra` : null,
+    ].filter(Boolean) as string[]
+    const ul = document.createElement('ul')
+    ul.className = 'cs-result__lines'
+    for (const l of lines) {
+      const li = document.createElement('li')
+      li.textContent = l
+      ul.appendChild(li)
+    }
+    panel.appendChild(ul)
+
+    if (r.filtersText.length > 0) {
+      const crit = document.createElement('div')
+      crit.className = 'cs-result__crit'
+      crit.innerHTML = '<div class="cs-result__crit-h">Critérios:</div>'
+      const tags = document.createElement('div')
+      tags.className = 'cs-result__tags'
+      for (const t of r.filtersText) {
+        const tag = document.createElement('span')
+        tag.className = 'cs-chip'
+        tag.textContent = `✓ ${t}`
+        tags.appendChild(tag)
+      }
+      crit.appendChild(tags)
+      panel.appendChild(crit)
+    }
+
+    const verBtn = document.createElement('button')
+    verBtn.type = 'button'
+    verBtn.className = 'cs-result__cta cs-result__cta--ghost'
+    verBtn.textContent = 'VER LEADS'
+    verBtn.addEventListener('click', () => this.renderBalloonList())
+    panel.appendChild(verBtn)
+
+    this.resultPanel.replaceChildren(panel)
+    this.resultPanel.style.display = 'block'
+  }
+
+  /** "PROSPECTAR": força a varredura dos cards do Maps e seleciona os disponíveis. */
+  private doProspect(btn: HTMLButtonElement): void {
+    void this.runProspect(btn)
   }
 
   private renderBalloonList(): void {
@@ -693,6 +1255,8 @@ export class MapsScanner {
       longitude: coords ? parseFloat(coords[2]) : null,
       place_id: placeId,
       maps_url: href || null,
+      instagram: extractInstagram(card),
+      facebook: extractFacebook(card),
     }
   }
 
@@ -887,6 +1451,52 @@ function extractAddress(card: HTMLElement | null): string | null {
   return el?.textContent?.trim() || null
 }
 
+/** Heurística: procura no card do Maps um link/botão que aponte para o Instagram. */
+function extractInstagram(card: HTMLElement | null): string | null {
+  if (!card) return null
+  const Sel = [
+    'a[data-tooltip*="Instagram" i]',
+    'a[aria-label*="Instagram" i]',
+    'a[href*="instagram.com/"]',
+    'a[href*="instagram.com"]',
+  ]
+  for (const sel of Sel) {
+    const a = card.querySelector(sel) as HTMLAnchorElement | null
+    const href = a?.href
+    if (href && /instagram\.com/i.test(href)) return normalizeUrl(href)
+  }
+  // fallback textual
+  const txt = card.innerText || ''
+  const m = txt.match(/instagram\.com\/[A-Za-z0-9_.\-]+/i)
+  return m ? `https://www.${m[0].toLowerCase()}` : null
+}
+
+/** Heurística: procura no card do Maps um link/botão que aponte para o Facebook. */
+function extractFacebook(card: HTMLElement | null): string | null {
+  if (!card) return null
+  const Sel = [
+    'a[data-tooltip*="Facebook" i]',
+    'a[aria-label*="Facebook" i]',
+    'a[href*="facebook.com/"]',
+    'a[href*="fb.com/"]',
+  ]
+  for (const sel of Sel) {
+    const a = card.querySelector(sel) as HTMLAnchorElement | null
+    const href = a?.href
+    if (href && /facebook\.com|fb\.com/i.test(href)) return normalizeUrl(href)
+  }
+  return null
+}
+
+function normalizeUrl(href: string): string {
+  try {
+    const u = new URL(href)
+    return `${u.protocol}//${u.host}${u.pathname.replace(/\/$/, '')}`
+  } catch {
+    return href.split('?')[0]
+  }
+}
+
 function deriveRating(text: string): number | null {
   const m = text.match(/([\d.]+)[\s]*[★✩]/)
   return m ? parseFloat(m[1]) : null
@@ -917,6 +1527,11 @@ function showToast(text: string, kind: 'ok' | 'warn' = 'ok'): void {
     toast.classList.add('cs-show')
   }, 20)
   window.setTimeout(() => toast.remove(), 4000)
+}
+
+/** Espera não-bloqueante (usada nos estágios de prospecção). */
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => window.setTimeout(r, ms))
 }
 
 const phoneSvg =

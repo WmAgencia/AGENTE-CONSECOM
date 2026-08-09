@@ -14,6 +14,10 @@ export interface ScrapedLead {
   longitude: number | null
   place_id: string | null
   maps_url: string | null
+  /** URL do Instagram encontrada no card do Maps (heurística DOM). null se não achou. */
+  instagram: string | null
+  /** URL do Facebook encontrada no card do Maps (heurística DOM). null se não achou. */
+  facebook: string | null
 }
 
 /** Exclui do banco os leads cujo place_id consta em `placeIds`. */
@@ -31,10 +35,30 @@ export async function deleteLeads(cfg: StoredConfig, placeIds: string[]): Promis
   return { ok, failed }
 }
 
+export interface ImportOptions {
+  /** Origem do lead (default: 'google_maps'). */
+  source?: string
+  /** Detalhe da origem (default: 'vyntra_prospector'). */
+  sourceDetail?: string
+  /** Tags automáticas (ex: ['Google Maps','Sem Site','Alta Oportunidade']). */
+  tags?: string[]
+  /** Snapshot dos filtros usados na prospecção automática. */
+  prospectFilters?: Record<string, unknown>
+  /** Vyntra Score 0..100 (gravado em leads.score). */
+  score?: number
+  /** Fatores do score (gravado em leads.score_factors). */
+  scoreFactors?: Record<string, unknown>
+  /** Serviço de interesse: site | landing | sistema | outro | null. */
+  serviceInterest?: string | null
+  /** Data da prospecção (ISO). Default: now(). */
+  prospectedAt?: string
+}
+
 export async function importLeads(
   cfg: StoredConfig,
   leads: ScrapedLead[],
   onProgress?: (done: number, total: number) => void,
+  opts?: ImportOptions,
 ): Promise<{ ok: number; failed: number; firstError?: string }> {
   const client = getClient(cfg)
   if (!client) return { ok: 0, failed: leads.length, firstError: 'Configure a URL e a chave anon do Supabase.' }
@@ -45,6 +69,10 @@ export async function importLeads(
     const { data, error } = await client.from('capture_sessions').insert({ imported_by: 'extension' }).select('id').single()
     if (!error && data) sessionId = data.id
   }
+
+  const source = opts?.source ?? 'google_maps'
+  const sourceDetail = opts?.sourceDetail ?? 'vyntra_prospector'
+  const prospectedAt = opts?.prospectedAt ?? new Date().toISOString()
 
   let ok = 0
   let failed = 0
@@ -67,7 +95,18 @@ export async function importLeads(
       place_id: lead.place_id || null,
       niche: 'maps',
       session_id: sessionId,
+      source,
+      source_detail: sourceDetail,
+      instagram: lead.instagram || null,
+      facebook: lead.facebook || null,
+      has_website: !!lead.website,
+      prospected_at: prospectedAt,
     }
+    if (opts?.tags) row.tags = opts.tags
+    if (opts?.prospectFilters) row.prospect_filters = opts.prospectFilters
+    if (opts?.score != null) row.score = opts.score
+    if (opts?.scoreFactors) row.score_factors = opts.scoreFactors
+    if (opts?.serviceInterest != null) row.service_interest = opts.serviceInterest
 
     const { error } = await client.from('leads').upsert(row, {
       onConflict: 'place_id',

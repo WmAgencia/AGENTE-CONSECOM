@@ -63,10 +63,10 @@ const BAND_EMOJI: Record<Band, string> = {
 }
 
 function bandOf(total: number): Band {
-  if (total >= 80) return 'alta'
-  if (total >= 60) return 'boa'
-  if (total >= 40) return 'media'
-  if (total >= 20) return 'baixa'
+  if (total >= 90) return 'alta'
+  if (total >= 70) return 'boa'
+  if (total >= 50) return 'media'
+  if (total >= 1) return 'baixa'
   return 'nenhuma'
 }
 
