@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Smartphone, Download, Link2, CheckCircle2 } from 'lucide-react'
+import { Download, Link2, CheckCircle2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 // =====================================================================
@@ -13,7 +13,8 @@ import { supabase } from '../lib/supabase'
 //      e entra sem pedir senha.
 // =====================================================================
 
-const APK_URL = '/apk/consecom-alex-1.0.0.apk'
+const APK_URL = '/apk/vyntra-mobile-1.1.0.apk'
+const APP_VERSION = '1.1.0'
 
 export function MobileAppView() {
   const [sent, setSent] = useState(false)
@@ -45,13 +46,15 @@ export function MobileAppView() {
     <div className="max-w-2xl space-y-6">
       <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center">
-            <Smartphone className="w-5 h-5 text-white" />
-          </div>
+          <img
+            src="/vyntra-logo.png"
+            alt="Vyntra"
+            className="w-10 h-10 rounded-xl object-contain bg-white"
+          />
           <div>
             <h2 className="text-lg font-semibold">Vyntra Mobile</h2>
             <p className="text-sm text-slate-400">
-              Acompanhe reuniões, alarmes e alertas no celular.
+              v{APP_VERSION} — Acompanhe reuniões, alarmes e alertas no celular.
             </p>
           </div>
         </div>
