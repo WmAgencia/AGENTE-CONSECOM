@@ -23,8 +23,12 @@ document.getElementById('save')?.addEventListener('click', async () => {
   if (s) s.textContent = 'Salvo ✓'
 })
 
-document.getElementById('open')?.addEventListener('click', () => {
-  void chrome.runtime.sendMessage({ type: 'consecom:open' })
+document.getElementById('open')?.addEventListener('click', async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.id) return
+  await chrome.tabs.sendMessage(tab.id, { type: 'consecom:open' }).catch(() => {
+    /* content script não carregou nesta aba */
+  })
 })
 
 void prefill()

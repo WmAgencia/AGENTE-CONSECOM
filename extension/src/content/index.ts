@@ -1,6 +1,7 @@
 import { getStoredConfig, saveConfig, getClient, type StoredConfig } from '../shared/config'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { importLeads, deleteLeads, type ScrapedLead } from '../shared/leads'
+import { computeVyntraScore, bandClass, bandEmoji } from '../shared/score'
 import css from './style.css?raw'
 
 interface ParsedCard {
@@ -22,6 +23,8 @@ export class MapsScanner {
   private bubble: HTMLElement | null = null
   private balloon: HTMLElement | null = null
   private bCount: HTMLElement | null = null
+  private listEl: HTMLElement | null = null
+  private locEl: HTMLElement | null = null
 
   private lastQuery = ''
   private dragging = false
@@ -39,6 +42,12 @@ export class MapsScanner {
       if (this.balloon.contains(e.target as Node)) return
       if (this.bubble?.contains(e.target as Node)) return
       this.toggleBalloon(false)
+    })
+
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg?.type === 'consecom:open' || msg?.type === 'consecom:ping') {
+        this.toggleBalloon(true)
+      }
     })
 
     this.subscribeRealtime()
@@ -108,6 +117,8 @@ export class MapsScanner {
       this.lastQuery = query
       this.selected.clear()
       this.found = []
+      if (this.locEl) this.locEl.textContent = query
+      if (this.balloon?.classList.contains('open')) this.renderCardList()
     }
     if (query) this.lastQuery = query
   }
@@ -255,11 +266,11 @@ export class MapsScanner {
   private buildBubble(): HTMLElement {
     const bubble = document.createElement('div')
     bubble.className = 'consecom-bubble'
-    bubble.title = 'Consecom'
+    bubble.title = 'Vyntra Prospector'
 
     const icon = document.createElement('span')
     icon.className = 'consecom-bubble__icon'
-    icon.textContent = 'C'
+    icon.textContent = 'V'
 
     const count = document.createElement('span')
     count.className = 'consecom-bubble__count'
@@ -314,7 +325,6 @@ export class MapsScanner {
       const top = Math.max(0, Math.min(window.innerHeight - 60, origTop + dy))
       elm.style.left = `${left}px`
       elm.style.top = `${top}px`
-      if (this.balloon?.classList.contains('open')) this.positionBalloon()
     }
     const up = (e: PointerEvent) => {
       if (!this.dragging) return
@@ -336,55 +346,236 @@ export class MapsScanner {
     const balloon = document.createElement('aside')
     balloon.className = 'consecom-balloon'
 
-    const panel = document.createElement('div')
-    panel.className = 'consecom-balloon__panel'
-    const arrow = document.createElement('div')
-    arrow.className = 'consecom-balloon__arrow'
+    // Header
+    const header = document.createElement('div')
+    header.className = 'cs-panel__header'
+    const logo = document.createElement('div')
+    logo.className = 'cs-panel__logo'
+    logo.textContent = 'V'
+    const titles = document.createElement('div')
+    titles.className = 'cs-panel__titles'
+    const name = document.createElement('div')
+    name.className = 'cs-panel__name'
+    name.textContent = 'VYNTRA Prospector'
+    const tag = document.createElement('div')
+    tag.className = 'cs-panel__tag'
+    tag.textContent = 'Captura de leads do Google Maps'
+    titles.append(name, tag)
+    header.append(logo, titles)
 
-    const tools = document.createElement('div')
-    tools.className = 'consecom-balloon__tools'
+    // Busca + localização
+    const search = document.createElement('div')
+    search.className = 'cs-panel__search'
+    const input = document.createElement('input')
+    input.className = 'cs-panel__input'
+    input.type = 'text'
+    input.placeholder = 'Buscar empresas'
+    input.spellcheck = false
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const q = input.value.trim()
+        if (!q) return
+        const mapsInput = document.querySelector<HTMLInputElement>(
+          'input#searchboxinput, input[aria-label*="pesquisa"], input[aria-label*="search"]',
+        )
+        if (mapsInput) {
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+          setter?.call(mapsInput, q)
+          mapsInput.dispatchEvent(new Event('input', { bubbles: true }))
+          mapsInput.dispatchEvent(new Event('change', { bubbles: true }))
+          mapsInput.focus()
+          mapsInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+        } else {
+          this.lastQuery = q
+          this.selected.clear()
+          this.found = []
+          this.scan('force')
+        }
+      }
+    })
+    const loc = document.createElement('div')
+    loc.className = 'cs-panel__loc'
+    loc.innerHTML = pinIcon
+    this.locEl = document.createElement('span')
+    this.locEl.textContent = 'Aguardando busca…'
+    loc.append(this.locEl)
+    search.append(input, loc)
 
+    // Botão PROSPECTAR
+    const prospectBtn = document.createElement('button')
+    prospectBtn.type = 'button'
+    prospectBtn.className = 'cs-prospect'
+    prospectBtn.textContent = 'PROSPECTAR'
+    prospectBtn.addEventListener('click', () => this.doProspect(prospectBtn))
+
+    // Lista de cards
+    const list = document.createElement('div')
+    list.className = 'cs-panel__list'
+    this.listEl = list
+
+    // Rodapé: ações
+    const footer = document.createElement('div')
+    footer.className = 'cs-panel__footer'
+    const row1 = document.createElement('div')
+    row1.className = 'cs-footer__row'
     const importBtn = document.createElement('button')
     importBtn.type = 'button'
-    importBtn.className = 'cs-btn cs-import'
-    importBtn.innerHTML = `<span data-role="import-label">Importar</span>`
+    importBtn.className = 'cs-footer__btn cs-foot-import'
+    importBtn.innerHTML = `<span data-role="import-label">Importar</span>` + downloadIcon
     importBtn.addEventListener('click', () => void this.doImport(importBtn))
-
-    const selectAll = document.createElement('button')
-    selectAll.type = 'button'
-    selectAll.className = 'cs-btn cs-selectall'
-    selectAll.textContent = 'Selecionar todos'
-    selectAll.addEventListener('click', () => this.selectAllAvailable())
-
+    const allBtn = document.createElement('button')
+    allBtn.type = 'button'
+    allBtn.className = 'cs-footer__btn cs-foot-all'
+    allBtn.innerHTML = 'Selecionar todos' + listCheckIcon
+    allBtn.addEventListener('click', () => this.selectAllAvailable())
+    row1.append(importBtn, allBtn)
+    const row2 = document.createElement('div')
+    row2.className = 'cs-footer__row'
     const deleteBtn = document.createElement('button')
     deleteBtn.type = 'button'
-    deleteBtn.className = 'cs-btn cs-delete'
-    deleteBtn.textContent = 'Excluir selecionados'
+    deleteBtn.className = 'cs-footer__btn cs-foot-delete'
+    deleteBtn.innerHTML = 'Excluir selecionados' + trashIcon
     deleteBtn.addEventListener('click', () => void this.doDelete(deleteBtn))
-
     const configBtn = document.createElement('button')
     configBtn.type = 'button'
-    configBtn.className = 'cs-btn cs-config'
+    configBtn.className = 'cs-footer__btn cs-foot-config'
     configBtn.title = 'Configurar Supabase'
-    configBtn.innerHTML = '<span>Configurar</span>' + gearIcon
+    configBtn.innerHTML = 'Configurar' + gearIcon
     configBtn.addEventListener('click', () => void this.promptConfig())
+    row2.append(deleteBtn, configBtn)
+    footer.append(row1, row2)
 
-    tools.append(importBtn, selectAll, deleteBtn, configBtn)
-
-    panel.appendChild(tools)
-    panel.appendChild(arrow)
-    balloon.appendChild(panel)
+    balloon.append(header, search, prospectBtn, list, footer)
     this.balloon = balloon
     return balloon
   }
 
+  /** "PROSPECTAR": força a varredura dos cards do Maps e seleciona os disponíveis. */
+  private doProspect(btn: HTMLButtonElement): void {
+    const prev = btn.textContent
+    btn.disabled = true
+    btn.textContent = 'VARREVENDO…'
+    window.setTimeout(() => {
+      this.scan('force')
+      const before = this.selected.size
+      this.selectAllAvailable()
+      if (this.selected.size === before) {
+        showToast('Nenhuma empresa nova encontrada nesta busca.', 'warn')
+      }
+      btn.textContent = prev
+      btn.disabled = false
+    }, 50)
+  }
+
   private renderBalloonList(): void {
-    if (!this.balloon) return
+    if (!this.balloon || !this.listEl) return
     const importLabel = this.balloon.querySelector('[data-role="import-label"]') as HTMLElement | null
     if (importLabel) {
       importLabel.textContent = this.selected.size > 0 ? `Importar (${this.selected.size})` : 'Importar'
     }
     this.updateCounts()
+    this.renderCardList()
+  }
+
+  private renderCardList(): void {
+    if (!this.listEl) return
+    if (this.found.length === 0) {
+      this.listEl.innerHTML = ''
+      const empty = document.createElement('div')
+      empty.className = 'cs-empty'
+      empty.textContent = 'Rode a busca no Google Maps e toque em PROSPECTAR para listar as empresas.'
+      this.listEl.appendChild(empty)
+      return
+    }
+    const frag = document.createDocumentFragment()
+    for (const pc of this.found) {
+      frag.appendChild(this.buildCard(pc))
+    }
+    this.listEl.replaceChildren(frag)
+  }
+
+  private buildCard(pc: ParsedCard): HTMLElement {
+    const card = document.createElement('div')
+    card.className = 'cs-pcard'
+    card.dataset.key = pc.key
+
+    const top = document.createElement('div')
+    top.className = 'cs-pcard__top'
+    const nm = document.createElement('div')
+    nm.className = 'cs-pcard__name'
+    nm.textContent = pc.lead.name
+    nm.title = pc.lead.name
+    const rt = document.createElement('div')
+    rt.className = 'cs-pcard__rating'
+    rt.innerHTML = starIcon + (pc.lead.rating != null ? pc.lead.rating.toFixed(1) : '—')
+    top.append(nm, rt)
+
+    const score = computeVyntraScore(pc.lead)
+    const bar = document.createElement('div')
+    bar.className = 'cs-pcard__scorebar'
+    const barTrack = document.createElement('div')
+    barTrack.className = 'cs-pcard__bar'
+    const barFill = document.createElement('div')
+    barFill.className = 'cs-pcard__barfill'
+    barFill.style.width = `${score.total}%`
+    barTrack.appendChild(barFill)
+    const scoreTxt = document.createElement('div')
+    scoreTxt.className = 'cs-pcard__score'
+    scoreTxt.innerHTML = `${score.total}/100`
+    bar.append(barTrack, scoreTxt)
+
+    const badge = document.createElement('div')
+    badge.className = 'cs-pcard__badge ' + bandClass(score.band)
+    badge.textContent = `${bandEmoji(score.band)} ${score.label}`
+
+    const actions = document.createElement('div')
+    actions.className = 'cs-pcard__actions'
+    const leadBtn = document.createElement('button')
+    leadBtn.type = 'button'
+    leadBtn.className = 'cs-pcard__btn cs-pcard__lead'
+    leadBtn.innerHTML = (this.selected.has(pc.key) ? checkIcon : plusIcon) + '<span data-role="lead-label">Lead</span>'
+    leadBtn.addEventListener('click', () => {
+      if (this.used.has(pc.key) || this.noInterest.has(pc.key)) return
+      this.toggleControl(pc.key)
+    })
+    const siteBtn = document.createElement('button')
+    siteBtn.type = 'button'
+    siteBtn.className = 'cs-pcard__btn cs-pcard__site'
+    siteBtn.title = 'Abrir site'
+    siteBtn.innerHTML = websiteIcon
+    if (pc.lead.website) {
+      siteBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        window.open(pc.lead.website!, '_blank', 'noopener,noreferrer')
+      })
+    } else {
+      siteBtn.disabled = true
+    }
+    actions.append(leadBtn, siteBtn)
+
+    card.append(top, bar, badge, actions)
+    this.updateCard(card, pc)
+    return card
+  }
+
+  private updateCard(card: HTMLElement, pc: ParsedCard): void {
+    const leadBtn = card.querySelector('.cs-pcard__lead') as HTMLButtonElement | null
+    if (!leadBtn) return
+    const label = leadBtn.querySelector('[data-role="lead-label"]') as HTMLElement | null
+    if (this.noInterest.has(pc.key)) {
+      leadBtn.classList.add('nointerest')
+      leadBtn.disabled = true
+      if (label) label.textContent = 'Sem interesse'
+      return
+    }
+    if (this.used.has(pc.key)) {
+      leadBtn.classList.add('used')
+      leadBtn.disabled = true
+      if (label) label.textContent = 'Importado'
+      return
+    }
+    leadBtn.classList.toggle('on', this.selected.has(pc.key))
+    leadBtn.innerHTML = (this.selected.has(pc.key) ? checkIcon : plusIcon) + '<span data-role="lead-label">Lead</span>'
   }
 
   private syncAll(): void {
@@ -395,6 +586,14 @@ export class MapsScanner {
 
   private updateCounts(): void {
     if (this.bCount) this.bCount.textContent = `${this.selected.size}`
+    if (this.listEl) {
+      const cards = this.listEl.querySelectorAll<HTMLElement>('.cs-pcard')
+      cards.forEach((c) => {
+        const key = c.dataset.key
+        const pc = key ? this.found.find((f) => f.key === key) : undefined
+        if (pc) this.updateCard(c, pc)
+      })
+    }
   }
 
   private toggleBalloon(open?: boolean): void {
@@ -404,28 +603,12 @@ export class MapsScanner {
     }
     const shouldOpen = open ?? !this.balloon.classList.contains('open')
     this.balloon.classList.toggle('open', shouldOpen)
-    if (shouldOpen) this.positionBalloon()
-    this.renderBalloonList()
+    if (shouldOpen) this.renderBalloonList()
   }
 
   /** Posiciona o retângulo logo acima do balão (ou abaixo quando não há espaço), com a seta apontando para ele. */
   private positionBalloon(): void {
-    if (!this.balloon || !this.bubble) return
-    const bw = this.bubble.offsetWidth
-    const bh = this.bubble.offsetHeight
-    const mw = this.balloon.offsetWidth
-    const mh = this.balloon.offsetHeight
-    const bl = this.bubble.offsetLeft
-    const bt = this.bubble.offsetTop
-
-    let left = bl + bw / 2 - mw / 2
-    left = Math.max(8, Math.min(window.innerWidth - mw - 8, left))
-
-    const above = bt - mh - 12 >= 8
-    this.balloon.classList.toggle('above', !above)
-    const top = above ? bt - mh - 12 : bt + bh + 12
-    this.balloon.style.left = `${left}px`
-    this.balloon.style.top = `${top}px`
+    // Sidebar fixa — sem posicionamento dinâmico.
   }
 
   // --- varredura dos cards nativos ---
@@ -748,3 +931,18 @@ const plusIcon = '<svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-
 
 const gearIcon =
   '<svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 6a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm8.9-3.3a7.5 7.5 0 0 0 0-1.5l2-1.6-2-3.4-2.5 1a7.7 7.7 0 0 0-1.7-1L16 1.5h-4l-.4 2.5a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 1.5l-2 1.6 2 3.4 2.5-1a7.7 7.7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.7 7.7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6zM12 16.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>'
+
+const starIcon =
+  '<svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.3 6.9.9-5 4.7 1.3 6.8L12 17.8 5.9 20.7l1.3-6.8-5-4.7 6.9-.9z"/></svg>'
+
+const pinIcon =
+  '<svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>'
+
+const downloadIcon =
+  '<svg viewBox="0 0 24 24"><path d="M11 5h2v7h2l-3 3-3-3h2V5zm-6 12h14v2H5v-2z"/></svg>'
+
+const listCheckIcon =
+  '<svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>'
+
+const trashIcon =
+  '<svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>'

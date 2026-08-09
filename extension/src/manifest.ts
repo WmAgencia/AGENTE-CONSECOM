@@ -2,9 +2,9 @@ import { defineManifest } from '@crxjs/vite-plugin'
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Consecom — Captura de Leads',
-  version: '0.0.1',
-  description: 'Capture empresas do Google Maps e importe para o painel Consecom.',
+  name: 'Vyntra Prospector',
+  version: '1.3.0',
+  description: 'Capture empresas do Google Maps, veja o Score Vyntra e importe como leads.',
   permissions: ['storage', 'activeTab', 'tabs'],
   host_permissions: [
     'https://*.google.com/maps/*',
@@ -12,7 +12,7 @@ export default defineManifest({
     'https://*.supabase.co/*',
   ],
   action: {
-    default_title: 'Consecom',
+    default_title: 'Vyntra Prospector',
     default_popup: 'src/popup/index.html',
     default_icon: {
       '16': 'icons/icon16.png',
