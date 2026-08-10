@@ -756,3 +756,105 @@ BEGIN
     ALTER TABLE public.leads ALTER COLUMN tags SET DEFAULT '{}';
   END IF;
 END $$;
+
+-- =============================================================
+-- Migration v9 — Correção definitiva da importação da extensão
+--   - Garante capture_sessions.user_id (TEXT, nullable)
+--   - Recria a policy capture_sessions_anon_insert (INSERT para role=anon).
+--     RLS continua habilitada (não desativamos). A policy é estrita:
+--     permite INSERT ao papel `anon` SEM exigir auth.uid(), porque a
+--     extensão Chrome só possui a chave anon (publishable) — não há
+--     sessão de usuário autenticada. Cada sessão fica marcada com
+--     imported_by='extension' para auditoria. READ continua só para
+--     authenticated (policy auth_read). Isto mantém isolamento:
+--     anônimo só pode CRIAR a sessão; ler/editar/excluir exige auth.
+--   - Reforça colunas v8 (facebook, source, instagram, etc.) para
+--     garantir o schema mesmo em projetos onde só parte foi aplicada.
+-- =============================================================
+
+-- capture_sessions.user_id (adicionada se faltar)
+ALTER TABLE public.capture_sessions
+  ADD COLUMN IF NOT EXISTS user_id TEXT;
+CREATE INDEX IF NOT EXISTS capture_sessions_user_idx ON public.capture_sessions (user_id);
+
+-- RLS续 habilitada (não desativamos)
+ALTER TABLE public.capture_sessions ENABLE ROW LEVEL SECURITY;
+
+-- Drop idempotente das policies existentes (p/ recriar no estado correto)
+DROP POLICY IF EXISTS capture_sessions_anon_insert ON public.capture_sessions;
+DROP POLICY IF EXISTS capture_sessions_auth_read   ON public.capture_sessions;
+DROP POLICY IF EXISTS capture_sessions_auth_insert ON public.capture_sessions;
+DROP POLICY IF EXISTS capture_sessions_auth_update ON public.capture_sessions;
+DROP POLICY IF EXISTS capture_sessions_auth_delete ON public.capture_sessions;
+
+-- INSERT para anon (extensão cria a sessão sem login)
+CREATE POLICY capture_sessions_anon_insert
+  ON public.capture_sessions FOR INSERT TO anon
+  WITH CHECK (true);
+
+-- CRUD completo só para authenticated (painel web com login)
+CREATE POLICY capture_sessions_auth_read
+  ON public.capture_sessions FOR SELECT
+  TO authenticated USING (true);
+CREATE POLICY capture_sessions_auth_insert
+  ON public.capture_sessions FOR INSERT
+  TO authenticated WITH CHECK (true);
+CREATE POLICY capture_sessions_auth_update
+  ON public.capture_sessions FOR UPDATE
+  TO authenticated USING (true);
+CREATE POLICY capture_sessions_auth_delete
+  ON public.capture_sessions FOR DELETE
+  TO authenticated USING (true);
+
+-- Reforça colunas v8 em leads (idempotente — se já existirem, é noop)
+ALTER TABLE public.leads
+  ADD COLUMN IF NOT EXISTS source            TEXT,
+  ADD COLUMN IF NOT EXISTS source_detail     TEXT,
+  ADD COLUMN IF NOT EXISTS instagram         TEXT,
+  ADD COLUMN IF NOT EXISTS facebook          TEXT,
+  ADD COLUMN IF NOT EXISTS tags              TEXT[] NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS prospect_filters  JSONB,
+  ADD COLUMN IF NOT EXISTS prospected_at     TIMESTAMPTZ;
+
+-- Reforça colunas v6 em leads (idempotente)
+ALTER TABLE public.leads
+  ADD COLUMN IF NOT EXISTS strategy_id          UUID REFERENCES public.strategies(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS score                INTEGER,
+  ADD COLUMN IF NOT EXISTS score_factors        JSONB,
+  ADD COLUMN IF NOT EXISTS interest_level       TEXT,
+  ADD COLUMN IF NOT EXISTS service_interest     TEXT,
+  ADD COLUMN IF NOT EXISTS has_website          BOOLEAN,
+  ADD COLUMN IF NOT EXISTS has_system           BOOLEAN,
+  ADD COLUMN IF NOT EXISTS problem_identified   BOOLEAN,
+  ADD COLUMN IF NOT EXISTS problem_description  TEXT,
+  ADD COLUMN IF NOT EXISTS objection            TEXT,
+  ADD COLUMN IF NOT EXISTS meeting_outcome      TEXT,
+  ADD COLUMN IF NOT EXISTS sale_status          TEXT,
+  ADD COLUMN IF NOT EXISTS loss_reason          TEXT;
+
+-- Reforça índices v8/v6
+CREATE INDEX IF NOT EXISTS leads_tags_gin_idx        ON public.leads USING GIN (tags);
+CREATE INDEX IF NOT EXISTS leads_source_idx          ON public.leads (source);
+CREATE INDEX IF NOT EXISTS leads_source_detail_idx   ON public.leads (source_detail);
+CREATE INDEX IF NOT EXISTS leads_strategy_idx        ON public.leads (strategy_id);
+CREATE INDEX IF NOT EXISTS leads_score_idx           ON public.leads (score);
+CREATE INDEX IF NOT EXISTS leads_service_interest_idx ON public.leads (service_interest);
+
+-- Atualiza default de tags (caso a coluna tenha sido criada sem default)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_schema='public' AND table_name='leads'
+                   AND column_name='tags' AND column_default IS NOT NULL) THEN
+    ALTER TABLE public.leads ALTER COLUMN tags SET DEFAULT '{}';
+  END IF;
+END $$;
+
+-- =============================================================
+-- NOTIFICA o schema cache PostgREST (necessário após DDL)
+-- O PostgREST detecta mudanças automaticamente via event triggers
+-- do Supabase na maioria das operações DDL, mas em casos onde a
+-- coluna é adicionada e já existia (ADD COLUMN IF NOT EXISTS), o
+-- cache pode ficar desatualizado. O comando abaixo sinaliza.
+-- =============================================================
+NOTIFY pgrst, 'reload schema';

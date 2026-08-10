@@ -93,19 +93,21 @@ const V8_COLUMNS = [
   'loss_reason',
 ]
 
-/** Cache de schema: true se as colunas v8 são suportadas pelo DB. */
-let v8Cache: boolean | null = null
-async function dbSupportsV8(client: SupabaseClient): Promise<boolean> {
-  if (v8Cache !== null) return v8Cache
-  const { data, error } = await client
-    .from('leads')
-    .select('has_website', { count: 'exact', head: true })
-    .eq('has_website', null)
-    .maybeSingle()
-  // PGRST204 → coluna não existe
-  v8Cache = !error || error.code !== 'PGRST204'
-  console.log('[IMPORT] DB schema v8 suportado:', v8Cache)
-  return v8Cache
+/** Cache de schema: true se as colunas v8 (source/instagram/facebook/tags/...) são suportadas. */
+let schemaCache: boolean | null = null
+async function dbSupportsV8Columns(client: SupabaseClient): Promise<boolean> {
+  if (schemaCache !== null) return schemaCache
+  // Probe explícito: pede um registro usando a coluna `source`.
+  // Se ela não existir, PostgREST retorna 400 com code 42703 (Postgres) ou
+  // PGRST204 (PostgREST schema cache desatualizado).
+  const { error } = await client.from('leads').select('source').limit(1).maybeSingle()
+  const supported = !error || (error.code !== '42703' && error.code !== 'PGRST204')
+  schemaCache = supported
+  console.log('[IMPORT] DB schema v8 (source/instagram/facebook/tags...):', supported)
+  if (error && !supported) {
+    console.log('[IMPORT] DB schema probe error:', error.code, error.message)
+  }
+  return supported
 }
 
 export async function importLeads(
@@ -117,22 +119,35 @@ export async function importLeads(
   const client = getClient(cfg)
   if (!client) return { ok: 0, failed: leads.length, firstError: 'Configure a URL e a chave anon do Supabase.', errors: [] }
 
-  // Detecta schema compatível (v6+v8 aplicadas vs. apenas base)
-  const supportsV8 = await dbSupportsV8(client)
+  // Detecta compatibilidade de schema (v6+v8 aplicadas vs. apenas base).
+  // Se as colunas v8 (source, facebook, instagram, tags, ...) não existirem,
+  // enviamos um payload reduzido com apenas colunas do schema base para não
+  // tombar todos os INSERTs com 42703/PGRST204. A feature detect é por probe
+  // SELECT explícito na coluna `source`.
+  const supportsV8 = await dbSupportsV8Columns(client)
+
   console.log('[IMPORT] Starting import')
   console.log('[IMPORT] Leads:', leads.length)
   console.log('[IMPORT] Endpoint:', `${cfg.supabaseUrl}/rest/v1/leads`)
+  console.log('[IMPORT] Schema v8 columns:', supportsV8 ? 'available (full payload)' : 'missing (base-only payload)')
 
   // Cada importação vira uma "sessão de captura" (para agrupar na Guia Leads).
+  // Tratamento best-effort: se capture_sessions INSERT falhar (ex.: RLS sem
+  // policy anon_insert, ou tabela sem user_id), seguimos com sessionId=null.
+  // Os leads ainda são importados — apenas sem agrupamento por sessão.
   let sessionId: string | null = null
   if (leads.length > 0) {
     const sessInsert: Record<string, unknown> = { imported_by: 'extension' }
     if (supportsV8) sessInsert.user_id = opts?.userId ?? null
     const { data, error } = await client.from('capture_sessions').insert(sessInsert).select('id').single()
     if (error) {
-      console.log('[IMPORT] capture_sessions INSERT error:', error.message)
+      console.log('[IMPORT] capture_sessions INSERT best-effort failed (continuing without session):', error.code, error.message)
+      console.log('[IMPORT]   Hint: aplique a migration v9 (capture_sessions_anon_insert policy) no Supabase.')
     }
-    if (!error && data) sessionId = data.id
+    if (!error && data) {
+      sessionId = data.id
+      console.log('[IMPORT] capture session:', sessionId)
+    }
   }
 
   const source = opts?.source ?? 'google_maps'
@@ -146,7 +161,9 @@ export async function importLeads(
 
   for (let i = 0; i < leads.length; i++) {
     const lead = leads[i]
-    // Row base — sempre presente no schema
+    // Mapper normalizer: ScrapedLead (Google Maps) → row compatível com leads.
+    // Colunas base SEMPRE presentes no schema. Colunas v6/v8 só se o DB as
+    // suportar (feature-detect via probe).
     const row: Record<string, unknown> = {
       name: lead.name || null,
       phone: lead.phone || null,
@@ -164,7 +181,6 @@ export async function importLeads(
       session_id: sessionId,
     }
 
-    // Colunas v6/v8 — enviadas SOMENTE se o DB as suportar
     if (supportsV8) {
       row.source = source
       row.source_detail = sourceDetail
@@ -177,9 +193,6 @@ export async function importLeads(
       if (opts?.score != null) row.score = opts.score
       if (opts?.scoreFactors) row.score_factors = opts.scoreFactors
       if (opts?.serviceInterest != null) row.service_interest = opts.serviceInterest
-    } else {
-      // Fallback: grava tags/scope em campos de texto disponíveis
-      console.log('[IMPORT] DB sem colunas v8 — omitindo source/instagram/etc.')
     }
 
     try {
