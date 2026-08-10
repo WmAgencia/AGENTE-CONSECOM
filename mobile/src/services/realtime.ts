@@ -1,8 +1,10 @@
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import { Preferences } from '@capacitor/preferences'
 import { supabase } from '../lib/supabase'
 import { loadNotifPrefs, type NotifPrefs } from '../lib/types'
 import { EVENT_ALARM_ID_BASE } from '../core/syncEngine'
 import { notifyEvent } from './alarms'
+import { decideCampaignVoice, type CampaignVoiceState } from '../lib/campaignVoice'
 
 // =====================================================================
 // Ponte Realtime -> Notificações.
@@ -148,25 +150,55 @@ async function handleCampaign(
   prefs: NotifPrefs,
 ): Promise<void> {
   const next = newRow(payload)
-  const old = oldRow(payload)
   if (!next) return
   const name = String(next.name ?? 'Campanha')
 
-  const prev = old?.status
-  const status = next.status
+  // Estado "já tocou" persistido: garante que a voz de início/finalização toque
+  // exatamente UMA vez por execução da campanha, mesmo com eventos duplicados
+  // ou app/aba reiniciados no meio da execução. Eventos de sucesso/falha de
+  // mensagem nunca disparam voz de campanha.
+  const current = await loadCampaignVoiceState()
+  const { action, next: nextState } = decideCampaignVoice(current, {
+    id: next.id != null ? String(next.id) : null,
+    status: next.status != null ? String(next.status) : null,
+    started_at: next.started_at as string | null,
+    finished_at: next.finished_at as string | null,
+  })
 
-  if (status === 'em_progresso' && prev !== 'em_progresso') {
+  if (action === 'iniciada') {
+    await saveCampaignVoiceState(nextState)
     if (await enabled(prefs, 'campanha_iniciada')) {
       await notifyEvent('Campanha iniciada', `${name} começou a rodar.`, nextId(), 'campanha_iniciada')
     }
-  } else if (status === 'finalizada' && prev !== 'finalizada') {
+  } else if (action === 'finalizada') {
+    await saveCampaignVoiceState(nextState)
     if (await enabled(prefs, 'campanha_concluida')) {
       await notifyEvent('Campanha concluída', `${name} terminou.`, nextId(), 'campanha_concluida')
     }
-  } else if (status === 'cancelada') {
+  } else if (action === 'cancelada') {
     if (await enabled(prefs, 'campanha_erro')) {
       await notifyEvent('Campanha cancelada', `${name} foi cancelada.`, nextId())
     }
+  }
+}
+
+const CAMPAIGN_VOICE_STATE_KEY = 'vyntra-campaign-voice-state'
+
+async function loadCampaignVoiceState(): Promise<CampaignVoiceState> {
+  try {
+    const { value } = await Preferences.get({ key: CAMPAIGN_VOICE_STATE_KEY })
+    if (value) return JSON.parse(value) as CampaignVoiceState
+  } catch {
+    /* ignore */
+  }
+  return {}
+}
+
+async function saveCampaignVoiceState(state: CampaignVoiceState): Promise<void> {
+  try {
+    await Preferences.set({ key: CAMPAIGN_VOICE_STATE_KEY, value: JSON.stringify(state) })
+  } catch {
+    /* ignore */
   }
 }
 

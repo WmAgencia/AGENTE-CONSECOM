@@ -161,6 +161,67 @@ function listen(
   }
 }
 
+// =====================================================================
+// Campanhas: voz de início/finalização EXATAMENTE UMA VEZ por execução.
+//
+// Motivo: o evento realtime pode não entregar o `old` completo da linha
+// (dependendo do replica identity da tabela), então depender de transição
+// `old.status -> new.status` reproduse a narração de início em qualquer
+// UPDATE da campanha (ex.: sucesso/falha de cada mensagem). A correção
+// amarra a narração ao `campaignRunId` (id + started_at/finished_at) e
+// persiste o estado já tocado. Mesmo que o evento chegue mais de uma vez
+// — ou a aba recarregue — a voz não repete.
+// =====================================================================
+
+interface CampaignRunState {
+  [campaignId: string]: { startKey?: string; endKey?: string }
+}
+
+const CAMPAIGN_RUN_KEY = 'vyntra-voice-campaign-runs'
+
+function loadCampaignRunState(): CampaignRunState {
+  try {
+    const raw = localStorage.getItem(CAMPAIGN_RUN_KEY)
+    if (raw) return JSON.parse(raw) as CampaignRunState
+  } catch {
+    /* ignore */
+  }
+  return {}
+}
+
+function saveCampaignRunState(state: CampaignRunState): void {
+  try {
+    localStorage.setItem(CAMPAIGN_RUN_KEY, JSON.stringify(state))
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Decide se deve tocar a voz de campanha para este evento (idempotente). */
+function campaignVoiceAction(
+  state: CampaignRunState,
+  campaign: { id: string; status: string; started_at?: string | null; finished_at?: string | null },
+): { action: 'start' | 'end' | null; next: CampaignRunState } {
+  const id = String(campaign.id ?? '')
+  if (!id) return { action: null, next: state }
+  const prev = state[id] ?? {}
+
+  switch (campaign.status) {
+    case 'em_progresso': {
+      const startKey = `${id}:${String(campaign.started_at ?? '')}`
+      if (prev.startKey === startKey) return { action: null, next: state }
+      return { action: 'start', next: { ...state, [id]: { ...prev, startKey } } }
+    }
+    case 'finalizada': {
+      const endKey = `${id}:${String(campaign.finished_at ?? '')}`
+      if (prev.endKey === endKey) return { action: null, next: state }
+      return { action: 'end', next: { ...state, [id]: { ...prev, endKey } } }
+    }
+    default:
+      return { action: null, next: state }
+  }
+}
+
 /** Ativa o reprodutor de voz no navegador. Retorna o cleanup. */
 export function subscribeVoiceNotifications(): () => void {
   const cleanups: Array<() => void> = []
@@ -181,10 +242,20 @@ export function subscribeVoiceNotifications(): () => void {
 
   cleanups.push(
     listen('campaigns', 'voice-campaigns', (p) => {
-      const status = String(p.new?.status ?? '')
-      const prev = String(p.old?.status ?? '')
-      if (status === 'em_progresso' && prev !== 'em_progresso') playVoice('campanha_iniciada')
-      else if (status === 'finalizada' && prev !== 'finalizada') playVoice('campanha_concluida')
+      const state = loadCampaignRunState()
+      const { action, next } = campaignVoiceAction(state, {
+        id: String(p.new?.id ?? ''),
+        status: String(p.new?.status ?? ''),
+        started_at: p.new?.started_at as string | null,
+        finished_at: p.new?.finished_at as string | null,
+      })
+      if (action === 'start') {
+        saveCampaignRunState(next)
+        playVoice('campanha_iniciada')
+      } else if (action === 'end') {
+        saveCampaignRunState(next)
+        playVoice('campanha_concluida')
+      }
     }),
   )
 

@@ -111,16 +111,33 @@ export class SendWorker {
     return rows[0] ?? null;
   }
 
-  private async getPendingRuns(): Promise<SendRunRow[]> {
-    // Só dispara campanhas em andamento (status 'em_progresso'). Assim,
-    // campanhas "prontas" ficam enfileiradas e uma dispara por vez.
+  private async getActiveCampaigns(): Promise<Array<{ id: string }>> {
+    // Campanhas em andamento. O worker finaliza cada uma quando não há mais
+    // nenhum run pendente/ativo (execução sequencial por lead).
     const r = await fetch(
-      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at,campaign:campaigns!inner(status)&campaign.status=eq.em_progresso&status=in.("pending","running")&order=created_at.asc`,
+      `${this.url}/rest/v1/campaigns?select=id&status=eq.em_progresso`,
       { headers: this.headers() },
     );
     if (!r.ok) return [];
-    const rows = (await r.json()) as Array<SendRunRow & { campaign?: { status: string } }>;
-    return rows as SendRunRow[];
+    return (await r.json()) as Array<{ id: string }>;
+  }
+
+  private async getCampaignRuns(campaignId: string): Promise<SendRunRow[]> {
+    const r = await fetch(
+      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at&campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.("pending","running")&order=created_at.asc`,
+      { headers: this.headers() },
+    );
+    if (!r.ok) return [];
+    return (await r.json()) as SendRunRow[];
+  }
+
+  /** Encerra de verdade a campanha (status finalizada + finished_at). */
+  private async finalizeCampaign(campaignId: string): Promise<void> {
+    await fetch(`${this.url}/rest/v1/campaigns?id=eq.${campaignId}`, {
+      method: 'PATCH',
+      headers: this.headers(true),
+      body: JSON.stringify({ status: 'finalizada', finished_at: new Date().toISOString() }),
+    });
   }
 
   private async getQueueMessages(campaignId: string): Promise<QueueMessageRow[]> {
@@ -411,18 +428,31 @@ export class SendWorker {
   async tick(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
+    const log = getLogger();
     try {
-      const runs = await this.getPendingRuns();
+      const camps = await this.getActiveCampaigns();
       const now = Date.now();
-      for (const run of runs) {
-        const due = !run.next_send_at || new Date(run.next_send_at).getTime() <= now;
-        if (!due) continue;
+      for (const camp of camps) {
+        const runs = await this.getCampaignRuns(camp.id);
+        // Nenhum run pendente/ativo => a campanha realmente terminou.
+        if (runs.length === 0) {
+          await this.finalizeCampaign(camp.id);
+          log.info({ campaignId: camp.id }, 'send-worker: campaign finalized / no active runs');
+          continue;
+        }
+        // EXECUÇÃO SEQUENCIAL POR LEAD: apenas o run mais antigo da campanha
+        // avança. Os demais permanecem 'pending' até este concluir a sequência
+        // inteira (done/failed). Isso garante o formato:
+        //   Lead A: M1 -> espera -> M2 -> espera -> M3 -> (conclui)
+        //   Lead B: M1 -> ...
+        // e NUNCA M1 para todos, depois M2 para todos, etc.
+        const run = runs[0];
+        if (run.next_send_at && new Date(run.next_send_at).getTime() > now) continue;
         try {
           await this.processRun(run);
         } catch (e) {
-          const log = getLogger();
           log.error({ runId: run.id, err: e instanceof Error ? e.message : e }, 'send-worker: run crashed');
-          await this.patchSendRun(run.id, { status: 'failed' });
+          await this.patchSendRun(run.id, { status: 'failed', fail_reason: 'crashed' });
         }
       }
       await this.processRemarketing();
