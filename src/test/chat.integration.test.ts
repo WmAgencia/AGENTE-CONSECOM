@@ -185,6 +185,33 @@ test('CORS: subdomain wildcard origin (*.lovable.app) is allowed', async () => {
   );
 });
 
+// CORS: DELETE (desconectar WhatsApp) deve ser permitido no preflight.
+test('CORS: DELETE is allowed on preflight (disconnect WhatsApp)', async () => {
+  const res = await app.inject({
+    method: 'OPTIONS',
+    url: '/api/connections/whatsapp',
+    headers: {
+      Origin: 'https://samirarevela.com.br',
+      'Access-Control-Request-Method': 'DELETE',
+      'Access-Control-Request-Headers': 'content-type, x-user-id',
+    },
+  });
+  assert.equal(res.statusCode, 204);
+  const methods = statusCodeString(res.headers['access-control-allow-methods']);
+  assert.ok(
+    methods.split(',').map((m) => m.trim()).includes('DELETE'),
+    `Access-Control-Allow-Methods deve incluir DELETE; recebido: ${methods}`,
+  );
+  assert.ok(
+    methods.split(',').map((m) => m.trim()).includes('GET'),
+    'GET deve permanecer permitido',
+  );
+  assert.ok(
+    methods.split(',').map((m) => m.trim()).includes('POST'),
+    'POST deve permanecer permitido',
+  );
+});
+
 // Directives: the site's rules must reach the model's system prompt.
 test('directives: /api/chat applies site rules to the system prompt', {
   timeout: GLM_TIMEOUT,

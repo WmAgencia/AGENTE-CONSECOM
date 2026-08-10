@@ -131,7 +131,13 @@ export function buildApp(): BuiltApp {
 
     if (req.method === 'OPTIONS') {
       // Preflight: short-circuit.
-      reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      // Methods reais expostos pelo backend (GET/POST/DELETE) + PUT/PATCH
+      // mantidos por compatibilidade com chamadas já existentes. O frontend
+      // usa DELETE para desconectar uma instância WhatsApp específica.
+      reply.header(
+        'Access-Control-Allow-Methods',
+        'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+      );
       reply.header(
         'Access-Control-Allow-Headers',
         'Content-Type, Authorization, x-user-id, x-workspace-id',
