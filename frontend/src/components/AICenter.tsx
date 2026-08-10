@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Send, Activity, Loader2, TriangleAlert, CircleOff, Play, X, GraduationCap, ShieldCheck } from 'lucide-react'
 import { api, type AiStatus, type AiFlowTestResult, type AiTrainingReply, type AiTrainingPersona } from '../lib/api'
+import { CommercialMemory } from './CommercialMemory'
 
 interface ChatMessage {
   id: string
@@ -377,6 +378,8 @@ export function AICenter() {
         <TrainingChat />
         <FlowTest />
       </div>
+
+      <CommercialMemory />
     </div>
   )
 }
