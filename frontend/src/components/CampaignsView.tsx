@@ -484,6 +484,12 @@ const RUN_STATUS: Record<SendRun['status'], { label: string; cls: string }> = {
   failed: { label: 'Falhou', cls: 'bg-rose-500/15 text-rose-300' },
 }
 
+const FAIL_REASON_LABEL: Record<string, string> = {
+  telefone_fixo: 'Número fixo → Nº p/ ligação',
+  numero_invalido: 'Número inválido → Nº p/ ligação',
+  sem_telefone: 'Lead sem telefone',
+}
+
 function RunsTable({ runs, onRemove }: { runs: SendRun[]; onRemove: (r: SendRun) => void }) {
   if (runs.length === 0) {
     return (
@@ -520,6 +526,11 @@ function RunsTable({ runs, onRemove }: { runs: SendRun[]; onRemove: (r: SendRun)
                   <span className={`${st.cls} px-2 py-0.5 rounded text-[11px] font-medium`}>
                     {st.label}
                   </span>
+                  {r.status === 'failed' && r.fail_reason && (
+                    <div className="text-[11px] text-rose-300/80 mt-1 max-w-[220px] leading-tight">
+                      {FAIL_REASON_LABEL[r.fail_reason] ?? r.fail_reason}
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 text-slate-500">
                   {r.next_send_at ? new Date(r.next_send_at).toLocaleString('pt-BR') : '—'}

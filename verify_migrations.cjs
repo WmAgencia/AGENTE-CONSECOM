@@ -55,6 +55,9 @@ function buildConfig() {
     { name: 'function set_updated_at', q: "SELECT EXISTS(SELECT 1 FROM pg_proc WHERE proname='set_updated_at') AS ok" },
     { name: 'trigger leads_updated_at', q: "SELECT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='leads_updated_at') AS ok" },
     { name: 'policy leads_anon_delete removida', q: "SELECT NOT EXISTS(SELECT 1 FROM pg_policies WHERE policyname='leads_anon_delete') AS ok" },
+    { name: 'v10: leads.call_reason', q: "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='leads' AND column_name='call_reason') AS ok" },
+    { name: 'v10: leads.call_moved_at', q: "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='leads' AND column_name='call_moved_at') AS ok" },
+    { name: 'v10: send_runs.fail_reason', q: "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='send_runs' AND column_name='fail_reason') AS ok" },
   ];
 
   let ok = 0, fail = 0;
@@ -80,9 +83,9 @@ function buildConfig() {
         AND pg_get_constraintdef(con.oid) LIKE '%status%'
     `);
     const def = r.rows[0]?.def || '';
-    const expected = ['novo','na_fila','enviado','conversando','sem_interesse','remarketing','reuniao_marcada','reuniao_cancelada','fechado','nao_fechado'];
+    const expected = ['novo','na_fila','enviado','conversando','sem_interesse','remarketing','reuniao_marcada','reuniao_cancelada','fechado','nao_fechado','para_ligacao'];
     const allPresent = expected.every(s => def.includes(s));
-    console.log(`${allPresent ? 'OK  ' : 'FAIL'}  status enum expandido (10 valores)`);
+    console.log(`${allPresent ? 'OK  ' : 'FAIL'}  status enum expandido (11 valores)`);
     if (allPresent) ok++; else fail++;
   } catch (e) {
     console.log(`FAIL  status enum expandido (${e.message.substring(0, 60)})`);

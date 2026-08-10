@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS public.send_runs (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (campaign_id, lead_id)
 );
+-- Migration v10: motivo de falha por execução (exibido na fila de envio)
+ALTER TABLE public.send_runs ADD COLUMN IF NOT EXISTS fail_reason TEXT;
 CREATE INDEX IF NOT EXISTS send_runs_lead_idx ON public.send_runs (lead_id);
 
 CREATE TABLE IF NOT EXISTS public.consecom_conversations (
@@ -125,21 +127,26 @@ ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS closed_reason     TEXT,
   ADD COLUMN IF NOT EXISTS closed_at         TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS remarket_at       TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS first_msg_sent_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS first_msg_sent_at TIMESTAMPTZ,
+  -- Migration v10: coluna "Números para ligação" (status para_ligacao)
+  ADD COLUMN IF NOT EXISTS call_reason       TEXT,
+  ADD COLUMN IF NOT EXISTS call_moved_at     TIMESTAMPTZ;
 
--- Status enum expandido (10 estados do funil)
+-- Status enum expandido (11 estados do funil + "Números para ligação" v10)
 ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status_check;
 UPDATE public.leads SET status = 'nao_fechado' WHERE status = 'perdido';
 ALTER TABLE public.leads ADD CONSTRAINT leads_status_check CHECK (
   status IN (
     'novo','na_fila','enviado','conversando','sem_interesse',
-    'remarketing','reuniao_marcada','reuniao_cancelada','fechado','nao_fechado'
+    'remarketing','reuniao_marcada','reuniao_cancelada','fechado','nao_fechado',
+    'para_ligacao'
   )
 );
 
 CREATE INDEX IF NOT EXISTS leads_session_idx    ON public.leads (session_id);
 CREATE INDEX IF NOT EXISTS leads_campaign_idx   ON public.leads (campaign_id);
 CREATE INDEX IF NOT EXISTS leads_nointerest_idx ON public.leads (no_interest_until);
+CREATE INDEX IF NOT EXISTS leads_call_moved_at_idx ON public.leads (status, call_moved_at);
 
 ALTER TABLE public.campaigns
   ADD COLUMN IF NOT EXISTS status        TEXT NOT NULL DEFAULT 'pronta',

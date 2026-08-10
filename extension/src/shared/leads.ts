@@ -1,4 +1,5 @@
 import { getClient, type StoredConfig } from './config'
+import { normalizeBrazilianPhone } from './phone'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PostgrestError } from '@supabase/supabase-js'
 
@@ -166,7 +167,9 @@ export async function importLeads(
     // suportar (feature-detect via probe).
     const row: Record<string, unknown> = {
       name: lead.name || null,
-      phone: lead.phone || null,
+      // Normaliza na origem (+55/DDD/só dígitos). Ao falhar (número inválido)
+      // mantém o valor cru para o usuário ver/corrigir; o backend reclassifica.
+      phone: normalizeBrazilianPhone(lead.phone) ?? (lead.phone || null),
       category: lead.category || null,
       website: lead.website || null,
       address: lead.address || null,

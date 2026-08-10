@@ -17,6 +17,7 @@
 import { getSupabaseProspeccaoConfig, getEnv } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { sendText, sendMedia, type MediaKind } from './evolution.service.js';
+import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js';
 import { loadAgentName, formatAgentSignature } from './supabase.leads.js';
 import {
   loadCampaignStrategies,
@@ -171,6 +172,24 @@ export class SendWorker {
     });
   }
 
+  /** Move o lead para a coluna "Números para ligação" (status 'para_ligacao'). */
+  private async moveLeadToCall(leadId: string, reason: string): Promise<void> {
+    await fetch(`${this.url}/rest/v1/leads?id=eq.${leadId}`, {
+      method: 'PATCH',
+      headers: this.headers(true),
+      body: JSON.stringify({
+        status: 'para_ligacao',
+        call_reason: reason,
+        call_moved_at: new Date().toISOString(),
+      }),
+    });
+    await fetch(`${this.url}/rest/v1/lead_status_history`, {
+      method: 'POST',
+      headers: this.headers(true),
+      body: JSON.stringify({ lead_id: leadId, status: 'para_ligacao', notes: reason }),
+    });
+  }
+
   private async patchLeadStrategy(leadId: string, strategyId: string): Promise<void> {
     await fetch(`${this.url}/rest/v1/leads?id=eq.${leadId}`, {
       method: 'PATCH',
@@ -205,9 +224,30 @@ export class SendWorker {
     const phone = lead.phone;
     if (!phone) {
       log.warn({ runId: run.id, leadId: run.lead_id }, 'send-worker: no phone, failing');
-      await this.patchSendRun(run.id, { status: 'failed', current_position: position });
+      await this.patchSendRun(run.id, { status: 'failed', current_position: position, fail_reason: 'sem_telefone' });
       return;
     }
+
+    // Normalização / roteamento por tipo de número. A Evolution API aceita
+    // somente dígitos; fixos e números inválidos não entram em WhatsApp e são
+    // movidos para a coluna "Números para ligação" do funil (status
+    // 'para_ligacao'), saindo definitivamente da fila de disparo.
+    const pinfo = classifyBrazilianPhone(phone);
+    if (pinfo.class !== 'MOBILE') {
+      const callReason = pinfo.class === 'LANDLINE' ? 'telefone_fixo' : 'numero_invalido';
+      log.info(
+        { runId: run.id, leadId: run.lead_id, klass: pinfo.class, reason: pinfo.reason },
+        'send-worker: numero fora do padrao WhatsApp, movendo para lista de ligacao',
+      );
+      await this.moveLeadToCall(run.lead_id, callReason);
+      await this.patchSendRun(run.id, {
+        status: 'failed',
+        current_position: position,
+        fail_reason: callReason,
+      });
+      return;
+    }
+    const sendPhone = pinfo.e164!;
 
     // Estratégia: na 1ª mensagem do lead, garante um strategy_id sorteado pela
     // campanha (A/B) e, quando a estratégia define uma first_message, usa-a no
@@ -240,18 +280,18 @@ export class SendWorker {
       );
     }
 
-    log.info({ runId: run.id, position, kind: next.kind, phone }, 'send-worker: sending');
+    log.info({ runId: run.id, position, kind: next.kind, phone: sendPhone }, 'send-worker: sending');
     const agentName = await loadAgentName();
     let ok: boolean;
     if (strategyKind === 'text' && strategyText) {
-      ok = (await sendText({ to: phone, text: formatAgentSignature(applyPlaceholders(strategyText, lead), agentName) })).ok;
+      ok = (await sendText({ to: sendPhone, text: formatAgentSignature(applyPlaceholders(strategyText, lead), agentName) })).ok;
     } else if (strategyMediaUrl) {
       const mediaUrl = strategyMediaUrl.startsWith('http')
         ? strategyMediaUrl
         : `${this.url}/storage/v1/object/public/${strategyMediaUrl.replace(/^\/+/, '')}`;
       ok = (
         await sendMedia({
-          to: phone,
+          to: sendPhone,
           kind: strategyKind as MediaKind,
           media: mediaUrl,
           caption: strategyCaption
@@ -337,12 +377,17 @@ export class SendWorker {
 
     for (const lead of leads) {
       if (!lead.phone) continue;
+      const sendPhone = normalizeBrazilianPhone(lead.phone);
+      if (!sendPhone) {
+        log.warn({ leadId: lead.id, phone: lead.phone }, 'send-worker: remarketing numero invalido, pulando');
+        continue;
+      }
       const body = applyPlaceholders(message, lead);
       const agentName = await loadAgentName();
       const finalText = formatAgentSignature(body, agentName);
-      const ok = (await sendText({ to: lead.phone, text: finalText })).ok;
+      const ok = (await sendText({ to: sendPhone, text: finalText })).ok;
       if (!ok) {
-        log.warn({ leadId: lead.id, phone: lead.phone }, 'send-worker: remarketing send failed');
+        log.warn({ leadId: lead.id, phone: sendPhone }, 'send-worker: remarketing send failed');
         continue;
       }
       await fetch(`${this.url}/rest/v1/leads?id=eq.${lead.id}`, {

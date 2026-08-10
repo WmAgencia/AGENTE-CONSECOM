@@ -15,6 +15,7 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   reuniao_cancelada: 'Reunião cancelada',
   fechado: 'Fechado',
   nao_fechado: 'Não fechado',
+  para_ligacao: 'Nº p/ ligação',
 }
 
 const AVATAR_COLORS = [

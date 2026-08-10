@@ -10,6 +10,7 @@ type Section =
   | 'remarketing'
   | 'reuniao_marcada'
   | 'reuniao_cancelada'
+  | 'para_ligacao'
   | 'concluidos'
 
 const SECTIONS: { key: Section; label: string; icon: string; statuses: LeadStatus[] }[] = [
@@ -19,6 +20,7 @@ const SECTIONS: { key: Section; label: string; icon: string; statuses: LeadStatu
   { key: 'sem_interesse', label: 'Sem interesse', icon: '🚫', statuses: ['sem_interesse'] },
   { key: 'reuniao_marcada', label: 'Reuniões', icon: '📅', statuses: ['reuniao_marcada'] },
   { key: 'reuniao_cancelada', label: 'Reuniões canceladas', icon: '🗓️', statuses: ['reuniao_cancelada'] },
+  { key: 'para_ligacao', label: 'Nº p/ ligação', icon: '📞', statuses: ['para_ligacao'] },
   { key: 'concluidos', label: 'Concluídos', icon: '✅', statuses: ['fechado', 'nao_fechado'] },
 ]
 
@@ -29,6 +31,7 @@ const SECTION_COLOR: Record<Section, string> = {
   sem_interesse: 'bg-rose-500',
   reuniao_marcada: 'bg-emerald-500',
   reuniao_cancelada: 'bg-orange-500',
+  para_ligacao: 'bg-cyan-400',
   concluidos: 'bg-green-500',
 }
 
@@ -70,6 +73,7 @@ function emptySections(): Record<Section, number> {
     remarketing: 0,
     reuniao_marcada: 0,
     reuniao_cancelada: 0,
+    para_ligacao: 0,
     concluidos: 0,
   }
 }
@@ -262,7 +266,9 @@ export function KanbanBoard({
               ? [...items].sort((a, b) => (a.meeting_at ?? '9999').localeCompare(b.meeting_at ?? '9999'))
               : sec.key === 'concluidos'
                 ? [...items].sort((a, b) => (b.closed_at ?? '').localeCompare(a.closed_at ?? ''))
-                : items
+                : sec.key === 'para_ligacao'
+                  ? [...items].sort((a, b) => (b.call_moved_at ?? '').localeCompare(a.call_moved_at ?? ''))
+                  : items
             return (
               <div key={sec.key} className="w-72 shrink-0 rounded-xl border border-white/5 bg-white/[0.02] flex flex-col">
                 <div className="px-4 py-3 flex items-center gap-2">
@@ -333,6 +339,12 @@ const STATUS_BADGE: Record<LeadStatus, { label: string; cls: string }> = {
   reuniao_cancelada: { label: 'Cancelada', cls: 'bg-orange-500/15 text-orange-300' },
   fechado: { label: 'Fechado', cls: 'bg-green-500/15 text-green-300' },
   nao_fechado: { label: 'Não fechado', cls: 'bg-rose-500/15 text-rose-300' },
+  para_ligacao: { label: 'Telefonar', cls: 'bg-cyan-400/15 text-cyan-300' },
+}
+
+const CALL_REASON_LABEL: Record<string, string> = {
+  telefone_fixo: 'Número fixo (não tem WhatsApp)',
+  numero_invalido: 'Número inválido / incorreto',
 }
 
 export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClose }: {
@@ -383,6 +395,14 @@ export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClos
       )}
       {(lead.status === 'fechado' || lead.status === 'nao_fechado') && (
         <div className="mt-2 text-[11px] text-slate-400">{lead.closed_reason || '(sem motivo)'}</div>
+      )}
+      {lead.status === 'para_ligacao' && (lead.call_reason || lead.call_moved_at) && (
+        <div className="mt-2 text-[11px] text-cyan-300 bg-cyan-400/10 rounded-md px-2 py-1">
+          📞 {CALL_REASON_LABEL[lead.call_reason ?? ''] ?? lead.call_reason}
+          {lead.call_moved_at && (
+            <span className="text-cyan-300/60"> · {new Date(lead.call_moved_at).toLocaleString('pt-BR')}</span>
+          )}
+        </div>
       )}
 
       <div className="mt-2 space-y-1 text-[11px] text-slate-400">

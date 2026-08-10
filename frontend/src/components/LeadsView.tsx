@@ -12,6 +12,7 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   reuniao_cancelada: 'Reunião cancelada',
   fechado: 'Fechado',
   nao_fechado: 'Não fechado',
+  para_ligacao: 'Nº p/ ligação',
 }
 
 const STATUS_COLOR: Record<LeadStatus, string> = {
@@ -25,6 +26,7 @@ const STATUS_COLOR: Record<LeadStatus, string> = {
   reuniao_cancelada: 'bg-orange-500/15 text-orange-300',
   fechado: 'bg-green-500/15 text-green-300',
   nao_fechado: 'bg-rose-500/15 text-rose-300',
+  para_ligacao: 'bg-cyan-400/15 text-cyan-300',
 }
 
 export function LeadsView({ leads }: { leads: Lead[] }) {

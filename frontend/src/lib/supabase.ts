@@ -22,6 +22,7 @@ export type LeadStatus =
   | 'reuniao_cancelada'
   | 'fechado'
   | 'nao_fechado'
+  | 'para_ligacao'
 
 export interface Lead {
   id: string
@@ -46,6 +47,8 @@ export interface Lead {
   closed_at: string | null
   remarket_at: string | null
   first_msg_sent_at: string | null
+  call_reason?: string | null
+  call_moved_at?: string | null
   score?: number | null
   score_factors?: unknown
   strategy_id?: string | null
@@ -110,6 +113,7 @@ export interface SendRun {
   current_position: number
   next_send_at: string | null
   last_sent_at: string | null
+  fail_reason?: string | null
   created_at: string
   campaign?: Pick<Campaign, 'id' | 'name'>
   lead?: Pick<Lead, 'id' | 'name' | 'phone' | 'status'>

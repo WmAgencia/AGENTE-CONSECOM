@@ -11,6 +11,7 @@ export type LeadStatus =
   | 'reuniao_cancelada'
   | 'fechado'
   | 'nao_fechado'
+  | 'para_ligacao'
 
 export interface Lead {
   id: string

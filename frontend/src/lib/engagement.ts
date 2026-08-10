@@ -97,6 +97,7 @@ const STATUS_INTEREST: Record<LeadStatus, number> = {
   reuniao_cancelada: 35,
   fechado: 100,
   nao_fechado: 40,
+  para_ligacao: 25,
 }
 
 /** Sinal de interesse por reunião (null quando não houve reunião). */
