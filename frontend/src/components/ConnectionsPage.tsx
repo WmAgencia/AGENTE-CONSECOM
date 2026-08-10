@@ -33,6 +33,13 @@ function normalizeQr(value: string | null | undefined): string | null {
   return `${PREFIX}${s}`
 }
 
+/** Extrai o número visível do JID ("55119999@s.whatsapp.net" -> "55 11999…"). */
+function formatPhone(phone: string | null): string {
+  if (!phone) return '—'
+  const digits = phone.replace(/\D/g, '')
+  return digits
+}
+
 interface Conn {
   id: string
   instance_name: string
@@ -41,6 +48,7 @@ interface Conn {
   status: ConnStatus
   qr_code: string | null
   last_sync_at: string | null
+  created_at?: string
 }
 
 interface Group {
@@ -59,11 +67,11 @@ const BACKEND = import.meta.env.VITE_BACKEND_URL as string | undefined
 const API = BACKEND ?? 'https://consecom-backend-production.up.railway.app'
 
 export function ConnectionsPage() {
-  const [conn, setConn] = useState<Conn | null>(null)
-  const [qr, setQr] = useState<string | null>(null)
+  const [conns, setConns] = useState<Conn[]>([])
+  const [qrByConn, setQrByConn] = useState<Record<string, string>>({})
+  const [loadingId, setLoadingId] = useState<string | null>(null)
   const [groups, setGroups] = useState<Group[]>([])
   const [notifGroup, setNotifGroup] = useState<NotifGroup | null>(null)
-  const [loading, setLoading] = useState(false)
   const [groupError, setGroupError] = useState<string | null>(null)
   const [groupSearch, setGroupSearch] = useState('')
   const [showGroupList, setShowGroupList] = useState(false)
@@ -89,16 +97,18 @@ export function ConnectionsPage() {
     const r = await fetch(`${API}/api/connections/whatsapp`, { headers: { 'x-user-id': sessionUser } })
     if (r.ok) {
       const data = await r.json()
-      if (data.connection) {
-        setConn(data.connection)
-        const normalized = normalizeQr(data.connection.qr_code)
-        if (normalized) {
-          setQr(normalized)
-        } else if (data.connection.status === 'connected') {
-          // Não estamos mais aguardando scan — limpa QR local.
-          setQr(null)
-        }
+      const list: Conn[] = (data.connections && data.connections.length > 0)
+        ? data.connections
+        : data.connection
+          ? [data.connection]
+          : []
+      setConns(list)
+      const qrMap: Record<string, string> = {}
+      for (const c of list) {
+        const n = normalizeQr(c.qr_code)
+        if (n) qrMap[c.id] = n
       }
+      setQrByConn(qrMap)
     }
   }, [sessionUser])
 
@@ -127,87 +137,84 @@ export function ConnectionsPage() {
     loadSettings()
   }, [sessionUser, loadConn, loadNotifGroup, loadSettings])
 
-  // Polling: refresh connection status every 5s when connecting
-  useEffect(() => {
-    if (!conn || conn.status === 'connected' || conn.status === 'disconnected') return
-    const t = setInterval(loadConn, 5000)
-    return () => clearInterval(t)
-  }, [conn, loadConn])
+  const busy = (id?: string) => (id && id !== null ? loadingId === id : loadingId !== null)
 
-  // Quando conectar, esconde QR local imediatamente (sem precisar esperar polling)
-  useEffect(() => {
-    if (conn?.status === 'connected' || conn?.status === 'disconnected') {
-      setQr(null)
-    }
-  }, [conn?.status])
-
-  async function connect() {
+  /** Cria uma NOVA conexão (multi-WhatsApp). Sem forceNew na primária ausente. */
+  async function addConnection(forceNew: boolean) {
     if (!sessionUser) return
-    setLoading(true)
+    setLoadingId('__new__')
     try {
       const r = await fetch(`${API}/api/connections/whatsapp/connect`, {
         method: 'POST',
-        headers: { 'x-user-id': sessionUser },
+        headers: { 'Content-Type': 'application/json', 'x-user-id': sessionUser },
+        body: forceNew ? JSON.stringify({ forceNew: true }) : undefined,
       })
-      if (r.ok) {
-        const data = await r.json()
-        const normalized = normalizeQr(data.qrCode)
-        if (normalized) setQr(normalized)
-        loadConn()
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        window.alert(err.error ?? `Falha ao conectar (HTTP ${r.status}).`)
+        return
+      }
+      const data = await r.json()
+      if (data.connection) {
+        const n = normalizeQr(data.qrCode ?? data.connection.qr_code)
+        setQrByConn((p) => (n ? { ...p, [data.connection.id]: n } : p))
+        await loadConn()
       }
     } finally {
-      setLoading(false)
+      setLoadingId(null)
     }
   }
 
-  async function newQR() {
+  async function newQR(c: Conn) {
     if (!sessionUser) return
-    setLoading(true)
+    setLoadingId(c.id)
     try {
-      // Rota "refresh" pedida no spec (POST /api/connections/whatsapp/connect/refresh).
-      // /qr continua funcionando como alias.
       const r = await fetch(`${API}/api/connections/whatsapp/connect/refresh`, {
         method: 'POST',
-        headers: { 'x-user-id': sessionUser },
+        headers: { 'Content-Type': 'application/json', 'x-user-id': sessionUser },
+        body: JSON.stringify({ id: c.id }),
       })
       if (r.ok) {
         const data = await r.json()
-        const normalized = normalizeQr(data.qrCode)
-        if (normalized) {
-          setQr(normalized)
-        } else {
-          // Sem QR imediato — mantém o anterior mas força polling
-          loadConn()
-        }
+        const n = normalizeQr(data.qrCode ?? data.connection?.qr_code)
+        if (n) setQrByConn((p) => ({ ...p, [c.id]: n }))
+        await loadConn()
       } else {
         const err = await r.json().catch(() => ({}))
         console.error('refresh failed', err)
       }
     } finally {
-      setLoading(false)
+      setLoadingId(null)
     }
   }
 
-  async function disconnect() {
+  async function disconnect(c: Conn) {
     if (!sessionUser) return
-    setLoading(true)
+    setLoadingId(c.id)
     try {
       const r = await fetch(`${API}/api/connections/whatsapp`, {
         method: 'DELETE',
-        headers: { 'x-user-id': sessionUser },
+        headers: { 'Content-Type': 'application/json', 'x-user-id': sessionUser },
+        body: JSON.stringify({ id: c.id }),
       })
       if (!r.ok) {
         const err = await r.json().catch(() => ({}))
         const msg = err.error === 'no_connection'
           ? 'Nenhum WhatsApp conectado para desconectar.'
-          : err.error ?? `Falha ao desconectar (HTTP ${r.status}).`
+          : err.error === 'evolution_logout_failed'
+            ? 'Falha ao encerrar a sessão no WhatsApp. Tente novamente.'
+            : err.error ?? `Falha ao desconectar (HTTP ${r.status}).`
         window.alert(msg)
         return
       }
-      setQr(null)
+      setQrByConn((p) => {
+        const q = { ...p }
+        delete q[c.id]
+        return q
+      })
       await loadConn()
     } finally {
-      setLoading(false)
+      setLoadingId(null)
     }
   }
 
@@ -255,13 +262,13 @@ export function ConnectionsPage() {
 
   async function testGroup() {
     if (!notifGroup || !sessionUser) return
-    setLoading(true)
+    setLoadingId('__group__')
     await fetch(`${API}/api/connections/groups/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-user-id': sessionUser },
       body: JSON.stringify({ groupId: notifGroup.group_id }),
     })
-    setLoading(false)
+    setLoadingId(null)
   }
 
   async function toggleSetting(key: string, value: boolean) {
@@ -274,17 +281,32 @@ export function ConnectionsPage() {
     )
   }
 
-  const statusColor =
-    conn?.status === 'connected' ? 'text-emerald-400'
-    : conn?.status === 'connecting' || conn?.status === 'pending' ? 'text-amber-400'
-    : conn?.status === 'error' ? 'text-red-400'
+  // Polling: refresh status a cada 5s quando alguma conexão está aguardando QR.
+  useEffect(() => {
+    const hasConnecting = conns.some((c) => c.status === 'connecting' || c.status === 'pending')
+    if (!hasConnecting) return
+    const t = setInterval(loadConn, 5000)
+    return () => clearInterval(t)
+  }, [conns, loadConn])
+
+  const statusColor = (st: ConnStatus) =>
+    st === 'connected' ? 'text-emerald-400'
+    : st === 'connecting' || st === 'pending' ? 'text-amber-400'
+    : st === 'error' ? 'text-red-400'
     : 'text-slate-400'
-  const statusLabel =
-    conn?.status === 'connected' ? 'Conectado'
-    : conn?.status === 'connecting' ? 'Aguardando conexão'
-    : conn?.status === 'pending' ? 'Aguardando'
-    : conn?.status === 'error' ? 'Erro'
-    : conn?.status === 'disconnected' ? 'Desconectado'
+
+  const statusDot = (st: ConnStatus) =>
+    st === 'connected' ? '#34d399'
+    : st === 'connecting' || st === 'pending' ? '#fbbf24'
+    : st === 'error' ? '#f87171'
+    : '#64748b'
+
+  const statusLabel = (st: ConnStatus) =>
+    st === 'connected' ? 'Conectado'
+    : st === 'connecting' ? 'Aguardando conexão'
+    : st === 'pending' ? 'Aguardando'
+    : st === 'error' ? 'Erro'
+    : st === 'disconnected' ? 'Desconectado'
     : 'Sem conexão'
 
   const filteredGroups = groups.filter((g) => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
@@ -296,94 +318,124 @@ export function ConnectionsPage() {
   const btnGhost = `${btn} bg-white/5 hover:bg-white/10 text-slate-300`
   const btnDanger = `${btn} bg-red-600/20 hover:bg-red-600/40 text-red-300`
 
+  const hasConnected = conns.some((c) => c.status === 'connected')
+
   return (
     <div className="h-full overflow-auto px-6 py-5 max-w-3xl">
       <h1 className="text-lg font-semibold mb-1">Conexões</h1>
       <p className="text-sm text-slate-400 mb-6">Gerencie suas integrações externas.</p>
 
       <div className="space-y-6">
-        {/* === CARD 1: WhatsApp === */}
+        {/* === CARD 1: WhatsApp (multi-conexão) === */}
         <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-300">WhatsApp</h2>
-            <span className={`text-sm font-medium ${statusColor}`}>
-              <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle"
-                style={{
-                  background: conn?.status === 'connected' ? '#34d399'
-                    : conn?.status === 'connecting' || conn?.status === 'pending' ? '#fbbf24'
-                    : conn?.status === 'error' ? '#f87171'
-                    : '#64748b',
-                }}
-              />
-              {statusLabel}
+            <span className="text-sm font-medium text-slate-400">
+              {conns.length} conexão{conns.length !== 1 ? 'ões' : ''}
             </span>
           </div>
 
-          {conn?.phone_number && (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className={label}>Número conectado</span>
-                <span className="text-slate-200">{conn.phone_number}</span>
-              </div>
-              <div>
-                <span className={label}>Nome do WhatsApp</span>
-                <span className="text-slate-200">{conn.whatsapp_name ?? '—'}</span>
-              </div>
-              <div>
-                <span className={label}>Última sincronização</span>
-                <span className="text-slate-200">{conn.last_sync_at ? new Date(conn.last_sync_at).toLocaleString('pt-BR') : '—'}</span>
-              </div>
-            </div>
+          {conns.length === 0 && (
+            <button onClick={() => addConnection(false)} className={btnPrimary} disabled={busy()}>
+              Conectar WhatsApp
+            </button>
           )}
 
-          {/* QR Code area */}
-          {(conn?.status === 'connecting' || conn?.status === 'pending' || (!conn && loading)) && qr && (
-            <div className="flex flex-col items-center py-4">
-              <div className="bg-white rounded-lg p-3 mb-3">
-                <img src={qr} alt="QR Code" className="w-48 h-48" />
-             </div>
-              <p className="text-sm text-slate-400 text-center max-w-xs">
-                Escaneie o QR Code pelo WhatsApp → Dispositivos conectados → Conectar dispositivo.
-             </p>
-           </div>
-          )}
+          {/* Lista de conexões */}
+          <div className="space-y-4">
+            {conns.map((c, idx) => {
+              const qr = qrByConn[c.id]
+              const connecting = c.status === 'connecting' || c.status === 'pending'
+              return (
+                <div key={c.id} className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-slate-300">
+                      WhatsApp {idx + 1}
+                    </span>
+                    <span className={`text-sm font-medium ${statusColor(c.status)}`}>
+                      <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle"
+                        style={{ background: statusDot(c.status) }}
+                      />
+                      {statusLabel(c.status)}
+                    </span>
+                  </div>
 
-          {loading && !qr && (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full" />
-              <span className="ml-3 text-sm text-slate-400">Gerando QR Code…</span>
-            </div>
-          )}
+                  {/* Dados da conexão */}
+                  {(c.status === 'connected' || c.phone_number) && (
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className={label}>Número conectado</span>
+                        <span className="text-slate-200">{c.phone_number ? formatPhone(c.phone_number) : '—'}</span>
+                      </div>
+                      <div>
+                        <span className={label}>Nome do WhatsApp</span>
+                        <span className="text-slate-200">{c.whatsapp_name ?? '—'}</span>
+                      </div>
+                      {c.last_sync_at && (
+                        <div>
+                          <span className={label}>Última sincronização</span>
+                          <span className="text-slate-200">{new Date(c.last_sync_at).toLocaleString('pt-BR')}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span className={label}>Instância</span>
+                        <span className="text-slate-200 text-xs font-mono break-all">{c.instance_name}</span>
+                      </div>
+                    </div>
+                  )}
 
-          {/* Actions */}
-          <div className="flex flex-wrap gap-2">
-            {!conn && (
-              <button onClick={connect} className={btnPrimary} disabled={loading}>
-                Conectar WhatsApp
-              </button>
-            )}
-            {conn && (conn.status === 'connecting' || conn.status === 'pending') && (
-              <>
-                <button onClick={newQR} className={btnGhost} disabled={loading}>
-                  Gerar novo QR Code
-                </button>
-              </>
-            )}
-            {conn && conn.status === 'connected' && (
-              <button onClick={disconnect} className={btnDanger} disabled={loading}>
-                Desconectar
-              </button>
-            )}
-            {conn && conn.status === 'disconnected' && (
-              <button onClick={newQR} className={btnPrimary} disabled={loading}>
-                Reconectar
-              </button>
-            )}
-            {conn && conn.status === 'error' && (
-              <button onClick={newQR} className={btnPrimary} disabled={loading}>
-                Tentar novamente
-              </button>
-            )}
+                  {/* QR Code area */}
+                  {connecting && qr && (
+                    <div className="flex flex-col items-center py-2">
+                      <div className="bg-white rounded-lg p-3 mb-3">
+                        <img src={qr} alt={`QR Code ${idx + 1}`} className="w-48 h-48" />
+                      </div>
+                      <p className="text-sm text-slate-400 text-center max-w-xs">
+                        Escaneie o QR Code pelo WhatsApp → Dispositivos conectados → Conectar dispositivo.
+                      </p>
+                    </div>
+                  )}
+                  {connecting && !qr && (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full" />
+                      <span className="ml-3 text-sm text-slate-400">Gerando QR Code…</span>
+                    </div>
+                  )}
+
+                  {/* Ações por conexão */}
+                  <div className="flex flex-wrap gap-2">
+                    {c.status === 'connected' && (
+                      <button onClick={() => disconnect(c)} className={btnDanger} disabled={busy(c.id)}>
+                        Desconectar
+                      </button>
+                    )}
+                    {connecting && (
+                      <button onClick={() => newQR(c)} className={btnGhost} disabled={busy(c.id)}>
+                        Gerar novo QR Code
+                      </button>
+                    )}
+                    {(c.status === 'disconnected') && (
+                      <button onClick={() => newQR(c)} className={btnPrimary} disabled={busy(c.id)}>
+                        Reconectar
+                      </button>
+                    )}
+                    {c.status === 'error' && (
+                      <button onClick={() => newQR(c)} className={btnPrimary} disabled={busy(c.id)}>
+                        Tentar novamente
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Conectar outro WhatsApp */}
+          <div className="pt-2">
+            <button onClick={() => addConnection(true)} className={btnGhost} disabled={busy('__new__')}
+              title="Conecta um segundo número sem desconectar o atual">
+              + Conectar outro WhatsApp
+            </button>
           </div>
         </section>
 
@@ -391,7 +443,7 @@ export function ConnectionsPage() {
         <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
           <h2 className="text-sm font-semibold text-slate-300">Grupo de Notificações</h2>
 
-          {conn?.status !== 'connected' ? (
+          {!hasConnected ? (
             <p className="text-sm text-slate-500">
               Conecte o WhatsApp primeiro para selecionar um grupo de notificações.
             </p>
@@ -412,7 +464,7 @@ export function ConnectionsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button onClick={testGroup} className={btnGhost} disabled={loading}>
+                <button onClick={testGroup} className={btnGhost} disabled={busy('__group__')}>
                   Testar envio
                 </button>
                 <button onClick={loadGroups} className={btnGhost}>
@@ -468,7 +520,7 @@ export function ConnectionsPage() {
               ['notify_sales', 'Notificar novos clientes fechados'],
               ['notify_campaigns', 'Notificar campanhas finalizadas'],
               ['daily_summary', 'Enviar resumo diário'],
-            ] as const).map(([key, label]) => (
+            ] as const).map(([key, labelText]) => (
               <label key={key} className="flex items-center gap-3 text-sm text-slate-300 cursor-pointer">
                 <button
                   type="button"
@@ -479,7 +531,7 @@ export function ConnectionsPage() {
                     className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${settings[key] ? 'left-5' : 'left-0.5'}`}
                   />
                 </button>
-                {label}
+                {labelText}
               </label>
             ))}
           </div>

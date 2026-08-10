@@ -8,7 +8,7 @@
  *
  * Uses the Supabase REST API with the service role key (server-side only).
  */
-import { getEvolutionConfig, getSupabaseProspeccaoConfig } from '../config/env.js';
+import { getEvolutionConfig, getSupabaseProspeccaoConfig, getWebhookSecret } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { extractQrFromEvolution, isValidQrDataUri, toQrDataUri } from '../utils/qr.js';
 
@@ -31,17 +31,62 @@ function getPublicBaseUrl(): string {
 }
 
 /**
- * Builds the Evolution instance name for a given workspace.
+ * Builds the base Evolution instance name for a given workspace.
  * Naming convention: `consecom-<workspace_id>` (sanitized for Evolution rules).
- * Falls back to `consecom-user-<id8>` when no workspace_id is provided.
+ * Falls back to `consecom-user-<id12>` when no workspace_id is provided.
  */
-function buildInstanceName(workspaceId: string | null, userId: string): string {
+function buildInstanceBaseName(workspaceId: string | null, userId: string): string {
   const sanitize = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
   if (workspaceId) {
     return `consecom-${sanitize(workspaceId)}`;
   }
   return `consecom-user-${sanitize(userId).slice(0, 12)}`;
+}
+
+/**
+ * Retorna os nomes de instância que JÁ existem na Evolution API.
+ * Usado para gerar nomes únicos ao conectar múltiplos WhatsApps —
+ * a Evolution rejeita criação de instância duplicada (nome já em uso).
+ */
+async function fetchEvolutionInstanceNames(): Promise<Set<string>> {
+  const log = getLogger();
+  try {
+    const cfg = getEvolutionConfig();
+    const res = await fetch(`${cfg.apiUrl}/instance/fetchInstances`, {
+      method: 'GET',
+      headers: { apikey: cfg.apiKey },
+    });
+    if (!res.ok) return new Set();
+    const data = (await res.json()) as Array<{ name?: string }>;
+    return new Set((Array.isArray(data) ? data : []).map((x) => x.name).filter(Boolean) as string[]);
+  } catch (e) {
+    log.warn(
+      { err: e instanceof Error ? e.message : 'unknown' },
+      'connections: fetchEvolutionInstanceNames failed',
+    );
+    return new Set();
+  }
+}
+
+/**
+ * Gera um nome de instância ÚNICO na Evolution para uma nova conexão.
+ * Base = consecom-<workspace>/consecom-user-<id>. Se o nome base já existe
+ * (nesta Evolution ou na tabela), acrescenta um sufixo -2, -3, ... até achar
+ * um livre. Isso permite conectar 2, 3, ... WhatsApps independentes.
+ */
+async function buildUniqueInstanceName(
+  workspaceId: string | null,
+  userId: string,
+  localUsed: Set<string>,
+): Promise<string> {
+  const base = buildInstanceBaseName(workspaceId, userId);
+  const remote = await fetchEvolutionInstanceNames();
+  const taken = new Set<string>([...remote, ...localUsed]);
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
 }
 
 /**
@@ -96,36 +141,74 @@ function supUrl(): string {
   return cfg.url;
 }
 
-/** Lê a conexão WhatsApp do usuário/workspace da tabela whatsapp_connections.
- *  Aceita um identifier que pode ser workspace_id (multi-tenant) ou user_id (legado).
- *  Faz lookup em workspace_id primeiro (precedência), depois em user_id.
+/** Interface de seleção de conexão (multi-WhatsApp).
+ *  id = UUID da linha em whatsapp_connections; instanceName = nome da instância Evolution.
+ *  Quando ambos ausentes, resolve a conexão "primária" (connected > connecting > mais recente).
  */
-export async function getUserConnection(identifier: string): Promise<WhatsAppConnection | null> {
+export interface ConnectionTarget {
+  id?: string;
+  instanceName?: string;
+}
+
+/** Lista TODAS as conexões WhatsApp do usuário/workspace (multi-WhatsApp).
+ *  Busca por workspace_id e user_id, desduplica por id e ordena por created_at desc.
+ */
+export async function getUserConnections(identifier: string): Promise<WhatsAppConnection[]> {
   const log = getLogger();
   try {
     const url = supUrl();
     const hdrs = supHeaders();
-    // 1) Tenta por workspace_id (multi-tenant)
-    const wRes = await fetch(
-      `${url}/rest/v1/whatsapp_connections?select=*&workspace_id=eq.${encodeURIComponent(identifier)}&order=created_at.desc&limit=1`,
-      { headers: hdrs },
-    );
-    if (wRes.ok) {
-      const wRows = (await wRes.json()) as WhatsAppConnection[];
-      if (wRows.length > 0) return wRows[0];
-    }
-    // 2) Fallback: por user_id (legado single-tenant)
-    const uRes = await fetch(
-      `${url}/rest/v1/whatsapp_connections?select=*&user_id=eq.${encodeURIComponent(identifier)}&order=created_at.desc&limit=1`,
-      { headers: hdrs },
-    );
-    if (!uRes.ok) return null;
-    const uRows = (await uRes.json()) as WhatsAppConnection[];
-    return uRows[0] ?? null;
+    const seen = new Map<string, WhatsAppConnection>();
+    const consume = async (filterParam: string) => {
+      const res = await fetch(
+        `${url}/rest/v1/whatsapp_connections?select=*&${filterParam}&order=created_at.desc`,
+        { headers: hdrs },
+      );
+      if (res.ok) {
+        const rows = (await res.json()) as WhatsAppConnection[];
+        for (const row of rows) {
+          if (!seen.has(row.id)) seen.set(row.id, row);
+        }
+      }
+    };
+    await consume(`workspace_id=eq.${encodeURIComponent(identifier)}`);
+    await consume(`user_id=eq.${encodeURIComponent(identifier)}`);
+    const all = [...seen.values()];
+    all.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+    return all;
   } catch (e) {
-    log.warn({ err: e instanceof Error ? e.message : 'unknown' }, 'connections: getUserConnection failed');
-    return null;
+    log.warn({ err: e instanceof Error ? e.message : 'unknown' }, 'connections: getUserConnections failed');
+    return [];
   }
+}
+
+/** Resolve uma conexão específica OU a "primária" do usuário/workspace.
+ *  target.id tem precedência; depois target.instanceName; senão: connected > connecting > mais recente.
+ */
+export async function resolveConnection(
+  identifier: string,
+  target?: ConnectionTarget,
+): Promise<WhatsAppConnection | null> {
+  const all = await getUserConnections(identifier);
+  if (all.length === 0) return null;
+  if (target?.id) {
+    const found = all.find((c) => c.id === target.id);
+    if (found) return found;
+  }
+  if (target?.instanceName) {
+    const found = all.find((c) => c.instance_name === target.instanceName);
+    if (found) return found;
+  }
+  return (
+    all.find((c) => c.status === 'connected') ??
+    all.find((c) => c.status === 'connecting' || c.status === 'pending') ??
+    all[0]
+  );
+}
+
+/** Lê a conexão WhatsApp "primária" do usuário/workspace (compatibilidade com fluxos legados). */
+export async function getUserConnection(identifier: string): Promise<WhatsAppConnection | null> {
+  return resolveConnection(identifier);
 }
 
 /**
@@ -182,15 +265,27 @@ export async function resolveNotificationGroupJid(instanceName: string): Promise
   }
 }
 
-/** Cria uma nova instância na Evolution API e persiste a conexão no Supabase. */
+/** Cria uma nova instância na Evolution API e persiste a conexão no Supabase.
+ *  A connection passa a ser identificada pelo instance_name ÚNICO, permitindo
+ *  múltiplos WhatsApps simultâneos sem reutilizar a mesma instância.
+ */
 export async function createInstanceForUser(
   userId: string,
   workspaceId: string | null = null,
-): Promise<{ ok: boolean; qrCode?: string; error?: string }> {
+): Promise<{ ok: boolean; connection?: WhatsAppConnection; qrCode?: string; error?: string }> {
   const log = getLogger();
   try {
     const cfg = getEvolutionConfig();
-    const instanceName = buildInstanceName(workspaceId, userId);
+
+    // Nomes já usados localmente (mesmo usuário) => garante que o 2º WhatsApp
+    // receba um instance_name diferente do 1º (multi-instância).
+    const local = new Set<string>();
+    const lists: Promise<WhatsAppConnection[]>[] = [];
+    if (workspaceId) lists.push(fetchList('workspace_id', workspaceId));
+    lists.push(fetchList('user_id', userId));
+    const existing = (await Promise.all(lists)).flat();
+    for (const row of existing) local.add(row.instance_name);
+    const instanceName = await buildUniqueInstanceName(workspaceId, userId, local);
 
     // POST /instance/create — cria instância na Evolution API.
     // Importante: a Evolution API v2.3.x rejeita o payload quando `webhook` +
@@ -214,12 +309,13 @@ export async function createInstanceForUser(
 
     // POST /webhook/set/{instance} — registra webhook separadamente.
     // Necessário por causa do bug da Evolution v2.3.x que rejeita webhook no create.
+    const wbSecret = getWebhookSecret();
     const webhookRes = await fetch(`${cfg.apiUrl}/webhook/set/${encodeURIComponent(instanceName)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: cfg.apiKey },
       body: JSON.stringify({
         webhook: {
-          url: `${getPublicBaseUrl()}/webhook/evolution`,
+          url: `${getPublicBaseUrl()}/webhook/evolution${wbSecret ? `?secret=${encodeURIComponent(wbSecret)}` : ''}`,
           enabled: true,
           webhook_by_events: true,
           events: ['APPLICATION_STARTUP', 'QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT', 'SEND_MESSAGE'],
@@ -267,7 +363,8 @@ export async function createInstanceForUser(
     const initialStatus: 'pending' | 'connecting' = qrCode ? 'connecting' : 'pending';
 
     // Persiste no Supabase
-    await fetch(`${supUrl()}/rest/v1/whatsapp_connections`, {
+    const nowIso = new Date().toISOString();
+    const insertRes = await fetch(`${supUrl()}/rest/v1/whatsapp_connections`, {
       method: 'POST',
       headers: supHeaders(),
       body: JSON.stringify({
@@ -276,23 +373,48 @@ export async function createInstanceForUser(
         instance_name: instanceName,
         status: initialStatus,
         qr_code: qrCode,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: nowIso,
+        updated_at: nowIso,
       }),
     });
+    let connection: WhatsAppConnection | undefined;
+    if (insertRes.ok) {
+      const created = (await insertRes.json()) as WhatsAppConnection;
+      connection = created;
+    } else {
+      // Fallback: busca a linha recém-criada para retornar ao frontend.
+      const found = await getUserConnections(userId);
+      connection = found.find((c) => c.instance_name === instanceName) ?? found[0];
+    }
 
-    return { ok: true, qrCode: qrCode ?? undefined };
+    return { ok: true, connection, qrCode: qrCode ?? undefined };
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : 'unknown' }, 'connections: createInstanceForUser failed');
     return { ok: false, error: e instanceof Error ? e.message : 'unknown_error' };
   }
 }
 
-/** Gera um novo QR Code para uma instância existente. */
-export async function regenerateQRCode(identifier: string): Promise<{ ok: boolean; qrCode?: string; error?: string }> {
+async function fetchList(col: 'workspace_id' | 'user_id', value: string): Promise<WhatsAppConnection[]> {
+  try {
+    const res = await fetch(
+      `${supUrl()}/rest/v1/whatsapp_connections?select=id,instance_name&${col}=eq.${encodeURIComponent(value)}&order=created_at.desc`,
+      { headers: supHeaders() },
+    );
+    if (!res.ok) return [];
+    return (await res.json()) as WhatsAppConnection[];
+  } catch {
+    return [];
+  }
+}
+
+/** Gera um novo QR Code para uma instância específica (ou a primária). */
+export async function regenerateQRCode(
+  identifier: string,
+  target?: ConnectionTarget,
+): Promise<{ ok: boolean; connection?: WhatsAppConnection; qrCode?: string; error?: string }> {
   const log = getLogger();
   try {
-    const conn = await getUserConnection(identifier);
+    const conn = await resolveConnection(identifier, target);
     if (!conn) return { ok: false, error: 'no_connection' };
 
     const cfg = getEvolutionConfig();
@@ -347,7 +469,7 @@ export async function regenerateQRCode(identifier: string): Promise<{ ok: boolea
       }),
     });
 
-    return { ok: true, qrCode };
+    return { ok: true, connection: { ...conn, qr_code: qrCode, status: 'connecting' }, qrCode };
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : 'unknown' }, 'connections: regenerateQRCode failed');
     return { ok: false, error: e instanceof Error ? e.message : 'unknown_error' };
@@ -386,73 +508,101 @@ export async function clearQrCode(identifier: string): Promise<void> {
  */
 export { toQrDataUri };
 
-/** Desconecta a instância do WhatsApp. */
-export async function disconnectInstance(userId: string): Promise<{ ok: boolean; error?: string }> {
+/**
+ * Desconecta UMA instância específica do WhatsApp (a passada em target, ou a
+ * primária). O fluxo REAL de logout é:
+ *   1. ENDPOINT: DELETE /instance/logout/{instance}?apikey=
+ *      (esta build "evolution_exchange" v2.3.7 aceita DELETE — o teste direto
+ *      confirmou: autorizado com header `apikey`; `x-api-key` retorna 401 e
+ *      POST retorna 404. Ao logar com sucesso, a Evolution dispara
+ *      CONNECTION_UPDATE state=open na instância.)
+ *   2. Se DELETE falhar (ex: 404 de rota), cai no POST /instance/logout que
+ *      nesta build devolve 404 — então NÃO forçamos estado local: o estado
+ *      final fica conhecido pelo webhook CONNECTION_UPDATE que a Evolution
+ *      envia após o logout de verdade.
+ *   3. Local: marca status disconnected apenas quando a Evolution respondeu
+ *      OK ao logout (remoteOk=true). Se o logout remoto falhou, DEIXA o estado
+ *      como estava — assim o painel não mente dizendo que desconectou.
+ *
+ * Retorna { ok, connection } com a linha atualizada (status e dados limpos).
+ */
+export async function disconnectInstance(
+  identifier: string,
+  target?: ConnectionTarget,
+): Promise<{ ok: boolean; connection?: WhatsAppConnection; error?: string }> {
   const log = getLogger();
   try {
-    const conn = await getUserConnection(userId);
+    const conn = await resolveConnection(identifier, target);
     if (!conn) return { ok: false, error: 'no_connection' };
 
     const cfg = getEvolutionConfig();
 
-    // Algumas builds da Evolution (ex: "evolution_exchange" v2.3.7) aceitam o
-    // logout via DELETE; outras exigem POST. Tentamos DELETE e caímos para
-    // POST. O estado local continua sendo marcado como disconnected mesmo se
-    // a chamada remota falhar (o logout em Baileys nem sempre desconecta de
-    // volta para o estado "open" no webhook a tempo).
     let remoteOk = false;
-    for (const method of ['DELETE', 'POST'] as const) {
-      try {
-        const res = await fetch(
-          `${cfg.apiUrl}/instance/logout/${encodeURIComponent(conn.instance_name)}`,
-          { method, headers: { apikey: cfg.apiKey } },
-        );
-        if (res.ok) {
-          remoteOk = true;
-          break;
-        }
-        log.warn(
-          { status: res.status, method },
-          'connections: logout attempt returned non-OK',
-        );
-      } catch (inner) {
-        log.warn(
-          { err: inner instanceof Error ? inner.message : 'unknown', method },
-          'connections: logout attempt failed',
-        );
-      }
+    // DELETE é o verbo correto nesta build (teste direto: 400 quando não
+    // conectada, 401 só se header errado). DELETE 200 = logout ok.
+    // 400 = "instance not connected" => o estado remoto já é desconectado,
+    // portanto também conta como sucesso (objetivo alcançado).
+    try {
+      const res = await fetch(
+        `${cfg.apiUrl}/instance/logout/${encodeURIComponent(conn.instance_name)}`,
+        { method: 'DELETE', headers: { apikey: cfg.apiKey } },
+      );
+      log.info(
+        { instance: conn.instance_name, status: res.status },
+        'connections: logout DELETE',
+      );
+      remoteOk = res.ok || res.status === 400;
+    } catch (inner) {
+      log.warn(
+        { err: inner instanceof Error ? inner.message : 'unknown' },
+        'connections: logout DELETE failed',
+      );
     }
+    // Se DELETE não existir nesta build, registra o webhook que o
+    // CONNECTION_UPDATE (state=close) trará — o estado local será resolvido
+    // pelo webhook. Não forçamos "disconnected" local com resposta remota ruim.
     if (!remoteOk) {
       log.warn(
         { instance: conn.instance_name },
-        'connections: all logout attempts failed; marking local as disconnected anyway',
+        'connections: logout remoto falhou; aguardando CONNECTION_UPDATE do webhook (estado local preservado)',
       );
+      return { ok: false, error: 'evolution_logout_failed' };
     }
 
+    const patch = {
+      status: 'disconnected',
+      qr_code: null,
+      phone_number: null,
+      whatsapp_name: null,
+      evolution_instance_id: null,
+      last_sync_at: new Date().toISOString(),
+    } as const;
     await fetch(`${supUrl()}/rest/v1/whatsapp_connections?id=eq.${conn.id}`, {
       method: 'PATCH',
       headers: supHeaders(),
-      body: JSON.stringify({
-        status: 'disconnected',
-        qr_code: null,
-        phone_number: null,
-        whatsapp_name: null,
-        last_sync_at: new Date().toISOString(),
-      }),
+      body: JSON.stringify(patch),
     });
 
-    return { ok: true };
+    const updated: WhatsAppConnection = {
+      ...conn,
+      ...patch,
+      updated_at: new Date().toISOString(),
+    };
+    return { ok: true, connection: updated };
   } catch (e) {
     log.error({ err: e instanceof Error ? e.message : 'unknown' }, 'connections: disconnectInstance failed');
     return { ok: false, error: e instanceof Error ? e.message : 'unknown_error' };
   }
 }
 
-/** Busca os grupos disponíveis do WhatsApp conectado. */
-export async function fetchUserGroups(userId: string): Promise<{ ok: boolean; groups?: WhatsAppGroup[]; error?: string }> {
+/** Busca os grupos disponíveis de uma instância específica (ou a primária). */
+export async function fetchUserGroups(
+  userId: string,
+  target?: ConnectionTarget,
+): Promise<{ ok: boolean; groups?: WhatsAppGroup[]; error?: string }> {
   const log = getLogger();
   try {
-    const conn = await getUserConnection(userId);
+    const conn = await resolveConnection(userId, target);
     if (!conn) return { ok: false, error: 'no_connection' };
 
     const cfg = getEvolutionConfig();
@@ -486,11 +636,15 @@ export async function fetchUserGroups(userId: string): Promise<{ ok: boolean; gr
   }
 }
 
-/** Envia mensagem de teste para um grupo. */
-export async function sendTestMessage(userId: string, groupId: string): Promise<{ ok: boolean; error?: string }> {
+/** Envia mensagem de teste para um grupo via instância específica (ou a primária). */
+export async function sendTestMessage(
+  userId: string,
+  groupId: string,
+  target?: ConnectionTarget,
+): Promise<{ ok: boolean; error?: string }> {
   const log = getLogger();
   try {
-    const conn = await getUserConnection(userId);
+    const conn = await resolveConnection(userId, target);
     if (!conn) return { ok: false, error: 'no_connection' };
 
     const cfg = getEvolutionConfig();
