@@ -76,6 +76,8 @@ interface RunAgentLoopInput {
   leadContext?: string;
   /** Estratégia de abordagem vinculada ao lead (estilo a seguir). */
   strategyDirective?: string;
+  /** Sobrescreve AGENT_ENABLE_TOOLS (ex: simulação de fluxo = false). */
+  enableTools?: boolean;
 }
 
 export interface RunAgentLoopResult extends AgentResponse {
@@ -257,7 +259,7 @@ export async function runAgentLoop(
   })();
 
   const useToolsFromEnv = env.AGENT_ENABLE_TOOLS === true;
-  const wantTools = useToolsFromEnv && registry?.isEnabled() === true;
+  const wantTools = (input.enableTools ?? useToolsFromEnv) && registry?.isEnabled() === true;
   const toolNames = registry ? registry.list().map((t) => t.definition.name) : [];
 
   // sendTools / useReactFallback are recomputed per-iteration to react to

@@ -23,6 +23,8 @@ import { registerConnectionsRoutes } from './routes/connections.js';
 import { registerLeadsRoutes } from './routes/leads.js';
 import { registerUiRoutes } from './routes/ui.js';
 import { registerExtensionRoutes } from './routes/extension.js';
+import { registerAiRoutes } from './routes/ai.js';
+import { registerContactsRoutes } from './routes/contacts.js';
 import { buildDefaultRegistry } from './tools/index.js';
 import { ensureSchema, isDbEnabled } from './services/db.js';
 
@@ -193,6 +195,8 @@ export function buildApp(): BuiltApp {
   registerLeadsRoutes(app);
   registerUiRoutes(app);
   registerExtensionRoutes(app);
+  registerAiRoutes(app);
+  registerContactsRoutes(app);
 
   return { app };
 }

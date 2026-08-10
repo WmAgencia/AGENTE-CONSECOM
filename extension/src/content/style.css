@@ -372,6 +372,73 @@
 .cs-foot-all { background: rgba(255, 255, 255, 0.1); color: var(--vy-text); }
 .cs-foot-delete { background: rgba(239, 68, 68, 0.2); color: #fda4af; }
 .cs-foot-config { background: rgba(255, 255, 255, 0.08); color: var(--vy-muted); }
+.cs-foot-clear { background: rgba(139, 92, 246, 0.16); color: #c4b5fd; }
+
+.cs-footer__count {
+  font-size: 11px;
+  color: var(--vy-muted);
+  text-align: center;
+  padding-bottom: 2px;
+}
+.cs-footer__count b { color: var(--vy-text); font-weight: 600; }
+
+/* ===== Modal de confirmação (Limpar leads) ===== */
+.cs-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 5, 12, 0.72);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.cs-modal.cs-open { opacity: 1; }
+.cs-modal__card {
+  width: min(360px, calc(100vw - 32px));
+  background: #16161f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 18px 16px;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.45);
+  font-family: Inter, system-ui, sans-serif;
+  color: #e6e6ef;
+  transform: translateY(6px);
+  transition: transform 0.16s ease;
+}
+.cs-modal.cs-open .cs-modal__card { transform: translateY(0); }
+.cs-modal__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.cs-modal__text {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--vy-muted);
+  margin-bottom: 14px;
+}
+.cs-modal__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.cs-modal__btn {
+  border: none;
+  border-radius: 9px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.cs-modal__btn:hover { filter: brightness(1.12); }
+.cs-modal__btn--ghost { background: rgba(255, 255, 255, 0.08); color: #d7d7e2; }
+.cs-modal__btn--danger { background: rgba(139, 92, 246, 0.9); color: #fff; }
 
 .cs-empty {
   text-align: center;
@@ -380,6 +447,8 @@
   padding: 28px 12px;
   line-height: 1.6;
 }
+.cs-empty b { color: var(--vy-text); font-weight: 700; }
+.cs-empty__icon { font-size: 20px; display: block; margin-bottom: 8px; }
 
 /* ===== Cards nativos enxutos (controles dentro dos cards do Maps) ===== */
 .consecom-host {

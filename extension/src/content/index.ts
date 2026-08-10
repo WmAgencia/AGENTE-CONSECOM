@@ -32,6 +32,8 @@ export class MapsScanner {
   private used = new Set<string>()
   private noInterest = new Set<string>()
   private scanning = false
+  /** Sessão limpa pelo botão "Limpar": evita que o scan repoupe `found` até uma nova busca. */
+  private clearedSession = false
 
   private bubble: HTMLElement | null = null
   private balloon: HTMLElement | null = null
@@ -39,6 +41,7 @@ export class MapsScanner {
   private headerEl: HTMLElement | null = null
   private listEl: HTMLElement | null = null
   private locEl: HTMLElement | null = null
+  private countEl: HTMLElement | null = null
 
   private lastQuery = ''
   private dragging = false
@@ -161,6 +164,7 @@ export class MapsScanner {
     const query = (input?.value || '').trim()
     if (query && query !== this.lastQuery) {
       this.lastQuery = query
+      this.clearedSession = false
       this.selected.clear()
       this.found = []
       if (this.locEl) this.locEl.textContent = query
@@ -555,16 +559,25 @@ export class MapsScanner {
     list.className = 'cs-panel__list'
     this.listEl = list
 
-     // Rodapé: apenas ações de manutenção (o prospecting é via PROSPECTAR +
+     // Rodapé: ações de manutenção (o prospecting é via PROSPECTAR +
      // IMPORTAR no painel de resultado — não há botões de prospecção concorrentes)
      const footer = document.createElement('div')
      footer.className = 'cs-panel__footer'
+     // Contador da sessão de captura (atualizado em renderBalloonList)
+     const countEl = document.createElement('div')
+     countEl.className = 'cs-footer__count'
+     this.countEl = countEl
      const row2 = document.createElement('div')
      row2.className = 'cs-footer__row'
+     const clearBtn = document.createElement('button')
+     clearBtn.type = 'button'
+     clearBtn.className = 'cs-footer__btn cs-foot-clear'
+     clearBtn.innerHTML = 'Limpar' + trashIcon
+     clearBtn.addEventListener('click', () => void this.confirmClear())
      const deleteBtn = document.createElement('button')
      deleteBtn.type = 'button'
      deleteBtn.className = 'cs-footer__btn cs-foot-delete'
-     deleteBtn.innerHTML = 'Excluir selecionados' + trashIcon
+     deleteBtn.innerHTML = 'Excluir' + trashIcon
      deleteBtn.addEventListener('click', () => void this.doDelete(deleteBtn))
      const configBtn = document.createElement('button')
      configBtn.type = 'button'
@@ -572,8 +585,8 @@ export class MapsScanner {
      configBtn.title = 'Configurar Supabase'
      configBtn.innerHTML = 'Configurar' + gearIcon
      configBtn.addEventListener('click', () => void this.promptConfig())
-      row2.append(deleteBtn, configBtn)
-      footer.appendChild(row2)
+      row2.append(clearBtn, deleteBtn, configBtn)
+      footer.append(countEl, row2)
 
     body.append(search, prospectBtn, filtersPanel, resultPanel, list)
 
@@ -597,6 +610,7 @@ export class MapsScanner {
     if (this.prospecting) return
     this.prospecting = true
     this.prospectCancel = false
+    this.clearedSession = false
     btn.disabled = true
 
     try {
@@ -1155,7 +1169,13 @@ export class MapsScanner {
       this.listEl.innerHTML = ''
       const empty = document.createElement('div')
       empty.className = 'cs-empty'
-      empty.textContent = 'Rode a busca no Google Maps e toque em PROSPECTAR para listar as empresas.'
+      if (this.clearedSession) {
+        empty.innerHTML =
+          '<span class="cs-empty__icon">✓</span><b>0 leads capturados</b> · <b>0 leads selecionados</b><br/>Sessão limpa. Inicie uma nova busca e toque em PROSPECTAR para capturar novamente.'
+      } else {
+        empty.innerHTML =
+          '<b>0 leads capturados</b> · <b>0 leads selecionados</b><br/>Rode a busca no Google Maps e toque em PROSPECTAR para listar as empresas.'
+      }
       this.listEl.appendChild(empty)
       return
     }
@@ -1292,6 +1312,11 @@ export class MapsScanner {
       const pc = key ? this.found.find((f) => f.key === key) : undefined
       if (pc) this.updateCard(c, pc)
     })
+    if (this.countEl) {
+      const captured = this.found.length
+      const selected = this.selected.size
+      this.countEl.innerHTML = `<b>${captured}</b> capturados · <b>${selected}</b> selecionados`
+    }
   }
 
   private toggleBalloon(open?: boolean): void {
@@ -1326,6 +1351,9 @@ export class MapsScanner {
   // --- varredura dos cards nativos ---
 
   private refreshCards(): void {
+    // Após "Limpar", não repopular a lista até o usuário iniciar nova busca
+    // ou rodar PROSPECTAR novamente (limpeza é local, não toca no banco).
+    if (this.clearedSession) return
     const anchors = document.querySelectorAll<HTMLElement>(nativeCardSelector())
     const seen = new Set<string>()
 
@@ -1513,6 +1541,64 @@ export class MapsScanner {
       btn.innerHTML = prev
       btn.disabled = false
     }
+  }
+
+  /**
+   * LIMPAR (local): remove da lista/painel todos os leads capturados na
+   * sessão atual de prospecção. NÃO apaga nada do banco (os leads já
+   * importados para o VYNTRA permanecem intactos). Fluxo: modal de
+   * confirmação → "Limpar leads" → lista vazia + toast "✓ Leads removidos".
+   */
+  private confirmClear(): Promise<void> {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div')
+      overlay.className = 'cs-modal'
+      const card = document.createElement('div')
+      card.className = 'cs-modal__card'
+      const title = document.createElement('div')
+      title.className = 'cs-modal__title'
+      title.textContent = 'Limpar leads capturados'
+      const text = document.createElement('div')
+      text.className = 'cs-modal__text'
+      text.textContent =
+        'Tem certeza que deseja remover todos os leads capturados desta sessão? ' +
+        'Leads já importados para o VYNTRA não serão afetados.'
+      const actions = document.createElement('div')
+      actions.className = 'cs-modal__actions'
+      const cancel = document.createElement('button')
+      cancel.type = 'button'
+      cancel.className = 'cs-modal__btn cs-modal__btn--ghost'
+      cancel.textContent = 'Cancelar'
+      cancel.addEventListener('click', () => {
+        overlay.remove()
+        resolve()
+      })
+      const confirmBtn = document.createElement('button')
+      confirmBtn.type = 'button'
+      confirmBtn.className = 'cs-modal__btn cs-modal__btn--danger'
+      confirmBtn.textContent = 'Limpar leads'
+      confirmBtn.addEventListener('click', () => {
+        overlay.remove()
+        this.clearLocal()
+        resolve()
+      })
+      actions.append(cancel, confirmBtn)
+      card.append(title, text, actions)
+      overlay.append(card)
+      document.body.appendChild(overlay)
+      requestAnimationFrame(() => overlay.classList.add('cs-open'))
+    })
+  }
+
+  /** Esvazia a captura local (found/selected). Sem nenhuma chamada ao banco. */
+  private clearLocal(): void {
+    this.clearedSession = true
+    this.found = []
+    this.selected.clear()
+    this.lastMatched = []
+    if (this.resultPanel) this.resultPanel.style.display = 'none'
+    this.syncAll()
+    showToast('✓ Leads removidos')
   }
 }
 

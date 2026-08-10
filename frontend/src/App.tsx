@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone, Puzzle, BellRing, Download } from 'lucide-react'
+import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone, Puzzle, BellRing, Download, Bot, ContactRound } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
 import { KanbanBoard } from './components/KanbanBoard'
@@ -11,15 +11,19 @@ import { ConnectionsPage } from './components/ConnectionsPage'
 import { MobileAppView } from './components/MobileAppView'
 import { ExtensionView } from './components/ExtensionView'
 import { VoiceSettings } from './components/VoiceSettings'
+import { AICenter } from './components/AICenter'
+import { ContactsView } from './components/ContactsView'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
 
-type Tab = 'dashboard' | 'kanban' | 'campanhas' | 'leads' | 'conexoes' | 'agente' | 'voz' | 'extensao' | 'app-mobile'
+type Tab = 'dashboard' | 'kanban' | 'campanhas' | 'leads' | 'conexoes' | 'agente' | 'voz' | 'extensao' | 'app-mobile' | 'ia' | 'contatos'
 
 const NAV_ITEMS: { key: Tab; label: string; icon: LucideIcon }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'kanban', label: 'Kanban', icon: SquareKanban },
   { key: 'campanhas', label: 'Campanhas', icon: Megaphone },
   { key: 'leads', label: 'Leads', icon: Users },
+  { key: 'contatos', label: 'Contatos', icon: ContactRound },
+  { key: 'ia', label: 'Central da IA', icon: Bot },
   { key: 'conexoes', label: 'Conexões', icon: Plug },
   { key: 'agente', label: 'Config. do Agente', icon: Settings },
   { key: 'voz', label: 'Voz', icon: BellRing },
@@ -269,6 +273,8 @@ export default function App() {
         {tab === 'conexoes' && <ConnectionsPage />}
         {tab === 'extensao' && <ExtensionView />}
         {tab === 'app-mobile' && <MobileAppView />}
+        {tab === 'ia' && <AICenter />}
+        {tab === 'contatos' && <ContactsView />}
       </main>
     </div>
   )
