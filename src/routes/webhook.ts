@@ -35,6 +35,10 @@ import {
   loadLearningsForPrompt,
   captureLearning,
 } from '../services/agent.learning.js';
+import {
+  resolveUserIdForInstance,
+  loadCommercialMemoryForPrompt,
+} from '../services/memory.service.js';
 import { sendText, isEvolutionMockMode } from '../services/evolution.service.js';
 import {
   getConversationStore,
@@ -468,6 +472,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       log.info({ messageKeyId: msg.messageKeyId }, '[AI] Processando mensagem');
 
       // Delegate to the agent loop with conversation history attached.
+      const memoryOwnerId = await resolveUserIdForInstance(msg.instance);
       const agentResult = await runAgentLoop({
         task: msg.text,
         conversationId,
@@ -475,6 +480,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         history,
         directives: (await loadAgentDirectives()) ?? undefined,
         learnings: (await loadLearningsForPrompt()) ?? undefined,
+        commercialMemory: (await loadCommercialMemoryForPrompt(memoryOwnerId)) ?? undefined,
         instance: msg.instance,
         leadContext,
         strategyDirective,

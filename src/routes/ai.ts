@@ -27,6 +27,7 @@ import {
   getConversationStore,
   turnsToHistory,
 } from '../services/conversation.store.js';
+import { loadCommercialMemoryForPrompt } from '../services/memory.service.js';
 import { z } from 'zod';
 
 /** Última atividade da IA (timestamp ms) — atualizado a cada execução real. */
@@ -160,6 +161,8 @@ export function registerAiRoutes(app: FastifyInstance): void {
         source: 'http',
         history,
         directives,
+        commercialMemory:
+          (await loadCommercialMemoryForPrompt(user.id)) ?? undefined,
         // No painel o teste é apenas conversa: NÃO envia WhatsApp nem move leads.
         enableTools: false,
       });
@@ -237,6 +240,8 @@ export function registerAiRoutes(app: FastifyInstance): void {
         task,
         source: 'internal',
         directives,
+        commercialMemory:
+          (await loadCommercialMemoryForPrompt(user.id)) ?? undefined,
         enableTools: false,
         leadContext: `leadTeste=true; nome=${leadName}${company ? `; empresa=${company}` : ''}`,
       });

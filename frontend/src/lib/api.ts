@@ -45,6 +45,9 @@ export const api = {
   get: <T>(path: string) => request<T>(path, { method: 'GET', cache: 'no-store' }),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  patch: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
 // ===== Tipos da Central da IA =====
@@ -201,5 +204,167 @@ export const contactsApi = {
       contacts,
     })
     return res
+  },
+}
+
+// ===== Tipos da Memória Comercial da IA =====
+
+export type MemoryImportOrigin = 'zip' | 'txt' | 'csv' | 'arquivo'
+export type MemoryImportStatus = 'processing' | 'done' | 'failed'
+
+export interface MemoryImport {
+  id: string
+  user_id: string
+  origin: MemoryImportOrigin
+  file_name: string
+  source_files: number
+  conversations_found: number
+  conversations_processed: number
+  learnings_generated: number
+  failures: number
+  status: MemoryImportStatus
+  error_message: string | null
+  created_at: string
+  finished_at: string | null
+  pending?: boolean
+  conversations?: MemoryConversation[]
+}
+
+export type MemoryConversationStatus = 'imported' | 'processing' | 'processed' | 'failed'
+
+export interface MemoryConversation {
+  id: string
+  source_file: string | null
+  contact_name: string | null
+  contact_identifier: string | null
+  messages_count: number
+  direction: string | null
+  outcome: string | null
+  status: MemoryConversationStatus
+  error_message?: string | null
+  created_at: string
+  processed_at: string | null
+}
+
+export type LearningCategory =
+  | 'communication_style'
+  | 'opening_patterns'
+  | 'discovery_questions'
+  | 'value_proposition'
+  | 'objection_handling'
+  | 'meeting_transition'
+  | 'follow_up_patterns'
+  | 'successful_patterns'
+  | 'unsuccessful_patterns'
+  | 'common_objections'
+  | 'conversation_patterns'
+
+export type LearningStatus = 'identificado' | 'validado' | 'ativo' | 'inativo'
+
+export interface MemoryLearning {
+  id: string
+  category: LearningCategory
+  content: string
+  evidence: string[]
+  confidence: 'alta' | 'media' | 'baixa'
+  occurrences: number
+  performance: 'positivo' | 'negativo' | 'neutro'
+  status: LearningStatus
+  important: boolean
+  discovered_at: string
+  created_at: string
+}
+
+export interface MemoryDashboard {
+  conversationsImported: number
+  conversationsProcessed: number
+  learnings: number
+  patterns: number
+  objections: number
+  meetingStrategies: number
+  statusCounts: Record<string, number>
+  recentLearnings: MemoryLearning[]
+  totalImports: number
+}
+
+export interface MemoryImportResponse {
+  ok: boolean
+  importId: string
+  origin: string
+  fileName: string
+  sourceFiles: number
+  conversationsFound: number
+  inserted: number
+  processing: boolean
+}
+
+const CATEGORY_LABELS: Record<LearningCategory, string> = {
+  communication_style: 'Estilo de comunicação',
+  opening_patterns: 'Padrões de abertura',
+  discovery_questions: 'Perguntas de descoberta',
+  value_proposition: 'Proposta de valor',
+  objection_handling: 'Tratamento de objeções',
+  meeting_transition: 'Condução à reunião',
+  follow_up_patterns: 'Padrões de follow-up',
+  successful_patterns: 'Padrões de sucesso',
+  unsuccessful_patterns: 'Padrões de recusa',
+  common_objections: 'Objeções comuns',
+  conversation_patterns: 'Padrões de conversa',
+}
+
+export function categoryLabel(category: string): string {
+  return CATEGORY_LABELS[category as LearningCategory] ?? category
+}
+
+function qs(params: Record<string, string | number | undefined>): string {
+  const sp = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') sp.set(k, String(v))
+  }
+  const s = sp.toString()
+  return s ? `?${s}` : ''
+}
+
+/** API da Memória Comercial da IA. */
+export const memoryApi = {
+  async dashboard(): Promise<MemoryDashboard> {
+    return api.get<MemoryDashboard>('/api/ai/memory/dashboard')
+  },
+  async imports(): Promise<MemoryImport[]> {
+    const r = await api.get<{ imports: MemoryImport[] }>('/api/ai/memory/imports')
+    return r.imports
+  },
+  async import(fileName: string, content: string, kind: 'auto' | 'txt' | 'csv' | 'zip' = 'auto'): Promise<MemoryImportResponse> {
+    return api.post<MemoryImportResponse>('/api/ai/memory/import', { fileName, content, kind })
+  },
+  async importStatus(id: string): Promise<MemoryImport & { conversations: MemoryConversation[] }> {
+    return api.get<MemoryImport & { conversations: MemoryConversation[] }>(`/api/ai/memory/imports/${encodeURIComponent(id)}`)
+  },
+  async deleteImport(id: string): Promise<void> {
+    await api.del(`/api/ai/memory/imports/${encodeURIComponent(id)}`)
+  },
+  async conversations(opts?: { importId?: string; status?: string; limit?: number }): Promise<MemoryConversation[]> {
+    const r = await api.get<{ conversations: MemoryConversation[] }>(
+      `/api/ai/memory/conversations${qs({ importId: opts?.importId, status: opts?.status, limit: opts?.limit })}`,
+    )
+    return r.conversations
+  },
+  async deleteConversation(id: string): Promise<void> {
+    await api.del(`/api/ai/memory/conversations/${encodeURIComponent(id)}`)
+  },
+  async reprocessConversation(id: string): Promise<void> {
+    await api.post(`/api/ai/memory/conversations/${encodeURIComponent(id)}/reprocess`, {})
+  },
+  async learnings(opts?: { category?: string; status?: string; limit?: number }): Promise<MemoryLearning[]> {
+    const r = await api.get<{ learnings: MemoryLearning[] }>(
+      `/api/ai/memory/learnings${qs({ category: opts?.category, status: opts?.status, limit: opts?.limit })}`,
+    )
+    return r.learnings
+  },
+  async updateLearning(id: string, patch: Partial<Pick<MemoryLearning, 'status' | 'important' | 'content' | 'category' | 'confidence'>>): Promise<void> {
+    await api.patch(`/api/ai/memory/learnings/${encodeURIComponent(id)}`, patch)
+  },
+  async deleteLearning(id: string): Promise<void> {
+    await api.del(`/api/ai/memory/learnings/${encodeURIComponent(id)}`)
   },
 }

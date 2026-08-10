@@ -70,6 +70,8 @@ interface RunAgentLoopInput {
   directives?: string;
   /** Optional auto-trained patterns injected into the system prompt. */
   learnings?: string;
+  /** Optional commercial memory (padrões validados de conversas reais). */
+  commercialMemory?: string;
   /** Evolution instance name (when known) passed to tools for per-user config. */
   instance?: string;
   /** Contexto do lead (nome/nicho/telefone) para personalizar a resposta. */
@@ -116,6 +118,7 @@ function buildSystemPrompt(opts: {
   toolNames: string[];
   directives?: string;
   learnings?: string;
+  commercialMemory?: string;
   leadContext?: string;
   strategyDirective?: string;
   injectIntentMarker?: boolean;
@@ -165,6 +168,13 @@ const base = [
       '=== PROSPECTION DIRECTIVES (always follow these rules) ===',
       opts.directives,
       '=== END OF PROSPECTION DIRECTIVES ===',
+    );
+  }
+  if (opts.commercialMemory) {
+    base.push(
+      '=== MEMÓRIA COMERCIAL ===',
+      opts.commercialMemory,
+      '=== FIM DA MEMÓRIA COMERCIAL ===',
     );
   }
   if (opts.learnings) {
@@ -308,6 +318,7 @@ export async function runAgentLoop(
           toolNames,
           directives: input.directives,
           learnings: input.learnings,
+          commercialMemory: input.commercialMemory,
           leadContext: input.leadContext,
           strategyDirective: input.strategyDirective,
           injectIntentMarker: source === 'whatsapp',
@@ -339,6 +350,7 @@ export async function runAgentLoop(
             toolNames,
             directives: input.directives,
             learnings: input.learnings,
+            commercialMemory: input.commercialMemory,
             leadContext: input.leadContext,
             strategyDirective: input.strategyDirective,
             injectIntentMarker: source === 'whatsapp',

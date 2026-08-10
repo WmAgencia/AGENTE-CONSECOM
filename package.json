@@ -12,13 +12,14 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/test/chat.integration.test.ts src/test/tools.unit.test.ts src/test/phone.unit.test.ts src/test/send.worker.unit.test.ts",
+    "test": "tsx --test src/test/chat.integration.test.ts src/test/tools.unit.test.ts src/test/phone.unit.test.ts src/test/send.worker.unit.test.ts src/test/memory.test.ts",
     "clean": "rimraf dist",
     "db:apply": "node apply_sql.cjs supabase-CONSOLIDADO.sql",
     "db:check": "node verify_migrations.cjs"
   },
   "dependencies": {
     "@fastify/rate-limit": "^9.1.0",
+    "adm-zip": "^0.5.18",
     "dotenv": "^17.4.2",
     "fastify": "^4.28.1",
     "pg": "^8.22.0",
@@ -26,6 +27,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^20.16.5",
     "@types/pg": "^8.20.4",
     "rimraf": "^6.0.1",
