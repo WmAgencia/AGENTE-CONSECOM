@@ -3,7 +3,7 @@ import { defineManifest } from '@crxjs/vite-plugin'
 export default defineManifest({
   manifest_version: 3,
   name: 'Vyntra Prospector - Floating Panel',
-  version: '1.4.1',
+  version: '1.4.2',
   description: 'Capture empresas do Google Maps, veja o Score Vyntra e importe como leads.',
   permissions: ['storage', 'activeTab', 'tabs'],
   host_permissions: [

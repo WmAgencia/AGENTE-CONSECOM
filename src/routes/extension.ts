@@ -14,7 +14,7 @@ import { getEnv, getSupabaseProspeccaoConfig } from '../config/env.js'
 import { getLogger } from '../utils/logger.js'
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
-const VERSION = '1.3.0'
+const VERSION = '1.4.2'
 
 export function registerExtensionRoutes(app: FastifyInstance): void {
   app.get('/api/extension/download', async (_req, reply) => {
