@@ -113,6 +113,7 @@ function buildSystemPrompt(opts: {
   learnings?: string;
   leadContext?: string;
   strategyDirective?: string;
+  injectIntentMarker?: boolean;
 }): string {
   const agoraBrasilia = new Date(Date.now() - 3 * 3600_000);
   const dataAtual = agoraBrasilia.toISOString().slice(0, 10);
@@ -131,6 +132,15 @@ const base = [
     'OUTCOME RULE: when the prospect clearly refuses/interrupts or says they are not interested, call finalizar_sem_interesse with the lead id (when known) or phone and outcome="sem_interesse" in the SAME turn, then reply gracefully and stop. When the prospect cancels an already-scheduled meeting, call finalizar_sem_interesse with outcome="reuniao_cancelada" and a short motive.',
   ];
   base.push(SALES_PLAYBOOK);
+  if (opts.injectIntentMarker) {
+    base.push(
+      'INTENT MARKER RULE (mandatory on WhatsApp): you must END your reply with a single exact line: <!--INTENT:intencao-->',
+      'Choose EXACTLY one of: interesse, duvida, informacao, reuniao, orcamento, sem_interesse, encerrar, ambiguo.',
+      'Meaning: sem_interesse = the prospect clearly refused/interrupted; reuniao = asked for or agreed to schedule a meeting;',
+      'encerrar = politely ended the conversation; ambiguo = cannot classify. That line is processed by the system and',
+      'automatically removed before sending — never write it as part of the message body.',
+    );
+  }
   if (opts.leadContext) {
     base.push(
       '=== LEAD (dados que VOCE tem sobre este cliente; use para personalizar e NUNCA peça o que ja tem) ===',
@@ -277,6 +287,7 @@ export async function runAgentLoop(
       learnings: input.learnings,
       leadContext: input.leadContext,
       strategyDirective: input.strategyDirective,
+      injectIntentMarker: source === 'whatsapp',
     }),
   });
   if (input.history && input.history.length > 0) {
@@ -305,6 +316,7 @@ export async function runAgentLoop(
         learnings: input.learnings,
         leadContext: input.leadContext,
         strategyDirective: input.strategyDirective,
+        injectIntentMarker: source === 'whatsapp',
       });
     }
 

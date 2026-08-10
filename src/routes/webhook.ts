@@ -43,17 +43,27 @@ import {
 import {
   findLeadByPhone,
   updateLeadStatus,
-  isProspectingStatus,
+  canAutoReply,
+  shouldActivateConversation,
   appendConversationTurn,
   loadAgentDirectives,
   loadAgentName,
   formatAgentSignature,
   updateLeadAnalytics,
+  cancelLeadSendRuns,
+  recordAgentOutcome,
+  type LeadRow,
 } from '../services/supabase.leads.js';
 import {
   loadLeadStrategy,
   buildStrategyDirective,
 } from '../services/strategy.service.js';
+import {
+  parseIntentMarker,
+  stripIntentMarker,
+  classifyIntentHeuristic,
+  planInbound,
+} from '../services/intent.classifier.js';
 import { computeLeadScore } from '../services/scoring.js';
 
 const IDEMPOTENCY_MAX_ENTRIES = 1000;
@@ -382,61 +392,79 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     const mockMode = isEvolutionMockMode();
     const fromJid = msg.from;
 
-    // Prospecção Consecom: só respondemos leads que estejam na jornada
-    // (na_fila / mensagem_enviada / respondendo). Desconhecidos são ignorados.
-    let leadId: string | undefined;
-    let leadContext: string | undefined;
-    let strategyDirective: string | undefined;
-    try {
-      const lead = await findLeadByPhone(fromJid);
-      if (lead && isProspectingStatus(lead.status)) {
-        leadId = lead.id;
-        // Primeiro retorno do lead: marca como "conversando" (persistido).
-        if (lead.status !== 'conversando') {
-          await updateLeadStatus(lead.id, 'conversando').catch(() => {});
-        }
-        // Contexto do lead para personalizar a conversa (nome/nicho/telefone).
-        const bits = [
-          `leadId=${lead.id}`,
-          lead.name ? `nome=${lead.name}` : null,
-          lead.niche ? `nicho/negocio=${lead.niche}` : null,
-          lead.category ? `categoria=${lead.category}` : null,
-          `telefone=${fromJid.replace(/@.*$/, '')}`,
-        ].filter(Boolean).join('; ');
-        leadContext = bits;
-        // Estratégia vinculada ao lead (se houver) para guiar o estilo da abordagem.
-        const strategy = await loadLeadStrategy(lead.id);
-        strategyDirective = buildStrategyDirective(strategy) ?? undefined;
-      } else {
-        log.info({ from: maskFrom(fromJid) }, 'webhook: inbound ignored (not a prospecting lead)');
-        return;
-      }
-    } catch (err) {
-      const em = err instanceof Error ? err.message : 'unknown';
-      log.warn({ errMessage: em, from: maskFrom(fromJid) }, 'webhook: lead lookup failed; ignoring');
+    log.info(
+      { from: maskFrom(fromJid), textLength: msg.text.length, messageKeyId: msg.messageKeyId, mockMode },
+      '[WHATSAPP] Mensagem recebida',
+    );
+
+    if (fromJid.endsWith('@g.us')) {
+      log.info({ from: maskFrom(fromJid) }, '[WHATSAPP] Mensagem de grupo ignorada (não respondemos grupos)');
       return;
     }
 
+    // --- Lead identificado -------------------------------------------------
+    let lead: LeadRow | undefined;
+    let leadContext: string | undefined;
+    let strategyDirective: string | undefined;
+    try {
+      lead = (await findLeadByPhone(fromJid)) ?? undefined;
+      if (!lead) {
+        log.info({ from: maskFrom(fromJid) }, '[LEAD][ERROR] Lead não encontrado para o número (inbound ignorado)');
+        return;
+      }
+      if (!canAutoReply(lead.status)) {
+        log.info(
+          { leadId: lead.id, status: lead.status },
+          '[LEAD] Lead bloqueado para atendimento automático (inbound ignorado)',
+        );
+        return;
+      }
+      log.info({ leadId: lead.id, name: lead.name, status: lead.status }, '[LEAD] Lead identificado');
+
+      // Contexto do lead para personalizar a conversa (nome/nicho/telefone).
+      const bits = [
+        `leadId=${lead.id}`,
+        lead.name ? `nome=${lead.name}` : null,
+        lead.niche ? `nicho/negocio=${lead.niche}` : null,
+        lead.category ? `categoria=${lead.category}` : null,
+        `telefone=${fromJid.replace(/@.*$/, '')}`,
+      ].filter(Boolean).join('; ');
+      leadContext = bits;
+      // Estratégia vinculada ao lead (se houver) para guiar o estilo da abordagem.
+      const strategy = await loadLeadStrategy(lead.id);
+      strategyDirective = buildStrategyDirective(strategy) ?? undefined;
+    } catch (err) {
+      const em = err instanceof Error ? err.message : 'unknown';
+      log.warn({ errMessage: em, from: maskFrom(fromJid) }, '[LEAD][ERROR] Falha ao identificar o lead; inbound ignorado');
+      return;
+    }
+
+    // --- Conversa (histórico) e status da campanha (diagnóstico) -----------
     const conversationId = `wa:${fromJid}`;
     const store = getConversationStore();
     const history = turnsToHistory(await store.get(conversationId));
-
     log.info(
       {
-        from: maskFrom(fromJid),
-        leadId,
-        textLength: msg.text.length,
-        messageKeyId: msg.messageKeyId,
-        mockMode,
         conversationId,
+        leadId: lead.id,
+        status: lead.status,
         historyLength: history.length,
       },
-      'webhook: enqueueing message',
+      '[CONVERSA] Conversa carregada',
     );
+
+    loadLeadCampaignStatus(lead.id)
+      .then((info) => {
+        log.info(
+          { leadId: lead.id, campaignId: info?.campaignId, runStatus: info?.runStatus, campaignStatus: info?.campaignStatus },
+          '[CAMPAIGN] Status da campanha do lead',
+        );
+      })
+      .catch(() => {});
 
     await semaphore.acquire();
     try {
-      log.info({ messageKeyId: msg.messageKeyId }, 'webhook: processing started');
+      log.info({ messageKeyId: msg.messageKeyId }, '[AI] Processando mensagem');
 
       // Delegate to the agent loop with conversation history attached.
       const agentResult = await runAgentLoop({
@@ -450,7 +478,6 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         leadContext,
         strategyDirective,
       });
-
       log.info(
         {
           messageKeyId: msg.messageKeyId,
@@ -459,32 +486,48 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
           iterations: agentResult.iterations,
           toolCalls: agentResult.toolCalls,
         },
-        'webhook: agent completed',
+        '[AI] Agente respondeu',
       );
 
-      // Autotreino: se o agente encerrou com um desfecho explícito, registra.
-      if (leadId) {
-        const final = agentResult.result.trim();
-        const vitoriaTerms = ['reuni', 'agendad', 'confirmad', 'marcada', 'fechado', 'aceitou'];
-        const rejTerms = ['sem interesse', 'rejeito', 'não tenho interesse', 'nao quero', 'dispens', 'cancel'];
-        if (vitoriaTerms.some((t) => final.toLowerCase().includes(t))) {
-          void captureLearning('vitoria', leadId);
-        } else if (rejTerms.some((t) => final.toLowerCase().includes(t))) {
-          void captureLearning('rejeicao', leadId);
+      // --- Intenção: marker da IA (fonte principal) com fallback heurístico.
+      let intent = parseIntentMarker(agentResult.result);
+      if (!intent) intent = classifyIntentHeuristic(msg.text)?.intent ?? 'ambiguo';
+      const cleanReply = stripIntentMarker(agentResult.result);
+      log.info({ messageKeyId: msg.messageKeyId, intent }, '[IA] Intenção detectada');
+
+      // --- Plano de ação (Kanban + campanha — sem misturar os sistemas) -----
+      const plan = planInbound(lead.status, intent);
+      if (plan.nextStatus === 'sem_interesse') {
+        const recorded = await recordAgentOutcome({
+          leadId: lead.id,
+          outcome: 'sem_interesse',
+          noInterestMonths: 6,
+        });
+        if (plan.stopCampaign) {
+          await cancelLeadSendRuns(lead.id, 'sem_interesse');
         }
+        void captureLearning('rejeicao', lead.id);
+        log.info(
+          { leadId: lead.id, recorded },
+          '[KANBAN] Lead movido para Sem interesse + campanha interrompida',
+        );
+      } else if (shouldActivateConversation(lead.status)) {
+        await updateLeadStatus(lead.id, 'conversando').catch(() => {});
+        log.info({ leadId: lead.id }, '[KANBAN] Lead movido para Conversando');
+      } else {
+        log.info({ leadId: lead.id, status: lead.status }, '[KANBAN] Status mantido');
       }
 
-      // Persist this turn pair (in-RAM store + Supabase for the lead).
+      // --- Persistência dos turnos (sem o marker de intenção) --------------
+      await store.appendAssistant(conversationId, cleanReply);
       await store.appendUser(conversationId, msg.text);
-      await store.appendAssistant(conversationId, agentResult.result);
-      if (leadId) {
-        await appendConversationTurn(leadId, 'user', msg.text).catch(() => {});
-        await appendConversationTurn(leadId, 'assistant', agentResult.result, agentResult.model).catch(() => {});
+      if (lead.id) {
+        await appendConversationTurn(lead.id, 'user', msg.text).catch(() => {});
+        await appendConversationTurn(lead.id, 'assistant', cleanReply, agentResult.model).catch(() => {});
       }
 
-      // Lead score: atualiza score/fatores no lead (best-effort) para alimentar
-      // o funil analítico sem depender do humano.
-      if (leadId) {
+      // --- Lead score (best-effort, alimenta o funil analítico) ------------
+      if (lead.id) {
         const score = computeLeadScore({
           status: 'conversando',
           hasConversation: true,
@@ -495,15 +538,16 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
           problemIdentified: false,
           interestLevel: null,
         });
-        void updateLeadAnalytics(leadId, {
+        void updateLeadAnalytics(lead.id, {
           score: score.score,
           score_factors: score.factors,
         }).catch(() => {});
       }
 
-      // Send back via Evolution API (with agent name signature)
+      // --- Envio da resposta (assinatura + limpa) ---------------------------
       const agentName = await loadAgentName();
-      const finalText = formatAgentSignature(agentResult.result, agentName);
+      const finalText = formatAgentSignature(cleanReply || agentResult.result, agentName);
+      log.info({ messageKeyId: msg.messageKeyId }, '[AI] Resposta gerada');
       const send = await sendText({ to: fromJid, text: finalText, instance: msg.instance });
       if (!send.ok) {
         log.error(
@@ -512,7 +556,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
             sendStatus: send.status,
             sendError: send.error,
           },
-          'webhook: failed to send reply via Evolution API',
+          '[WHATSAPP][ERROR] Falha ao enviar resposta via Evolution API',
         );
       } else {
         log.info(
@@ -521,14 +565,14 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
             mock: send.mock === true,
             sentMessageId: send.messageId,
           },
-          'webhook: reply delivered',
+          '[WHATSAPP] Resposta enviada',
         );
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown agent error';
       log.error(
         { errMessage: message, messageKeyId: msg.messageKeyId },
-        'webhook: processing failed',
+        '[WHATSAPP][ERROR] Falha ao processar mensagem',
       );
       try {
         await sendText({
@@ -542,6 +586,45 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     } finally {
       semaphore.release();
     }
+  }
+}
+
+/**
+ * Diagnóstico: busca run pendente/ativo + campanha do lead (best-effort).
+ * Usado apenas para logs — não interfere no fluxo.
+ */
+async function loadLeadCampaignStatus(
+  leadId: string,
+): Promise<{ campaignId: string | null; runStatus: string | null; campaignStatus: string | null } | null> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!cfg.url || !cfg.serviceRoleKey) return null;
+  const headers = {
+    apikey: cfg.serviceRoleKey,
+    Authorization: `Bearer ${cfg.serviceRoleKey}`,
+  };
+  try {
+    const r = await fetch(
+      `${cfg.url}/rest/v1/send_runs?select=id,campaign_id,status&lead_id=eq.${encodeURIComponent(leadId)}&order=created_at.desc&limit=1`,
+      { headers },
+    );
+    if (!r.ok) return null;
+    const rows = (await r.json()) as Array<{ campaign_id: string | null; status: string | null }>;
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    let campaignStatus: string | null = null;
+    if (row.campaign_id) {
+      const c = await fetch(
+        `${cfg.url}/rest/v1/campaigns?select=status&id=eq.${encodeURIComponent(row.campaign_id)}&limit=1`,
+        { headers },
+      );
+      if (c.ok) {
+        const cs = (await c.json()) as Array<{ status: string }>;
+        campaignStatus = cs[0]?.status ?? null;
+      }
+    }
+    return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus };
+  } catch {
+    return null;
   }
 }
 

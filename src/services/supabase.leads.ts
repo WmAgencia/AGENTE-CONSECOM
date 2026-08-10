@@ -8,6 +8,7 @@
  *   - load agent directives / name used in the agent system prompt
  */
 import { getSupabaseProspeccaoConfig } from '../config/env.js';
+import { normalizeBrazilianPhone } from '../lib/phone.js';
 
 export interface LeadRow {
   id: string;
@@ -18,52 +19,103 @@ export interface LeadRow {
   category: string | null;
 }
 
-// Apenas responde leads que já passaram da campanha (todas as mensagens
-// programadas enviadas -> status "enviado") ou que já estão em conversa real.
-// - "na_fila": campanha ainda disparando -> NÃO responder (evita conversar
-//   com uma mensagem programada que acabou de chegar).
-// - "sem_interesse": já recusou -> NÃO responder.
-// - "reuniao_marcada"/"reuniao_cancelada": segue respondendo para o lead
-//   poder ajustar/cancelar a reunião.
-const PROSPECTING_STATUSES = ['enviado', 'conversando', 'remarketing', 'reuniao_marcada', 'reuniao_cancelada'];
+// CAMPAIGN ≠ CONVERSAÇÃO. O lead pode responder em QUALQUER status do funil
+// (novo/na_fila durante a campanha, enviado após concluir, conversando,
+// remarketing, reuniao_marcada/cancelada). Só ficam de fora estados terminais
+// que não devem mais receber atendimento automático:
+// - "sem_interesse": recusou (no_interest_until bloqueado) -> NÃO responder.
+// - "nao_fechado" / "perdido": desfecho negativo registrado.
+const BLOCKED_REPLY_STATUSES = new Set(['sem_interesse', 'nao_fechado', 'perdido']);
 
-// Normaliza um JID/número para uma forma comparável:
-//  strip @s.whatsapp.net, remove tudo que não for dígito.
-function toDigits(jid: string): string {
-  return jid.replace(/@.*$/, '').replace(/\D+/g, '');
+/** true quando o lead ainda pode receber resposta automática da IA. */
+export function canAutoReply(status: string | null | undefined): boolean {
+  return !!status && !BLOCKED_REPLY_STATUSES.has(status);
 }
 
-/** Procura um lead pelo número (variando a forma de dígitos). */
-export async function findLeadByPhone(jid: string): Promise<LeadRow | null> {
+/** Alias mantido para compatibilidade (legado). */
+export function isProspectingStatus(status: string | null | undefined): boolean {
+  return canAutoReply(status);
+}
+
+// Estado de conversa que devem virar "conversando" no primeiro retorno do
+// lead. Reuniões agendadas/canceladas e fechados NÃO são rebaixados.
+const ACTIVATE_ON_REPLY = new Set([
+  'novo',
+  'na_fila',
+  'enviado',
+  'conversando',
+  'remarketing',
+  'aguardando',
+  'mensagem_enviada',
+  'respondendo',
+  'para_ligacao',
+]);
+
+/** Status de funil que passam a "conversando" quando o lead responde. */
+export function shouldActivateConversation(status: string | null | undefined): boolean {
+  return !!status && ACTIVATE_ON_REPLY.has(status);
+}
+
+// ---------------------------------------------------------------------------
+// Índice de leads em memória (TTL) para a busca por telefone.
+//
+// O lead.phone é gravado FORMATADO (ex.: "(34) 99203-8968"), então a busca
+// `phone=eq.<dígitos>` nunca casa com o JID do WhatsApp. A busca normaliza
+// AMBOS os lados (JID de entrada e lead.phone) e compara o E.164 canônico.
+// O índice é pequeno (tabela interna, dezenas/centenas de leads) e fica em
+// cache por TTL curto para não fazer <table scan> no REST a cada mensagem.
+// ---------------------------------------------------------------------------
+const LEAD_INDEX_TTL_MS = 60_000;
+
+let leadIndexCache: LeadRow[] | null = null;
+let leadIndexCachedAt = 0;
+
+async function fetchLeadIndex(): Promise<LeadRow[]> {
   const cfg = getSupabaseProspeccaoConfig();
-  if (!cfg.url || !cfg.serviceRoleKey) return null;
+  if (!cfg.url || !cfg.serviceRoleKey) return [];
 
-  const digits = toDigits(jid);
-  if (!digits) return null;
+  const now = Date.now();
+  if (leadIndexCache && now - leadIndexCachedAt < LEAD_INDEX_TTL_MS) {
+    return leadIndexCache;
+  }
 
-  // The stored phone may have DDD/55 or not. We query all candidates we build.
-  const candidates = buildPhoneCandidates(digits);
-
-  for (const cand of candidates) {
-    const res = await fetch(
-      `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category&phone=eq.${encodeURIComponent(cand)}`,
-      { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
-    );
-    if (res.ok) {
-      const rows = (await res.json()) as LeadRow[];
-      if (rows.length > 0) return rows[0];
+  const rows: LeadRow[] = [];
+  try {
+    let offset = 0;
+    for (let page = 0; page < 20; page++) {
+      const res = await fetch(
+        `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category&order=id&offset=${offset}&limit=1000`,
+        { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+      );
+      if (!res.ok) break;
+      const batch = (await res.json()) as LeadRow[];
+      rows.push(...batch);
+      if (batch.length < 1000) break;
+      offset += batch.length;
     }
+  } catch {
+    // índice vazio: findLeadByPhone retornará null e o fluxo loga "lead não encontrado"
+  }
+  leadIndexCache = rows;
+  leadIndexCachedAt = now;
+  return rows;
+}
+
+/**
+ * Procura um lead pelo JID/número do WhatsApp. Compara a forma E.164 canônica
+ * (55 + DDD + número) do JID com a de cada lead cadastrado, ignorando máscara
+ * de formatação, espaços, hífens e parênteses da coluna phone.
+ */
+export async function findLeadByPhone(jid: string): Promise<LeadRow | null> {
+  const inbound = normalizeBrazilianPhone(jid);
+  if (!inbound) return null;
+
+  const rows = await fetchLeadIndex();
+  for (const row of rows) {
+    const stored = normalizeBrazilianPhone(row.phone ?? '');
+    if (stored && stored === inbound) return row;
   }
   return null;
-}
-
-function buildPhoneCandidates(digits: string): string[] {
-  const out = new Set<string>();
-  out.add(digits);
-  if (digits.length === 13 && digits.startsWith('55')) out.add(digits.slice(2));
-  if (digits.length === 12 && digits.startsWith('55')) out.add(digits.slice(2));
-  if (digits.length === 11) out.add(digits.slice(2)); // remove DDD -> 9 digits
-  return Array.from(out);
 }
 
 export async function updateLeadStatus(
@@ -96,11 +148,103 @@ export async function updateLeadStatus(
   });
 }
 
-/** True when this lead is in a prospecting state we should auto-reply to. */
-export function isProspectingStatus(status: string | null | undefined): boolean {
-  return !!status && PROSPECTING_STATUSES.includes(status);
+/**
+ * Interrompe a campanha PARA ESTE LEAD: marca como `failed` qualquer run
+ * pendente/em andamento, impedindo que o worker envie a próxima mensagem
+ * programada. Quando todos os runs da campanha terminarem (done/failed), o
+ * worker finaliza a campanha. Sem efeito quando o lead não tem runs ativos.
+ */
+export async function cancelLeadSendRuns(
+  leadId: string,
+  reason = 'sem_interesse',
+): Promise<void> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!cfg.url || !cfg.serviceRoleKey || !leadId) return;
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/send_runs?select=id,campaign_id&lead_id=eq.${encodeURIComponent(leadId)}&status=in.("pending","running")`,
+      { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+    );
+    if (!res.ok) return;
+    const runs = (await res.json()) as Array<{ id: string; campaign_id: string | null }>;
+    const campaignIds = new Set<string>();
+    for (const run of runs) {
+      await fetch(`${cfg.url}/rest/v1/send_runs?id=eq.${run.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: cfg.serviceRoleKey,
+          Authorization: `Bearer ${cfg.serviceRoleKey}`,
+        },
+        body: JSON.stringify({ status: 'failed', fail_reason: reason }),
+      });
+      if (run.campaign_id) campaignIds.add(run.campaign_id);
+    }
+    // Reflete na contagem agregada da campanha (best-effort).
+    for (const campaignId of campaignIds) {
+      const r = await fetch(
+        `${cfg.url}/rest/v1/campaigns?id=eq.${campaignId}&select=fail_count,success_count`,
+        { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+      );
+      if (!r.ok) continue;
+      const rows = (await r.json()) as Array<{ fail_count: number; success_count: number }>;
+      const row = rows[0];
+      if (!row) continue;
+      await fetch(`${cfg.url}/rest/v1/campaigns?id=eq.${campaignId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: cfg.serviceRoleKey,
+          Authorization: `Bearer ${cfg.serviceRoleKey}`,
+        },
+        body: JSON.stringify({ fail_count: row.fail_count + 1, success_count: row.success_count }),
+      });
+    }
+  } catch {
+    // best-effort
+  }
 }
 
+/**
+ * Registra um desfecho comercial (sem_interesse / reunião cancelada) via RPC
+ * `consecom_agent_outcome`: atualiza o Kanban (status), aplica o bloqueio de
+ * `no_interest_until` e grava em lead_status_history. O mesmo RPC usado pela
+ * ferramenta do agente — assim o fluxo não depende do registry estar ativo.
+ */
+export async function recordAgentOutcome(args: {
+  leadId?: string;
+  phone?: string;
+  outcome: 'sem_interesse' | 'reuniao_cancelada';
+  motive?: string;
+  noInterestMonths?: number;
+}): Promise<boolean> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!cfg.url || !cfg.serviceRoleKey) return false;
+  try {
+    const res = await fetch(`${cfg.url}/rest/v1/rpc/consecom_agent_outcome`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: cfg.serviceRoleKey,
+        Authorization: `Bearer ${cfg.serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        p_lead_id: args.leadId ?? null,
+        p_phone: args.phone ?? null,
+        p_outcome: args.outcome,
+        p_motive: args.motive ?? null,
+        p_no_interest_months: args.noInterestMonths ?? 6,
+      }),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { ok?: boolean };
+    return data?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+/** True when this lead is in a prospecting state we should auto-reply to. */
 /**
  * Atualiza campos analíticos do lead (score, interesse, serviço, problema).
  * Best-effort: nunca lança erro (não quebra o fluxo do agente).
