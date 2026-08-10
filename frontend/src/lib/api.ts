@@ -84,6 +84,15 @@ export interface AiFlowTestResult {
 
 // ===== Tipos de contatos importados =====
 
+export interface Contact {
+  id: string
+  name: string
+  phone: string
+  category?: string | null
+  status?: string | null
+  createdAt?: string | null
+}
+
 export interface ContactList {
   id: string
   name: string
@@ -105,4 +114,76 @@ export interface ContactImportResponse {
   summary: ContactSummary
   listId: string | null
   listName: string
+}
+
+/** Contrato real do backend para GET /api/contacts/lists (payload bruto). */
+interface ContactListsResponse {
+  lists?: unknown
+}
+
+/** Contrato real do backend para GET /api/contacts/:listId/leads (payload bruto). */
+interface ContactLeadsResponse {
+  leads?: unknown
+}
+
+function asContactRow(raw: unknown): Contact | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const id = typeof r.id === 'string' ? r.id : ''
+  const phone = typeof r.phone === 'string' ? r.phone : ''
+  if (!id || !phone) return null
+  return {
+    id,
+    name: typeof r.name === 'string' ? r.name : 'Sem nome',
+    phone,
+    category: typeof r.category === 'string' ? r.category : null,
+    status: typeof r.status === 'string' ? r.status : null,
+    createdAt: typeof r.created_at === 'string' ? r.created_at : null,
+  }
+}
+
+/** Normalização segura: extrai SEMPRE um array do payload de listas. */
+export function normalizeContactLists(data: unknown): ContactList[] {
+  const raw = (data as ContactListsResponse | null)?.lists
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((l) => {
+      if (!l || typeof l !== 'object') return null
+      const r = l as Record<string, unknown>
+      const id = typeof r.id === 'string' ? r.id : ''
+      if (!id) return null
+      return {
+        id,
+        name: typeof r.name === 'string' ? r.name : 'Contatos importados',
+        createdAt: typeof r.created_at === 'string' ? r.created_at : new Date().toISOString(),
+        count: typeof r.count === 'number' ? r.count : 0,
+      }
+    })
+    .filter((l): l is ContactList => l !== null)
+}
+
+/** Normalização segura: extrai SEMPRE um array do payload de leads de lista. */
+export function normalizeContactLeads(data: unknown): Contact[] {
+  const raw = (data as ContactLeadsResponse | null)?.leads
+  if (!Array.isArray(raw)) return []
+  return raw.map(asContactRow).filter((c): c is Contact => c !== null)
+}
+
+/** API de contatos respeitando o contrato real + camada de normalização. */
+export const contactsApi = {
+  async lists(): Promise<ContactList[]> {
+    const data = await api.get<unknown>('/api/contacts/lists')
+    return normalizeContactLists(data)
+  },
+  async listLeads(listId: string): Promise<Contact[]> {
+    const data = await api.get<unknown>(`/api/contacts/${encodeURIComponent(listId)}/leads`)
+    return normalizeContactLeads(data)
+  },
+  async import(listName: string, contacts: { name: string; phone: string }[]): Promise<ContactImportResponse> {
+    const res = await api.post<ContactImportResponse>('/api/contacts/import', {
+      listName,
+      contacts,
+    })
+    return res
+  },
 }

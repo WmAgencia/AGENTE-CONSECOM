@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  UploadCloud, FileSpreadsheet, Table, CheckCircle2, XCircle, AlertTriangle, RefreshCcw, ListChecks, Users, Loader2,
+  UploadCloud, FileSpreadsheet, Table, CheckCircle2, XCircle, AlertTriangle, RefreshCcw,
+  ListChecks, Users, Loader2, ChevronLeft, AlertCircle, ContactRound,
 } from 'lucide-react'
-import { api, type ContactImportResponse, type ContactList } from '../lib/api'
-import { parseSpreadsheet, validateContacts, type ParsedContact, type ValidationReport } from '../lib/contacts'
+import { contactsApi, type ContactImportResponse, type Contact, type ContactList } from '../lib/api'
+import { parseSpreadsheet, validateContacts, type ValidationReport } from '../lib/contacts'
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
+
+type ListsState =
+  | { kind: 'loading' }
+  | { kind: 'ready' }
+  | { kind: 'error'; message: string }
 
 export function ContactsView() {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -17,18 +25,39 @@ export function ContactsView() {
   const [importing, setImporting] = useState(false)
   const [done, setDone] = useState<ContactImportResponse | null>(null)
   const [error, setError] = useState('')
+
+  // Listas — estado inicial SEMPRE array; loading/erro separados.
   const [lists, setLists] = useState<ContactList[]>([])
-  const [loadingLists, setLoadingLists] = useState(false)
+  const [listsState, setListsState] = useState<ListsState>({ kind: 'loading' })
+
+  // Detalhe expandido de uma lista (contatos).
+  const [activeList, setActiveList] = useState<ContactList | null>(null)
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [contactsState, setContactsState] = useState<ListsState>({ kind: 'loading' })
 
   async function loadLists() {
-    setLoadingLists(true)
+    setListsState({ kind: 'loading' })
     try {
-      const data = await api.get<ContactList[]>('/api/contacts/lists')
-      setLists(data)
-    } catch {
+      const data = await contactsApi.lists()
+      setLists(Array.isArray(data) ? data : [])
+      setListsState({ kind: 'ready' })
+    } catch (e) {
       setLists([])
-    } finally {
-      setLoadingLists(false)
+      setListsState({ kind: 'error', message: e instanceof Error ? e.message : 'Falha ao carregar contatos' })
+    }
+  }
+
+  async function loadListDetail(list: ContactList) {
+    setActiveList(list)
+    setContacts([])
+    setContactsState({ kind: 'loading' })
+    try {
+      const data = await contactsApi.listLeads(list.id)
+      setContacts(Array.isArray(data) ? data : [])
+      setContactsState({ kind: 'ready' })
+    } catch (e) {
+      setContacts([])
+      setContactsState({ kind: 'error', message: e instanceof Error ? e.message : 'Falha ao carregar contatos' })
     }
   }
 
@@ -57,43 +86,20 @@ export function ContactsView() {
     }
   }, [parsed])
 
-  async function sendContact(contact: ParsedContact) {
-    const res = await api.post<ContactImportResponse>('/api/contacts/import', {
-      items: [{ name: contact.name, phone: contact.phone }],
-      source: 'frontend-import',
-      listName: `Importação ${new Date().toISOString().slice(0, 10)}`,
-    })
-    return res.summary.created
-  }
-
   async function importAll() {
     if (!parsed || !parsed.valid.length) return
     setImporting(true)
     setError('')
     setDone(null)
     try {
-      let created = 0
-      let errors = 0
-      for (const c of parsed.valid) {
-        try {
-          created += await sendContact(c)
-        } catch {
-          errors++
-        }
-      }
-      setDone({
-        ok: true,
-        summary: {
-          total: parsed.valid.length,
-          valid: parsed.valid.length,
-          created,
-          duplicates: 0,
-          invalid: 0,
-          errors,
-        },
-        listId: null,
-        listName: `Importação ${new Date().toISOString().slice(0, 10)}`,
-      })
+      // Contrato real do backend: { listName, contacts: [{name, phone}] }.
+      const listName = `Importação ${new Date().toISOString().slice(0, 10)}`
+      const res = await contactsApi.import(
+        listName,
+        parsed.valid.map((c) => ({ name: c.name, phone: c.phone })),
+      )
+      setDone(res)
+      // Se a lista foi criada no backend, usa o id retornado para atualizar a UI.
       await loadLists()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao importar contatos')
@@ -118,6 +124,7 @@ export function ContactsView() {
         </button>
       </div>
 
+      {/* ===== Importação ===== */}
       <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
         <div className="flex items-center gap-2 mb-3">
           <FileSpreadsheet className="w-4 h-4 text-indigo-300" />
@@ -153,13 +160,14 @@ export function ContactsView() {
         {!fileName && (
           <div className="mt-3 text-xs text-slate-500 flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5" />
-            A detecção de colunas é automática: <code>nome</code>, <code>name</code>, <code>cliente</code> e <code>telefone</code>, <code>phone</code>, <code>whatsapp</code>, <code>celular</code>.
+            A detecção de colunas é automática: <code>nome</code>, <code>name</code>, <code>cliente</code> e <code>telefone</code>, <code>phone</code>, <code>whatsapp</code>, <code>celular</code>. Exemplo: <code>nome,telefone</code>.
           </div>
         )}
 
         {error && <div className="mt-3 text-xs text-rose-300 bg-rose-500/10 rounded-lg px-3 py-2">{error}</div>}
       </div>
 
+      {/* ===== Validação ===== */}
       {parsed && stats && (
         <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -185,7 +193,7 @@ export function ContactsView() {
               <div className="flex items-center gap-1.5 text-rose-300 text-sm font-semibold">
                 <XCircle className="w-4 h-4" /> {stats.dupes}
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">duplicados</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">duplicados (arquivo)</div>
             </div>
           </div>
 
@@ -235,27 +243,121 @@ export function ContactsView() {
         </div>
       )}
 
-      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="w-4 h-4 text-indigo-300" />
-          <span className="text-sm font-semibold">Listas importadas</span>
-          {loadingLists && <Loader2 className="w-4 h-4 animate-spin text-slate-500 ml-auto" />}
-        </div>
-        {lists.length === 0 && !loadingLists && (
-          <div className="text-sm text-slate-500">
-            Nenhuma lista importada ainda. Crie uma lista na aba <b>Leads</b> ou importe uma planilha acima.
+      {/* ===== Listas + contatos ===== */}
+      {activeList ? (
+        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+          <button
+            onClick={() => setActiveList(null)}
+            className="text-xs text-slate-400 hover:text-white inline-flex items-center gap-1 mb-3"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" /> Voltar para listas
+          </button>
+          <div className="flex items-center gap-2 mb-4">
+            <ContactRound className="w-4 h-4 text-indigo-300" />
+            <span className="text-sm font-semibold">{activeList.name}</span>
+            <span className="text-xs text-slate-500">{activeList.count} contatos</span>
           </div>
-        )}
-        <div className="space-y-1">
-          {lists.map((l) => (
-            <div key={l.id} className="flex items-center gap-3 text-sm py-2 border-b border-white/5 last:border-0">
-              <span className="truncate text-slate-200">{l.name}</span>
-              <span className="text-slate-600 text-xs">{l.count} contatos</span>
-              <span className="ml-auto text-xs text-slate-500">{fmtDate(l.createdAt)}</span>
+
+          {contactsState.kind === 'loading' && (
+            <div className="flex items-center gap-2 text-sm text-slate-400 py-6">
+              <Loader2 className="w-4 h-4 animate-spin" /> Carregando contatos…
             </div>
-          ))}
+          )}
+
+          {contactsState.kind === 'error' && (
+            <ErrorBlock onRetry={() => void loadListDetail(activeList)} message={contactsState.message} />
+          )}
+
+          {contactsState.kind === 'ready' && contacts.length === 0 && (
+            <div className="text-sm text-slate-500 py-6 text-center">
+              Nenhum contato nesta lista.
+            </div>
+          )}
+
+          {contactsState.kind === 'ready' && contacts.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-white/5">
+                    <th className="py-2 pr-3 font-medium">Nome</th>
+                    <th className="py-2 pr-3 font-medium">Telefone</th>
+                    <th className="py-2 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contacts.map((c) => (
+                    <tr key={c.id} className="border-b border-white/5 last:border-0">
+                      <td className="py-2 pr-3 text-slate-200">{c.name}</td>
+                      <td className="py-2 pr-3 text-slate-400 font-mono text-xs">{c.phone}</td>
+                      <td className="py-2 text-slate-400">{c.status ?? 'novo'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
+      ) : (
+        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="w-4 h-4 text-indigo-300" />
+            <span className="text-sm font-semibold">Listas importadas</span>
+            {listsState.kind === 'loading' && <Loader2 className="w-4 h-4 animate-spin text-slate-500 ml-auto" />}
+          </div>
+
+          {listsState.kind === 'loading' && (
+            <div className="flex items-center gap-2 text-sm text-slate-400 py-6">
+              <Loader2 className="w-4 h-4 animate-spin" /> Carregando listas…
+            </div>
+          )}
+
+          {listsState.kind === 'error' && (
+            <ErrorBlock onRetry={() => void loadLists()} message={listsState.message} />
+          )}
+
+          {listsState.kind === 'ready' && lists.length === 0 && (
+            <div className="text-sm text-slate-500 py-6 text-center">
+              Nenhum contato encontrado.
+              <br />
+              Importe seus contatos para começar uma campanha.
+            </div>
+          )}
+
+          {listsState.kind === 'ready' && lists.length > 0 && (
+            <div className="space-y-1">
+              {lists.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => void loadListDetail(l)}
+                  className="w-full flex items-center gap-3 text-sm py-2 border-b border-white/5 last:border-0 hover:bg-white/5 rounded px-2 -mx-2 transition"
+                >
+                  <span className="truncate text-slate-200">{l.name}</span>
+                  <span className="text-slate-600 text-xs">{l.count} contatos</span>
+                  <span className="ml-auto text-xs text-slate-500">{fmtDate(l.createdAt)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ErrorBlock({ onRetry, message }: { onRetry: () => void; message: string }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-8 text-center">
+      <div className="flex items-center gap-2 text-sm text-rose-300">
+        <AlertCircle className="w-4 h-4" />
+        Não foi possível carregar os contatos.
       </div>
+      <div className="text-xs text-slate-500">{message}</div>
+      <button
+        onClick={onRetry}
+        className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium inline-flex items-center gap-2 transition"
+      >
+        <RefreshCcw className="w-3.5 h-3.5" /> Tentar novamente
+      </button>
     </div>
   )
 }

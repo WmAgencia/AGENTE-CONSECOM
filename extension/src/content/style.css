@@ -55,8 +55,9 @@
   z-index: 2147483647;
   top: 20px;
   right: 20px;
-  width: min(370px, calc(100vw - 24px));
-  max-width: min(420px, calc(100vw - 24px));
+  width: min(360px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  height: min(560px, calc(100vh - 24px));
   max-height: calc(100vh - 24px);
   min-height: 60px;
   background: var(--vy-panel);
@@ -87,6 +88,9 @@
   border-bottom: 1px solid var(--vy-border);
   cursor: grab;
   flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .cs-panel__header:active { cursor: grabbing; }
 .cs-panel__grip {
@@ -98,6 +102,9 @@
   color: var(--vy-muted);
   font-size: 12px;
   line-height: 1;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .cs-panel__grip:active { cursor: grabbing; }
 
@@ -146,22 +153,8 @@
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 16px 16px 12px;
+  padding: 14px 14px 12px;
   border-bottom: 1px solid var(--vy-border);
-}
-.cs-panel__logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: var(--vy-gradient);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 20px;
-  font-style: italic;
-  color: #fff;
-  flex: 0 0 auto;
 }
 .cs-panel__titles { min-width: 0; }
 .cs-panel__name { font-size: 15px; font-weight: 800; color: var(--vy-text); letter-spacing: -0.01em; }

@@ -44,7 +44,6 @@ export class MapsScanner {
   private countEl: HTMLElement | null = null
 
   private lastQuery = ''
-  private dragging = false
 
   // === Prospecção automática (Vyntra Prospector) ===
   private filters: ProspectFilters = { ...DEFAULT_FILTERS }
@@ -77,7 +76,8 @@ export class MapsScanner {
 
     // reajusta posição/size quando a viewport mudar
     window.addEventListener('resize', () => {
-      if (this.balloon?.classList.contains('open')) this.positionBalloon()
+      if (this.balloon?.classList.contains('open')) this.clampElement(this.balloon)
+      if (this.floatBtn && document.body.contains(this.floatBtn)) this.clampElement(this.floatBtn)
     })
 
     this.subscribeRealtime()
@@ -346,8 +346,15 @@ export class MapsScanner {
     btn.className = 'consecom-floatbtn'
     btn.title = 'Abrir Vyntra'
     btn.textContent = 'V'
-    btn.addEventListener('click', () => this.restoreBalloon())
-    this.enableDrag(btn)
+    btn.addEventListener('click', () => {
+      // Se o usuário arrastou o botão, não restaura o painel por engano.
+      if (btn.dataset.dragged === 'true') {
+        btn.dataset.dragged = 'false'
+        return
+      }
+      this.restoreBalloon()
+    })
+    this.enableDrag(btn, btn)
     return btn
   }
 
@@ -364,6 +371,7 @@ export class MapsScanner {
       : this.readPosition()
     this.balloon.style.right = `${pos.right}px`
     this.balloon.style.top = `${pos.top}px`
+    this.clampElement(this.balloon)
     requestAnimationFrame(() => this.balloon?.classList.add('open'))
     if (this.floatBtn) {
       this.floatBtn.classList.remove('open')
@@ -390,52 +398,78 @@ export class MapsScanner {
   }
 
   /**
-   * Drag genérico para o header do painel ou para o botão minimizado.
-   * Mantém o elemento dentro da viewport e persiste a posição.
+   * Drag robusto baseado em Pointer Events.
+   * `handle` é a área que recebe o ponteiro (ex: header/grip); `target` é o
+   * elemento fixo que se move (ex: balloon/float button). Nunca deixa o
+   * target sair da viewport e ignora cliques/arrastos sobre elementos
+   * interativos (botões, inputs, selects, links, controles do header).
    */
-  private enableDrag(elm: HTMLElement): void {
+  private enableDrag(handle: HTMLElement, target: HTMLElement): void {
+    const MIN_EDGE = 12
+    let active = false
+    let moved = false
     let startX = 0
     let startY = 0
     let startRight = 0
     let startTop = 0
-    let moved = false
 
     const down = (e: PointerEvent) => {
-      // só arrasta com o principal (botão esquerdo)
-      if (e.button !== 0) return
+      if (e.button !== 0 || active) return
+      const t = e.target as HTMLElement | null
+      // Ignora arrasto iniciado em elementos interativos (descendentes),
+      // exceto quando o próprio handle é um <button> (ex: float button).
+      if (t && t !== handle && t.closest('button, input, select, textarea, a, .cs-panel__controls, [data-no-drag]')) return
       e.preventDefault()
-      this.dragging = true
+      active = true
       moved = false
+      target.dataset.dragged = 'false'
       startX = e.clientX
       startY = e.clientY
-      startRight = parseFloat(elm.style.right) || 0
-      startTop = parseFloat(elm.style.top) || 0
-      elm.setPointerCapture(e.pointerId)
+      startRight = parseFloat(target.style.right) || 20
+      startTop = parseFloat(target.style.top) || 20
+      try {
+        handle.setPointerCapture(e.pointerId)
+      } catch {
+        /* ignore */
+      }
     }
+
     const move = (e: PointerEvent) => {
-      if (!this.dragging) return
+      if (!active) return
       const dx = e.clientX - startX
       const dy = e.clientY - startY
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true
-      const minEdge = 12
-      const maxRight = window.innerWidth - minEdge - elm.offsetWidth
-      const maxTop = window.innerHeight - minEdge - elm.offsetHeight
-      const right = Math.max(minEdge, Math.min(maxRight, startRight - dx))
-      const top = Math.max(minEdge, Math.min(maxTop, startTop + dy))
-      elm.style.right = `${right}px`
-      elm.style.left = ''
-      elm.style.top = `${top}px`
+      const maxRight = Math.max(0, window.innerWidth - MIN_EDGE - target.offsetWidth)
+      const maxTop = Math.max(0, window.innerHeight - MIN_EDGE - target.offsetHeight)
+      const right = Math.min(Math.max(0, startRight - dx), maxRight)
+      const top = Math.min(Math.max(0, startTop + dy), maxTop)
+      target.style.right = `${right}px`
+      target.style.top = `${top}px`
+      target.style.left = ''
+      target.style.bottom = ''
     }
+
     const up = (e: PointerEvent) => {
-      if (!this.dragging) return
-      if (elm.hasPointerCapture(e.pointerId)) elm.releasePointerCapture(e.pointerId)
-      this.dragging = false
-      this.savePosition(elm)
+      if (!active) return
+      active = false
+      try {
+        if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId)
+      } catch {
+        /* ignore */
+      }
+      if (moved) {
+        target.dataset.dragged = 'true'
+        this.savePosition(target)
+      }
     }
-    elm.addEventListener('pointerdown', down)
-    elm.addEventListener('pointermove', move)
-    elm.addEventListener('pointerup', up)
-    elm.addEventListener('pointercancel', up)
+
+    handle.addEventListener('pointerdown', down)
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+    handle.addEventListener('lostpointercapture', () => {
+      active = false
+    })
   }
 
   private buildBalloon(): HTMLElement {
@@ -493,7 +527,7 @@ export class MapsScanner {
     })
     controls.append(minimizeBtn, closeBtn)
     header.append(grip, logo, titles, controls)
-    this.enableDrag(header)
+    this.enableDrag(header, balloon)
 
     // Corpo com scroll interno
     const body = document.createElement('div')
@@ -1335,17 +1369,41 @@ export class MapsScanner {
     else this.ensureLauncher()
   }
 
+  /**
+   * Mantém um elemento fixo totalmente dentro da viewport com margem mínima.
+   * Se estiver em posição inválida (ex: após resize), reposiciona para a
+   * posição válida mais próxima (clamp em todas as bordas).
+   */
+  private clampElement(el: HTMLElement): void {
+    if (!document.body.contains(el)) return
+    const MARGIN = 12
+    const w = el.offsetWidth || 0
+    const h = el.offsetHeight || 0
+    const maxRight = Math.max(0, window.innerWidth - MARGIN - w)
+    const maxTop = Math.max(0, window.innerHeight - MARGIN - h)
+
+    const right = parseFloat(el.style.right)
+    const top = parseFloat(el.style.top)
+    if (!Number.isFinite(right) || !Number.isFinite(top)) return
+
+    const nr = Math.min(Math.max(0, right), maxRight)
+    const nt = Math.min(Math.max(0, top), maxTop)
+    if (nr !== right || nt !== top) {
+      el.style.right = `${nr}px`
+      el.style.top = `${nt}px`
+      el.style.left = ''
+      el.style.bottom = ''
+      this.savePosition(el)
+    }
+  }
+
   /** Reposiciona o painel dentro da viewport caso a posição salva esteja inválida. */
   private positionBalloon(): void {
     if (!this.balloon) return
-    const pos = this.readPosition()
-    const maxRight = window.innerWidth - 12 - (this.balloon.offsetWidth || 1)
-    const maxTop = window.innerHeight - 12 - (this.balloon.offsetHeight || 1)
-    const right = Math.min(pos.right, maxRight)
-    const top = Math.min(pos.top, maxTop)
-    this.balloon.style.right = `${Math.max(12, right)}px`
-    this.balloon.style.top = `${Math.max(12, top)}px`
-    this.savePosition(this.balloon)
+    const saved = this.readPosition()
+    this.balloon.style.right = `${Math.max(12, saved.right)}px`
+    this.balloon.style.top = `${Math.max(12, saved.top)}px`
+    this.clampElement(this.balloon)
   }
 
   // --- varredura dos cards nativos ---
