@@ -24,6 +24,7 @@ import {
   type MemoryImport,
   type MemoryConversation,
   type MemoryLearning,
+  type LearningStatus,
 } from '../lib/api'
 
 type Tab = 'imports' | 'conversas' | 'aprendizados'
@@ -34,11 +35,18 @@ interface FileState {
   detail?: string
 }
 
-const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+const STATUS_BADGE: Record<LearningStatus, { label: string; cls: string }> = {
   identificado: { label: 'Identificado', cls: 'text-slate-300 bg-white/5 border-white/10' },
   validado: { label: 'Validado', cls: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/30' },
   ativo: { label: 'Ativo', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
   inativo: { label: 'Inativo', cls: 'text-slate-400 bg-white/5 border-white/10' },
+}
+
+const NEXT_STATUS: Record<LearningStatus, LearningStatus> = {
+  identificado: 'validado',
+  validado: 'ativo',
+  ativo: 'inativo',
+  inativo: 'identificado',
 }
 
 const CATEGORY_CHIP: Record<string, string> = {
@@ -75,6 +83,12 @@ const ORIGIN_LABEL: Record<string, string> = {
   arquivo: 'Arquivo',
 }
 
+const DIRECTION_LABEL: Record<string, string> = {
+  saida: 'saída',
+  entrada: 'entrada',
+  misto: 'misto',
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -98,7 +112,6 @@ export function CommercialMemory() {
   const [imports, setImports] = useState<MemoryImport[]>([])
   const [convs, setConvs] = useState<MemoryConversation[]>([])
   const [learnings, setLearnings] = useState<MemoryLearning[]>([])
-  const [learningsAll, setLearningsAll] = useState<MemoryLearning[]>([])
   const [tab, setTab] = useState<Tab>('imports')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -109,40 +122,39 @@ export function CommercialMemory() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const processingActive = imports.some((i) => i.status === 'processing')
 
-  const refresh = useCallback(async (opts?: { keepLists?: boolean }) => {
-    setLoading(true)
-    setError('')
-    try {
-      const [d, imb] = await Promise.all([
-        memoryApi.dashboard(),
-        memoryApi.imports().catch(() => [] as MemoryImport[]),
-      ])
-      setDash(d)
-      setImports(imb)
-      if (!opts?.keepLists) {
-        if (tab === 'conversas') {
-          setConvs(await memoryApi.conversations())
-        } else if (tab === 'aprendizados') {
-          setLearnings(await memoryApi.learnings())
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true)
+      setError('')
+      try {
+        const [d, imb] = await Promise.all([
+          memoryApi.dashboard(),
+          memoryApi.imports().catch(() => [] as MemoryImport[]),
+        ])
+        setDash(d)
+        setImports(imb)
+        if (!opts?.silent) {
+          if (tab === 'conversas') {
+            setConvs(await memoryApi.conversations())
+          } else if (tab === 'aprendizados') {
+            setLearnings(await memoryApi.learnings())
+          }
         }
-        setLearningsAll(await memoryApi.learnings({ limit: 300 }).catch(() => [] as MemoryLearning[]))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Falha ao carregar memória comercial')
+      } finally {
+        if (!opts?.silent) setLoading(false)
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao carregar memória comercial')
-    } finally {
-      setLoading(false)
-    }
-  }, [tab])
+    },
+    [tab],
+  )
 
-  // Polling: enquanto houver lote em processamento, atualiza a cada 2.5s.
+  // Polling: enquanto houver lote em processamento, atualiza silenciosamente.
   useEffect(() => {
-    if (!processingActive || uploadOpenTimeout.current) return
-    const t = window.setInterval(() => void refresh({ keepLists: true }), 2500)
+    if (!processingActive) return
+    const t = window.setInterval(() => void refresh({ silent: true }), 2500)
     return () => window.clearInterval(t)
   }, [processingActive, refresh])
-
-  // Para simplificar o ciclo de vida do polling acima.
-  const uploadOpenTimeout = useRef(false)
 
   useEffect(() => {
     void refresh()
@@ -173,9 +185,7 @@ export function CommercialMemory() {
         setFileStates((prev) => ({ ...prev, [file.name]: { name: file.name, status: 'uploading' } }))
         try {
           const isZip = /\.zip$/i.test(file.name)
-          const content = isZip
-            ? await fileToBase64(file)
-            : await file.text()
+          const content = isZip ? await fileToBase64(file) : await file.text()
           await memoryApi.import(file.name, content, 'auto')
           setFileStates((prev) => ({ ...prev, [file.name]: { name: file.name, status: 'done' } }))
         } catch (err) {
@@ -225,9 +235,8 @@ export function CommercialMemory() {
   }
 
   async function onToggleStatus(l: MemoryLearning) {
-    const next = { identificado: 'validado', validado: 'ativo', ativo: 'inativo', inativo: 'identificado' }[l.status]
     try {
-      await memoryApi.updateLearning(l.id, { status: next })
+      await memoryApi.updateLearning(l.id, { status: NEXT_STATUS[l.status] })
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao atualizar aprendizado')
@@ -378,7 +387,7 @@ export function CommercialMemory() {
           })}
         </div>
 
-        {/* ===== Import history ===== */}
+        {/* ===== Lotes ===== */}
         {tab === 'imports' && (
           <div className="space-y-2">
             {imports.length === 0 && (
@@ -425,12 +434,10 @@ export function CommercialMemory() {
           </div>
         )}
 
-        {/* ===== Conversations ===== */}
+        {/* ===== Conversas ===== */}
         {tab === 'conversas' && (
           <div className="space-y-2">
-            {convs.length === 0 && (
-              <div className="text-xs text-slate-500 py-6 text-center">Nenhuma conversa importada.</div>
-            )}
+            {convs.length === 0 && <div className="text-xs text-slate-500 py-6 text-center">Nenhuma conversa importada.</div>}
             {convs.map((c) => {
               const st = STATUS_TEXT[c.status] ?? STATUS_TEXT.imported
               return (
@@ -449,10 +456,10 @@ export function CommercialMemory() {
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      {c.messages_count} mensagens · {typeof c.direction === 'string' ? ({ saida: 'saída', entrada: 'entrada', misto: 'misto' }[c.direction] ?? c.direction) : '—'}
+                      {c.messages_count} mensagens · {c.direction ? (DIRECTION_LABEL[c.direction] ?? c.direction) : '—'}
                       {c.source_file ? ` · ${c.source_file}` : ''} · {new Date(c.created_at).toLocaleString('pt-BR')}
                     </div>
-                    {c.status === 'failed' && (c.error_message || 'falha na análise') && (
+                    {c.status === 'failed' && (
                       <div className="text-[10px] text-rose-300 mt-0.5">{c.error_message ?? 'falha na análise'}</div>
                     )}
                   </div>
@@ -477,7 +484,7 @@ export function CommercialMemory() {
           </div>
         )}
 
-        {/* ===== Learnings ===== */}
+        {/* ===== Aprendizados ===== */}
         {tab === 'aprendizados' && (
           <div className="space-y-2">
             {learnings.length === 0 && (
@@ -486,7 +493,7 @@ export function CommercialMemory() {
               </div>
             )}
             {learnings.map((l) => {
-              const badge = STATUS_BADGE[l.status] ?? STATUS_BADGE.identificado
+              const badge = STATUS_BADGE[l.status]
               const chip = CATEGORY_CHIP[l.category] ?? CATEGORY_CHIP.conversation_patterns
               return (
                 <div key={l.id} className="rounded-lg border border-white/5 bg-black/20 px-4 py-3 flex items-start gap-3">
@@ -500,21 +507,25 @@ export function CommercialMemory() {
                         </span>
                       )}
                       {l.performance !== 'neutro' && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                          l.performance === 'positivo'
-                            ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
-                            : 'text-rose-300 bg-rose-500/10 border-rose-500/30'
-                        }`}>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                            l.performance === 'positivo'
+                              ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+                              : 'text-rose-300 bg-rose-500/10 border-rose-500/30'
+                          }`}
+                        >
                           {l.performance === 'positivo' ? 'funcionou' : 'recusa'}
                         </span>
                       )}
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                        l.confidence === 'alta'
-                          ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
-                          : l.confidence === 'media'
-                            ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
-                            : 'text-slate-400 bg-white/5 border-white/10'
-                      }`}>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                          l.confidence === 'alta'
+                            ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+                            : l.confidence === 'media'
+                              ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+                              : 'text-slate-400 bg-white/5 border-white/10'
+                        }`}
+                      >
                         confiança {l.confidence}
                       </span>
                     </div>
@@ -579,8 +590,8 @@ export function CommercialMemory() {
               </div>
               <button
                 onClick={() => !uploading && setImportOpen(false)}
-                className="text-slate-400 hover:text-white"
                 disabled={uploading}
+                className="text-slate-400 hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
