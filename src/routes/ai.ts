@@ -56,6 +56,19 @@ const aiFlowTestSchema = z.object({
   initialMessage: z.string().max(2000).default('Olá, tudo bem?'),
 });
 
+const aiTrainingSchema = z.object({
+  message: z.string().min(1).max(8000),
+  conversationId: z.string().min(1).max(200).optional(),
+  persona: z
+    .object({
+      name: z.string().max(120).default('Carlos'),
+      company: z.string().max(180).default(''),
+      niche: z.string().max(180).default(''),
+      profile: z.string().max(500).default('dono de pequeno negócio, cético e sem pressa'),
+    })
+    .optional(),
+});
+
 async function resolveSupabaseUser(
   token: string | undefined,
 ): Promise<{ id: string } | null> {
@@ -254,6 +267,93 @@ export function registerAiRoutes(app: FastifyInstance): void {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'AI flow-test failed';
       log.error({ errMessage: message }, 'ai: flow-test route error');
+      return reply.status(502).send({
+        error: 'ai_error',
+        message,
+        statusCode: 502,
+      });
+    }
+  });
+
+  app.post('/api/ai/training', async (req, reply) => {
+    const token = extractBearerToken(
+      typeof req.headers['authorization'] === 'string'
+        ? req.headers['authorization']
+        : undefined,
+    );
+    const user = await resolveSupabaseUser(token);
+    if (!user) {
+      return reply.status(401).send({ error: 'unauthorized', statusCode: 401 });
+    }
+
+    const parsed = aiTrainingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'validation_error',
+        message: parsed.error.issues.map((i) => i.message).join('; '),
+        statusCode: 400,
+      });
+    }
+
+    // SANDBOX TOTAL: usa um namespace de conversa dedicado, NÃO chama tools
+    // (nenhum WhatsApp real, nenhuma campanha, nenhum Kanban, nenhuma reunião)
+    // e a IA interpreta a PERSONA DO CLIENTE (não o agente comercial).
+    const persona = parsed.data.persona;
+    const name = persona?.name || 'Carlos';
+    const company = persona?.company || 'uma empresa pequena';
+    const niche = persona?.niche || '';
+    const profile = persona?.profile || 'dono de pequeno negócio, cético e sem pressa';
+
+    const systemPrompt =
+      'Você é um cliente real num treinamento de vendas. O usuário que irá ' +
+      'conversar com você é um VENDEDOR em treinamento. Você NÃO é assistente ' +
+      'de vendas: você interpreta o papel de um prospect. Seja realista, ' +
+      'humano e natural: responda curto (1-2 frases por vez), do jeito que um ' +
+      'dono de negócio responde no WhatsApp. Seja cético, sério e sem pressa; ' +
+      'você NÃO conhece o vendedor e NÃO tomou nenhuma decisão. Apresente ' +
+      'dúvidas, resistências e perguntas sobre preço/resultado como qualquer ' +
+      'cliente faria. Responda como porta-voz da própria empresa, sem revelar ' +
+      'que é uma simulação.\n' +
+      'SUA PERSONA:\n' +
+      `- Nome: ${name}\n` +
+      (company ? `- Empresa: ${company}\n` : '') +
+      (niche ? `- Área/nicho: ${niche}\n` : '') +
+      `- Perfil/atitude: ${profile}\n` +
+      'IMPORTANTE: nunca marque reuniões, nunca agende nada e nunca informe ' +
+      'dados falsos de outras pessoas. Se o vendedor te convencer, responda de ' +
+      'acordo (pode aceitar uma proposta). Esta conversa é SOMENTE treinamento.';
+
+    const store = getConversationStore();
+    const conversationId =
+      parsed.data.conversationId ?? `training:${user.id}`;
+    const history = turnsToHistory(await store.get(conversationId));
+
+    try {
+      const result = await runAgentLoop({
+        task: parsed.data.message,
+        conversationId,
+        source: 'http',
+        history,
+        directives: undefined,
+        enableTools: false,
+        systemPromptOverride: systemPrompt,
+      });
+
+      await store.appendUser(conversationId, parsed.data.message);
+      await store.appendAssistant(conversationId, result.result);
+      touchActivity('training');
+
+      return reply.send({
+        conversationId,
+        response: result.result,
+        model: result.model,
+        provider: PROVIDER,
+        latencyMs: result.latencyMs,
+        sandbox: true,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'AI training failed';
+      log.error({ errMessage: message }, 'ai: training route error');
       return reply.status(502).send({
         error: 'ai_error',
         message,

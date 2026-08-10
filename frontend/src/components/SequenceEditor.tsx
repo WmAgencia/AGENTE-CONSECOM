@@ -118,7 +118,12 @@ export function SequenceEditor({
   }
 
   async function removeMessage(id: string) {
-    await supabase.from('queue_messages').delete().eq('id', id)
+    const { error } = await supabase.from('queue_messages').delete().eq('id', id)
+    if (error) {
+      setError(`Não foi possível remover a etapa: ${error.message}`)
+      return
+    }
+    setError('')
     onSaved()
   }
 
@@ -126,14 +131,23 @@ export function SequenceEditor({
     const idx = messages.findIndex((m) => m.id === id)
     const swapWith = messages[idx + dir]
     if (!swapWith) return
-    await supabase
+    const { error: e1 } = await supabase
       .from('queue_messages')
       .update({ position: swapWith.position })
       .eq('id', id)
-    await supabase
+    if (e1) {
+      setError(`Não foi possível reordenar: ${e1.message}`)
+      return
+    }
+    const { error: e2 } = await supabase
       .from('queue_messages')
       .update({ position: messages[idx].position })
       .eq('id', swapWith.id)
+    if (e2) {
+      setError(`Não foi possível reordenar: ${e2.message}`)
+      return
+    }
+    setError('')
     onSaved()
   }
 

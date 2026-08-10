@@ -78,6 +78,11 @@ interface RunAgentLoopInput {
   strategyDirective?: string;
   /** Sobrescreve AGENT_ENABLE_TOOLS (ex: simulação de fluxo = false). */
   enableTools?: boolean;
+  /**
+   * Sobrescreve o system prompt padrão (ex.: Chat de Treinamento, onde a IA
+   * interpreta a PERSONA DO CLIENTE e não o agente comercial).
+   */
+  systemPromptOverride?: string;
 }
 
 export interface RunAgentLoopResult extends AgentResponse {
@@ -126,7 +131,7 @@ const base = [
     `Today is ${dataAtual} (YYYY-MM-DD) and the current time is ${horaAtual} in Brasilia (UTC-3). When the prospect mentions "hoje", "amanha", "depois de amanha" or any relative date, ALWAYS resolve it against this exact date.`,
     'Never end a turn by promising to check or return something and then stopping. Every reply must be complete.',
     'Be FAST and decisive. Your goal is to build rapport, answer questions about the service, and move the conversation toward scheduling a meeting.',
-    'BOOKING RULE: NEVER schedule a meeting on your own. First ask the prospect when they are available and offer the closest options (e.g. "hoje 14h, amanhã 10h ou 15h"). Only call marcar_reuniao AFTER the prospect explicitly chooses a date AND time. Then resolve it in ONE turn: call marcar_reuniao with the lead id and the agreed meeting details, and reply confirming the meeting. Never invent an agreement.',
+    'BOOKING RULE: NEVER schedule a meeting on your own and NEVER invent an agreement. First ask the prospect when they are available and offer the closest options (e.g. "hoje 14h, amanhã 10h ou 15h"). Only call marcar_reuniao AFTER the prospect explicitly chooses a date AND time in their own words. IMPORTANT: the marcar_reuniao tool has a GUARD that checks the conversation for the prospect\'s explicit acceptance — if there is no evidence, it will fail and you must go back to asking for availability. Never announce "reunião confirmada" unless the tool returned ok=true.',
     'SIGNATURE RULE: NEVER sign your messages. Do not end any message with a name, a dash, or any signature like "– Alex", "- Alex", "Alex" or "Att.". The opening greeting is added automatically as "*Alex*" — you only write the body text.',
     'If the prospect declines or goes quiet, do not insist or spam. Respond gracefully and stop. A single objection (e.g. "não quero tráfego pago" or "está caro") is NOT a refusal: address it per the SALES_PLAYBOOK objections step and keep the conversation moving toward a meeting.',
     'OUTCOME RULE: when the prospect clearly refuses/interrupts or says they are not interested, call finalizar_sem_interesse with the lead id (when known) or phone and outcome="sem_interesse" in the SAME turn, then reply gracefully and stop. When the prospect cancels an already-scheduled meeting, call finalizar_sem_interesse with outcome="reuniao_cancelada" and a short motive.',
@@ -240,6 +245,22 @@ function parseReactToolCall(
 }
 
 /**
+ * Builds the recent-transcript slice passed to tools via ToolCallContext.
+ * Drops the system prompt (never relevant to tool gates) and flattens
+ * assistant tool_call scaffolds (content may be empty) into plain turns.
+ */
+function toolCallHistory(
+  messageLog: ChatMessage[],
+): Array<{ role: 'user' | 'assistant' | 'tool'; content: string }> {
+  return messageLog
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({
+      role: m.role as 'user' | 'assistant' | 'tool',
+      content: typeof m.content === 'string' ? m.content : '',
+    }));
+}
+
+/**
  * Main agent entrypoint used by routes.
  */
 export async function runAgentLoop(
@@ -280,15 +301,17 @@ export async function runAgentLoop(
   const messageLog: ChatMessage[] = [];
   messageLog.push({
     role: 'system',
-    content: buildSystemPrompt({
-      useReactFallback: false,
-      toolNames,
-      directives: input.directives,
-      learnings: input.learnings,
-      leadContext: input.leadContext,
-      strategyDirective: input.strategyDirective,
-      injectIntentMarker: source === 'whatsapp',
-    }),
+    content: input.systemPromptOverride
+      ? input.systemPromptOverride
+      : buildSystemPrompt({
+          useReactFallback: false,
+          toolNames,
+          directives: input.directives,
+          learnings: input.learnings,
+          leadContext: input.leadContext,
+          strategyDirective: input.strategyDirective,
+          injectIntentMarker: source === 'whatsapp',
+        }),
   });
   if (input.history && input.history.length > 0) {
     messageLog.push(...input.history);
@@ -309,15 +332,17 @@ export async function runAgentLoop(
     // When fallback mode flips mid-loop, refresh the system prompt so the
     // model learns the ReAct convention. (Cheap; caps at AGENT_MAX_ITERATIONS.)
     if (useReactFallback && messageLog[0]?.role === 'system') {
-      messageLog[0].content = buildSystemPrompt({
-        useReactFallback: true,
-        toolNames,
-        directives: input.directives,
-        learnings: input.learnings,
-        leadContext: input.leadContext,
-        strategyDirective: input.strategyDirective,
-        injectIntentMarker: source === 'whatsapp',
-      });
+      messageLog[0].content = input.systemPromptOverride
+        ? input.systemPromptOverride
+        : buildSystemPrompt({
+            useReactFallback: true,
+            toolNames,
+            directives: input.directives,
+            learnings: input.learnings,
+            leadContext: input.leadContext,
+            strategyDirective: input.strategyDirective,
+            injectIntentMarker: source === 'whatsapp',
+          });
     }
 
     const body: Record<string, unknown> = {
@@ -428,6 +453,7 @@ export async function runAgentLoop(
           source,
           deadlineMs: Date.now() + env.AGENT_TOOL_TIMEOUT_MS,
           instance: input.instance,
+          history: toolCallHistory(messageLog),
         };
 
         log.info(
@@ -540,6 +566,7 @@ export async function runAgentLoop(
         source,
         deadlineMs: Date.now() + env.AGENT_TOOL_TIMEOUT_MS,
         instance: input.instance,
+        history: toolCallHistory(messageLog),
       };
 
       log.info(

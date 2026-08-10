@@ -43,6 +43,13 @@ export interface ToolCallContext {
   deadlineMs: number;
   /** Evolution instance name (when known) used to resolve per-user config. */
   instance?: string;
+  /**
+   * Recent conversation turns (older first, up to the current inbound message).
+   * Tools that mutate commercial state (marcar_reuniao, finalizar_sem_interesse)
+   * use this to verify the prospect's intent deterministically instead of
+   * trusting the model's claim.
+   */
+  history?: Array<{ role: 'user' | 'assistant' | 'tool'; content: string }>;
 }
 
 export interface ToolResult {

@@ -42,6 +42,7 @@ import {
 } from '../services/conversation.store.js';
 import {
   findLeadByPhone,
+  getLeadById,
   updateLeadStatus,
   canAutoReply,
   shouldActivateConversation,
@@ -496,13 +497,24 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       log.info({ messageKeyId: msg.messageKeyId, intent }, '[IA] Intenção detectada');
 
       // --- Plano de ação (Kanban + campanha — sem misturar os sistemas) -----
-      const plan = planInbound(lead.status, intent);
+      // IMPORTANTE: o agente pode ter executado TOOLS que já mudaram o estado
+      // do lead (marcar_reuniao => reuniao_marcada; finalizar_sem_interesse =>
+      // sem_interesse). Então relemos o status FRESCO do banco (sem cache) para
+      // não sobrescrever com o status obsoleto lido no início do processamento.
+      const freshLead = await getLeadById(lead.id);
+      const freshStatus = freshLead?.status ?? lead.status;
+      const plan = planInbound(freshStatus, intent);
       if (plan.nextStatus === 'sem_interesse') {
-        const recorded = await recordAgentOutcome({
-          leadId: lead.id,
-          outcome: 'sem_interesse',
-          noInterestMonths: 6,
-        });
+        // Se o próprio agente já registrou sem_interesse (via tool), não
+        // registra de novo (evita executar a RPC duas vezes no mesmo desfecho).
+        const alreadyRecorded = freshStatus === 'sem_interesse';
+        const recorded = alreadyRecorded
+          ? true
+          : await recordAgentOutcome({
+              leadId: lead.id,
+              outcome: 'sem_interesse',
+              noInterestMonths: 6,
+            });
         if (plan.stopCampaign) {
           await cancelLeadSendRuns(lead.id, 'sem_interesse');
         }
@@ -511,11 +523,11 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
           { leadId: lead.id, recorded },
           '[KANBAN] Lead movido para Sem interesse + campanha interrompida',
         );
-      } else if (shouldActivateConversation(lead.status)) {
+      } else if (shouldActivateConversation(freshStatus)) {
         await updateLeadStatus(lead.id, 'conversando').catch(() => {});
         log.info({ leadId: lead.id }, '[KANBAN] Lead movido para Conversando');
       } else {
-        log.info({ leadId: lead.id, status: lead.status }, '[KANBAN] Status mantido');
+        log.info({ leadId: lead.id, status: freshStatus }, '[KANBAN] Status mantido');
       }
 
       // --- Persistência dos turnos (sem o marker de intenção) --------------

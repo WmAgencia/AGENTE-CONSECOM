@@ -19,6 +19,7 @@ import { getLogger } from '../utils/logger.js';
 import { sendText, sendMedia, type MediaKind } from './evolution.service.js';
 import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js';
 import { loadAgentName, formatAgentSignature } from './supabase.leads.js';
+import { getConversationStore } from './conversation.store.js';
 import {
   loadCampaignStrategies,
   pickStrategyForLead,
@@ -131,6 +132,16 @@ export class SendWorker {
     return (await r.json()) as SendRunRow[];
   }
 
+  private async getCampaignInstance(campaignId: string): Promise<string | null> {
+    const r = await fetch(
+      `${this.url}/rest/v1/campaigns?select=whatsapp_instance&id=eq.${encodeURIComponent(campaignId)}`,
+      { headers: this.headers() },
+    );
+    if (!r.ok) return null;
+    const rows = (await r.json()) as Array<{ whatsapp_instance: string | null }>;
+    return rows[0]?.whatsapp_instance ?? null;
+  }
+
   /** Encerra de verdade a campanha (status finalizada + finished_at). */
   private async finalizeCampaign(campaignId: string): Promise<void> {
     await fetch(`${this.url}/rest/v1/campaigns?id=eq.${campaignId}`, {
@@ -215,6 +226,48 @@ export class SendWorker {
     });
   }
 
+  /**
+   * Persiste no histórico da conversa do lead a mensagem automática que a
+   * campanha acabou de enviar. Assim, quando o lead responder, o agente
+   * enxerga o que já foi dito pela campanha (contexto completo) em vez de
+   * começar do zero. Grava (a) no conversation store (mesmo id usado pelo
+   * webhook, role assistant) e (b) em consecom_conversations.
+   */
+  private async recordCampaignTurn(
+    leadId: string,
+    sendPhone: string,
+    sentText: string,
+  ): Promise<void> {
+    try {
+      const jid = `${sendPhone}@s.whatsapp.net`;
+      await getConversationStore().appendAssistant(`wa:${jid}`, sentText);
+    } catch (err) {
+      const log = getLogger();
+      log.warn(
+        { leadId, errMessage: err instanceof Error ? err.message : 'unknown' },
+        'send-worker: failed to record campaign turn in conversation store',
+      );
+    }
+    try {
+      await fetch(`${this.url}/rest/v1/consecom_conversations`, {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify({
+          lead_id: leadId,
+          role: 'assistant',
+          content: sentText,
+          agent_model: null,
+        }),
+      });
+    } catch (err) {
+      const log = getLogger();
+      log.warn(
+        { leadId, errMessage: err instanceof Error ? err.message : 'unknown' },
+        'send-worker: failed to record campaign turn in consecom_conversations',
+      );
+    }
+  }
+
   private async processRun(run: SendRunRow): Promise<void> {
     const log = getLogger();
     const msgs = await this.getQueueMessages(run.campaign_id);
@@ -222,6 +275,9 @@ export class SendWorker {
       await this.patchSendRun(run.id, { status: 'done', current_position: 0 });
       return;
     }
+
+    const campaignInstance = await this.getCampaignInstance(run.campaign_id);
+    const sendInstance = campaignInstance || undefined;
 
     const position = run.current_position;
     const next = msgs[position];
@@ -300,12 +356,18 @@ export class SendWorker {
     log.info({ runId: run.id, position, kind: next.kind, phone: sendPhone }, 'send-worker: sending');
     const agentName = await loadAgentName();
     let ok: boolean;
+    let sentText = '';
     if (strategyKind === 'text' && strategyText) {
-      ok = (await sendText({ to: sendPhone, text: formatAgentSignature(applyPlaceholders(strategyText, lead), agentName) })).ok;
+      sentText = formatAgentSignature(applyPlaceholders(strategyText, lead), agentName);
+      ok = (await sendText({ to: sendPhone, text: sentText, instance: sendInstance })).ok;
     } else if (strategyMediaUrl) {
       const mediaUrl = strategyMediaUrl.startsWith('http')
         ? strategyMediaUrl
         : `${this.url}/storage/v1/object/public/${strategyMediaUrl.replace(/^\/+/, '')}`;
+      const captionText = strategyCaption
+        ? formatAgentSignature(applyPlaceholders(strategyCaption, lead), agentName)
+        : `[${strategyKind}]`;
+      sentText = applyPlaceholders(strategyCaption ?? `[${strategyKind}]`, lead);
       ok = (
         await sendMedia({
           to: sendPhone,
@@ -316,8 +378,10 @@ export class SendWorker {
             : undefined,
           mimetype: guessMimetype(mediaUrl, strategyKind),
           filename: basename(mediaUrl),
+          instance: sendInstance,
         })
       ).ok;
+      if (!strategyCaption) sentText = `${captionText} ${mediaUrl}`;
     } else {
       ok = false;
     }
@@ -328,6 +392,10 @@ export class SendWorker {
       await this.bumpCampaign(run.campaign_id, 'fail_count');
       return;
     }
+
+    // Contexto da campanha no histórico do agente (assistant turn real).
+    const recordedText = sentText || `[${next.kind}]`;
+    await this.recordCampaignTurn(run.lead_id, sendPhone, recordedText);
 
     const delayMs = (next.delay_seconds ?? 0) * 1000;
     const newPosition = position + 1;
@@ -407,6 +475,7 @@ export class SendWorker {
         log.warn({ leadId: lead.id, phone: sendPhone }, 'send-worker: remarketing send failed');
         continue;
       }
+      await this.recordCampaignTurn(lead.id, sendPhone, body);
       await fetch(`${this.url}/rest/v1/leads?id=eq.${lead.id}`, {
         method: 'PATCH',
         headers: this.headers(true),

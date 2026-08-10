@@ -76,6 +76,7 @@ export interface Campaign {
   lead_count: number
   success_count: number
   fail_count: number
+  whatsapp_instance: string | null
   created_at: string
 }
 
@@ -83,6 +84,22 @@ export interface CaptureSession {
   id: string
   imported_by: string | null
   created_at: string
+}
+
+export type WhatsAppConnStatus = 'pending' | 'connecting' | 'connected' | 'disconnected' | 'error'
+
+export interface WhatsAppConnection {
+  id: string
+  user_id: string | null
+  workspace_id: string | null
+  instance_name: string
+  phone_number: string | null
+  whatsapp_name: string | null
+  status: WhatsAppConnStatus
+  qr_code: string | null
+  last_sync_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface QueueMessage {

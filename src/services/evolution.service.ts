@@ -330,6 +330,8 @@ export interface SendMediaParams {
   caption?: string;
   mimetype?: string;
   filename?: string;
+  /** Optional Evolution instance name to send through (defaults to EVOLUTION_INSTANCE_NAME). */
+  instance?: string;
 }
 
 /** Maps Consecom kind to the Evolution v1 media type */
@@ -361,7 +363,8 @@ export async function sendMedia(params: SendMediaParams): Promise<SendTextResult
   // expõem rotas individuais (/message/sendVideo, /message/sendImage, ...).
   // A rota consolidada /message/sendMedia/{instance} + campo `mediatype`
   // funciona para áudio, vídeo, imagem e documento.
-  const endpoint = `${cfg.apiUrl}/message/sendMedia/${encodeURIComponent(cfg.instance)}`;
+  const sendInstance = params.instance || cfg.instance;
+  const endpoint = `${cfg.apiUrl}/message/sendMedia/${encodeURIComponent(sendInstance)}`;
 
   const mediaBody: Record<string, unknown> = { media };
   if (caption) mediaBody.caption = caption;

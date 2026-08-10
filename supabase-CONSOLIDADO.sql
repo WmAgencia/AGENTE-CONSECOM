@@ -418,6 +418,7 @@ DROP POLICY IF EXISTS campaigns_auth_delete  ON public.campaigns;
 DROP POLICY IF EXISTS qm_auth_read           ON public.queue_messages;
 DROP POLICY IF EXISTS qm_auth_insert         ON public.queue_messages;
 DROP POLICY IF EXISTS qm_auth_update         ON public.queue_messages;
+DROP POLICY IF EXISTS qm_auth_delete         ON public.queue_messages;
 DROP POLICY IF EXISTS qm_service_delete      ON public.queue_messages;
 DROP POLICY IF EXISTS sendruns_auth_read     ON public.send_runs;
 DROP POLICY IF EXISTS sendruns_auth_insert   ON public.send_runs;
@@ -459,11 +460,12 @@ CREATE POLICY campaigns_auth_delete ON public.campaigns FOR DELETE USING (auth.r
 CREATE POLICY qm_auth_read      ON public.queue_messages FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY qm_auth_insert    ON public.queue_messages FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY qm_auth_update    ON public.queue_messages FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY qm_service_delete ON public.queue_messages FOR DELETE USING (auth.role() = 'service_role');
+CREATE POLICY qm_auth_delete    ON public.queue_messages FOR DELETE USING (auth.role() = 'authenticated');
 
 CREATE POLICY sendruns_auth_read   ON public.send_runs FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY sendruns_auth_insert ON public.send_runs FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY sendruns_auth_update ON public.send_runs FOR UPDATE USING (auth.role() = 'authenticated');
+CREATE POLICY sendruns_auth_delete ON public.send_runs FOR DELETE USING (auth.role() = 'authenticated');
 
 CREATE POLICY conv_auth_read   ON public.consecom_conversations FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY conv_auth_insert ON public.consecom_conversations FOR INSERT WITH CHECK (auth.role() = 'authenticated');

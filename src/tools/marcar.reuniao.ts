@@ -28,7 +28,8 @@ export function createMarcarReuniaoTool(): ToolBase {
         'Registra que o lead aceitou/reuniu com você (prospecção Consecom). ' +
         'Quando o lead tem um ID no sistema, marcamos a reunião no Supabase e, se o ' +
         'grupo admin estiver configurado, notifica a equipe. Use SOMENTE quando o ' +
-        'prospect realmente agendou/aceitou a reunião. Informe leadId quando conhecer.',
+        'prospect realmente agendou/aceitou a reunião e você tem data/hora concretas. ' +
+        'Informe leadId quando conhecer.',
       parameters: {
         type: 'object',
         properties: {
@@ -42,14 +43,14 @@ export function createMarcarReuniaoTool(): ToolBase {
           },
           meetingAt: {
             type: 'string',
-            description: 'Data/hora sugerida da reunião, em texto livre.',
+            description: 'Data/hora da reunião acordada com o lead (ex: "amanhã às 10h").',
           },
           notes: {
             type: 'string',
             description: 'Observações sobre a reunião (opcional).',
           },
         },
-        required: [],
+        required: ['meetingAt'],
       },
     },
     permission: 'NETWORK',
@@ -67,6 +68,25 @@ export function createMarcarReuniaoTool(): ToolBase {
           ok: false,
           output:
             'Não há como registrar a reunião sem leadId ou phone. Peça o dado ou anote naturalmente.',
+          error: 'invalid_args',
+        };
+      }
+
+      // ------------------------------------------------------------------
+      // GATE DETERMINÍSTICO: nunca registrar reunião "inventada" pelo modelo.
+      // Só prossegue quando o LEAD escolheu explicitamente data E hora em
+      // mensagens recentes da conversa. Se não houver evidência, retorna
+      // ok:false e orienta o agente a perguntar a disponibilidade.
+      // ------------------------------------------------------------------
+      const acceptance = hasExplicitAcceptance(ctx.history ?? [], meetingAt);
+      if (!acceptance.accepted) {
+        return {
+          ok: false,
+          output:
+            `Reunião NÃO registrada: ${acceptance.reason} ` +
+            'Pergunte ao lead em que dia e horário ele prefere, ofereça opções ' +
+            '(ex: "hoje 14h, amanhã às 10h ou 15h") e só marque quando ele escolher ' +
+            'uma data e um horário. Não invente um acordo.',
           error: 'invalid_args',
         };
       }
@@ -171,6 +191,91 @@ interface LeadInfo {
   niche?: string | null;
   category?: string | null;
   phone?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// GATE DE ACEITE: somente registra reunião quando existe evidência determinística
+// de que o LEAD escolheu data (e/ou hora) na conversa recente. Nunca confia na
+// data inventada pelo modelo (foi isso que causou reuniões alucinadas).
+// ---------------------------------------------------------------------------
+
+const REFUSAL_RE =
+  /\b(n[aã]o\s+(preciso|quero|tenho|vou|posso)|nunc[aá]|sem\s+interesse|sem\s+hora|dispenso|desisto|nao\s+preciso)\b/i;
+
+const DAY_RE =
+  /\b(hoje|amanh[aã]|depois\s*de\s*amanh[aã]|segunda(-feira)?|seg\b|ter[cç]a(-feira)?|quarta(-feira)?|quinta(-feira)?|sexta(-feira)?|s[aá]bado|domingo)\b/i;
+
+const TIME_RE =
+  /\b((?:[01]?\d|2[0-3])\s*[:h]\s*(?:[0-5]\d)?)\b|(?:às\s*|as\s*|por\s+volta\s+de\s*)[0-9]{1,2}\s*[:h]?/i;
+
+const ACCEPT_RE =
+  /\b(sim|pode|podemos|t[aá]\s*bom|ta\s*bom|perfeito|o[́t]?timo|quero|vamos|combinado|fechado|aceito?|top[ao]|serve|serviria|ok\b|beleza|claro|agenda|marc[ao]?|confirm[ao]|deixa\s+marcado)\b/i;
+
+export interface AcceptanceCheck {
+  accepted: boolean;
+  reason: string;
+}
+
+/**
+ * Verifica se o lead escolheu uma data/hora de forma explícita nas mensagens
+ * recentes da conversa. Usa apenas as mensagens do próprio lead (role 'user'):
+ *   - recusa explícita -> rejeita
+ *   - nenhuma mensagem do lead no recorte -> rejeita (não há evidência)
+ *   - exige palavra de concordância + referência de dia OU hora na mensagem
+ */
+export function hasExplicitAcceptance(
+  history: Array<{ role: string; content: string }>,
+  claimedMeetingAt: string,
+): AcceptanceCheck {
+  const userTurns = (history ?? [])
+    .filter((t) => t.role === 'user' && t.content && t.content.trim().length > 0)
+    .map((t) => t.content.trim())
+    .slice(-8);
+
+  if (userTurns.length === 0) {
+    return {
+      accepted: false,
+      reason: 'o lead ainda não respondeu na conversa recente.',
+    };
+  }
+
+  // Toma como sinal a última mensagem do lead + um pouco de contexto anterior.
+  const leadText = userTurns.join('\n');
+
+  if (REFUSAL_RE.test(leadText)) {
+    return {
+      accepted: false,
+      reason: 'o lead demonstrou não querer/estar com condição de reunir agora.',
+    };
+  }
+
+  const hasDay = DAY_RE.test(leadText);
+  const hasTime = TIME_RE.test(leadText);
+  const hasAcceptance = ACCEPT_RE.test(leadText);
+
+  if (!hasAcceptance) {
+    return {
+      accepted: false,
+      reason: 'o lead não confirmou explicitamente (palavra de aceite) uma reunião.',
+    };
+  }
+
+  if (!hasDay && !hasTime) {
+    return {
+      accepted: false,
+      reason: 'o lead concordou, mas não escolheu nenhuma data/horário concreto.',
+    };
+  }
+
+  // Sanidade extra: a data alegada pelo modelo precisa existir também.
+  if (!claimedMeetingAt || claimedMeetingAt.trim().length === 0) {
+    return {
+      accepted: false,
+      reason: 'não foi informada a data/hora combinada (campo meetingAt vazio).',
+    };
+  }
+
+  return { accepted: true, reason: 'lead confirmou data/hora na conversa.' };
 }
 
 /** Busca dados extras do lead no Supabase (best-effort) para a notificação. */

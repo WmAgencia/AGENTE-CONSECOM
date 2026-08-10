@@ -394,10 +394,40 @@ export async function disconnectInstance(userId: string): Promise<{ ok: boolean;
     if (!conn) return { ok: false, error: 'no_connection' };
 
     const cfg = getEvolutionConfig();
-    await fetch(`${cfg.apiUrl}/instance/logout/${encodeURIComponent(conn.instance_name)}`, {
-      method: 'DELETE',
-      headers: { apikey: cfg.apiKey },
-    });
+
+    // Algumas builds da Evolution (ex: "evolution_exchange" v2.3.7) aceitam o
+    // logout via DELETE; outras exigem POST. Tentamos DELETE e caímos para
+    // POST. O estado local continua sendo marcado como disconnected mesmo se
+    // a chamada remota falhar (o logout em Baileys nem sempre desconecta de
+    // volta para o estado "open" no webhook a tempo).
+    let remoteOk = false;
+    for (const method of ['DELETE', 'POST'] as const) {
+      try {
+        const res = await fetch(
+          `${cfg.apiUrl}/instance/logout/${encodeURIComponent(conn.instance_name)}`,
+          { method, headers: { apikey: cfg.apiKey } },
+        );
+        if (res.ok) {
+          remoteOk = true;
+          break;
+        }
+        log.warn(
+          { status: res.status, method },
+          'connections: logout attempt returned non-OK',
+        );
+      } catch (inner) {
+        log.warn(
+          { err: inner instanceof Error ? inner.message : 'unknown', method },
+          'connections: logout attempt failed',
+        );
+      }
+    }
+    if (!remoteOk) {
+      log.warn(
+        { instance: conn.instance_name },
+        'connections: all logout attempts failed; marking local as disconnected anyway',
+      );
+    }
 
     await fetch(`${supUrl()}/rest/v1/whatsapp_connections?id=eq.${conn.id}`, {
       method: 'PATCH',

@@ -149,6 +149,28 @@ export async function updateLeadStatus(
 }
 
 /**
+ * Busca o lead DIRETO no Supabase pelo id (SEM cache do índice de telefone).
+ * Usado quando precisamos do status MAIS RECENTE (ex.: logo após o agente
+ * executar tools que mudam o estado do lead, para não sobrescrever com um
+ * status obsoleto lido no início do processamento).
+ */
+export async function getLeadById(leadId: string): Promise<LeadRow | null> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!cfg.url || !cfg.serviceRoleKey || !leadId) return null;
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category&id=eq.${encodeURIComponent(leadId)}&limit=1`,
+      { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as LeadRow[];
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Interrompe a campanha PARA ESTE LEAD: marca como `failed` qualquer run
  * pendente/em andamento, impedindo que o worker envie a próxima mensagem
  * programada. Quando todos os runs da campanha terminarem (done/failed), o

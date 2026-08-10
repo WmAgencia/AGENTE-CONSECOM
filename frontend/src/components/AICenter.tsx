@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, Bot, Activity, Loader2, TriangleAlert, CircleOff, Play, X } from 'lucide-react'
-import { api, type AiStatus, type AiChatReply, type AiFlowTestResult } from '../lib/api'
+import { Send, Activity, Loader2, TriangleAlert, CircleOff, Play, X, GraduationCap, ShieldCheck } from 'lucide-react'
+import { api, type AiStatus, type AiFlowTestResult, type AiTrainingReply, type AiTrainingPersona } from '../lib/api'
 
 interface ChatMessage {
   id: string
@@ -65,13 +65,25 @@ function StatusCard({ status, testing }: { status: AiStatus | null; testing: boo
   )
 }
 
-function AIChat() {
+function TrainingChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 'welcome', role: 'assistant', content: 'Olá! Sou a IA do agente VYNTRA. Pergunte qualquer coisa e eu respondo com a mesma integração usada no WhatsApp.' },
+    {
+      id: 'welcome',
+      role: 'assistant',
+      content:
+        'Olá! Sou um cliente em treinamento. Treine sua abordagem de vendas conversando comigo como se eu fosse um lead real. Eu sou cético e sem pressa.',
+    },
   ])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [persona, setPersona] = useState<AiTrainingPersona>({
+    name: 'Carlos',
+    company: 'Clínica Exemplo',
+    niche: 'saúde',
+    profile: 'dono de pequeno negócio, cético e sem pressa',
+  })
+  const [personaOpen, setPersonaOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -88,23 +100,74 @@ function AIChat() {
     const userMsg: ChatMessage = { id: `u${Date.now()}`, role: 'user', content: text }
     setMessages((m) => [...m, userMsg])
     try {
-      const reply = await api.post<AiChatReply>('/api/ai/chat', { message: text })
+      const reply = await api.post<AiTrainingReply>('/api/ai/training', {
+        message: text,
+        persona,
+      })
       setMessages((m) => [...m, { id: `a${Date.now()}`, role: 'assistant', content: reply.response }])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao falar com a IA')
+      setError(err instanceof Error ? err.message : 'Falha ao falar com o cliente')
       setMessages((m) => [...m, { id: `a${Date.now()}`, role: 'assistant', content: '⚠️ Não consegui contatar a IA agora. Verifique a integração e tente novamente.' }])
     } finally {
       setBusy(false)
     }
   }
 
+  const inputCls = 'w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const labelCls = 'block text-xs text-slate-400 mb-1'
+
   return (
     <div className="rounded-xl border border-white/5 bg-white/[0.02] flex flex-col">
       <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
-        <Bot className="w-4 h-4 text-indigo-300" />
-        <span className="text-sm font-semibold">Chat de teste</span>
-        <span className="text-[11px] text-slate-500 ml-auto">Respostas reais da IA configurada</span>
+        <GraduationCap className="w-4 h-4 text-teal-300" />
+        <span className="text-sm font-semibold">Chat de treinamento</span>
+        <span className="text-[11px] text-slate-500 ml-auto">Você = vendedor · IA = cliente</span>
       </div>
+
+      <div className="px-4 py-2 border-b border-white/5 flex items-center gap-2 bg-teal-500/5">
+        <ShieldCheck className="w-3.5 h-3.5 text-teal-300" />
+        <span className="text-[11px] text-teal-200">
+          Sandbox isolado: nada é enviado ao WhatsApp, nenhuma campanha, lead, Kanban ou reunião real.
+        </span>
+      </div>
+
+      <div className="px-4 py-2 border-b border-white/5 flex items-center gap-2">
+        <span className="text-[11px] text-slate-400">
+          Cliente: <b className="text-slate-200">{persona.name}</b>
+          {persona.company ? <> · <span className="text-slate-400">{persona.company}</span></> : null}
+          <span className="text-slate-500"> · {persona.profile}</span>
+        </span>
+        <button
+          onClick={() => setPersonaOpen((v) => !v)}
+          className="ml-auto text-[11px] text-indigo-300 hover:text-indigo-200 border border-indigo-500/30 rounded-md px-2 py-0.5"
+        >
+          {personaOpen ? 'Fechar' : 'Editar persona'}
+        </button>
+      </div>
+
+      {personaOpen && (
+        <div className="px-4 py-3 border-b border-white/5 bg-black/20 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Nome do cliente</label>
+              <input value={persona.name} onChange={(e) => setPersona({ ...persona, name: e.target.value })} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Empresa</label>
+              <input value={persona.company} onChange={(e) => setPersona({ ...persona, company: e.target.value })} className={inputCls} />
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Nicho/área</label>
+            <input value={persona.niche} onChange={(e) => setPersona({ ...persona, niche: e.target.value })} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Perfil / atitude do cliente</label>
+            <input value={persona.profile} onChange={(e) => setPersona({ ...persona, profile: e.target.value })} className={inputCls} />
+          </div>
+          <p className="text-[11px] text-slate-500">Dica: descreva o perfil para treinar resistências, orçamento, mandante, etc.</p>
+        </div>
+      )}
 
       <div ref={scrollRef} className="h-80 overflow-y-auto px-4 py-4 space-y-3">
         {messages.map((m) => (
@@ -112,7 +175,7 @@ function AIChat() {
             <div
               className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap ${
                 m.role === 'user'
-                  ? 'bg-indigo-600 text-white rounded-br-sm'
+                  ? 'bg-teal-700 text-white rounded-br-sm'
                   : 'bg-white/5 text-slate-200 rounded-bl-sm'
               }`}
             >
@@ -131,10 +194,10 @@ function AIChat() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Digite uma mensagem..."
-          className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+          placeholder="Fale como vendedor para o cliente (ex: Olá, como posso ajudar seu negócio?)..."
+          className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-500"
         />
-        <button type="submit" disabled={busy || !input.trim()} className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 transition">
+        <button type="submit" disabled={busy || !input.trim()} className="px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-600 disabled:opacity-40 transition">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>
       </form>
@@ -296,9 +359,9 @@ export function AICenter() {
   return (
     <div className="h-full overflow-auto px-6 py-5 max-w-4xl space-y-5">
       <div>
-        <h1 className="text-lg font-semibold mb-1">Central da IA</h1>
+        <h1 className="text-lg font-semibold mb-1">Central de IA</h1>
         <p className="text-sm text-slate-400">
-          Status em tempo real da integração de IA do agente, com chat e teste de fluxo.
+          Status em tempo real da integração do agente, com chat de treinamento (atenda um cliente simulado) e teste de fluxo.
         </p>
       </div>
 
@@ -311,7 +374,7 @@ export function AICenter() {
       <StatusCard status={status} testing={testing} />
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <AIChat />
+        <TrainingChat />
         <FlowTest />
       </div>
     </div>

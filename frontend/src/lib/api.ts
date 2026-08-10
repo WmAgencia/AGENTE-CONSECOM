@@ -82,6 +82,22 @@ export interface AiFlowTestResult {
   signed: string
 }
 
+export interface AiTrainingPersona {
+  name: string
+  company: string
+  niche: string
+  profile: string
+}
+
+export interface AiTrainingReply {
+  conversationId: string
+  response: string
+  model: string
+  provider: string
+  latencyMs: number
+  sandbox: boolean
+}
+
 // ===== Tipos de contatos importados =====
 
 export interface Contact {

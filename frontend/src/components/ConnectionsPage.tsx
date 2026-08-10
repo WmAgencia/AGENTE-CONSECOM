@@ -192,12 +192,20 @@ export function ConnectionsPage() {
     if (!sessionUser) return
     setLoading(true)
     try {
-      await fetch(`${API}/api/connections/whatsapp`, {
+      const r = await fetch(`${API}/api/connections/whatsapp`, {
         method: 'DELETE',
         headers: { 'x-user-id': sessionUser },
       })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        const msg = err.error === 'no_connection'
+          ? 'Nenhum WhatsApp conectado para desconectar.'
+          : err.error ?? `Falha ao desconectar (HTTP ${r.status}).`
+        window.alert(msg)
+        return
+      }
       setQr(null)
-      loadConn()
+      await loadConn()
     } finally {
       setLoading(false)
     }

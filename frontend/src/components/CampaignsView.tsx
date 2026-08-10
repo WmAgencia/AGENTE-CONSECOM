@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { supabase, type Campaign, type QueueMessage, type Lead, type SendRun } from '../lib/supabase'
+import { supabase, type Campaign, type QueueMessage, type Lead, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 
 export function CampaignsView({ leads }: { leads: Lead[] }) {
@@ -8,6 +8,7 @@ export function CampaignsView({ leads }: { leads: Lead[] }) {
   const [messagesByCampaign, setMessagesByCampaign] = useState<Record<string, QueueMessage[]>>({})
   const [runs, setRuns] = useState<SendRun[]>([])
   const [enqueueOpen, setEnqueueOpen] = useState<Campaign | null>(null)
+  const [connections, setConnections] = useState<WhatsAppConnection[]>([])
 
   useEffect(() => {
     load()
@@ -65,6 +66,27 @@ export function CampaignsView({ leads }: { leads: Lead[] }) {
     }
     setMessagesByCampaign(grouped)
     await loadRuns()
+  }
+
+  async function loadConnections() {
+    const { data, error } = await supabase
+      .from('whatsapp_connections')
+      .select('*')
+      .order('created_at')
+    if (error || !data) return
+    setConnections(data as WhatsAppConnection[])
+  }
+
+  useEffect(() => {
+    void loadConnections()
+  }, [])
+
+  async function setCampaignInstance(c: Campaign, instanceName: string | null) {
+    const { error } = await supabase
+      .from('campaigns')
+      .update({ whatsapp_instance: instanceName })
+      .eq('id', c.id)
+    if (!error) await load()
   }
 
 async function loadRuns() {
@@ -158,7 +180,9 @@ async function loadRuns() {
                 key={c.id}
                 campaign={c}
                 messages={messagesByCampaign[c.id] ?? []}
+                connections={connections}
                 onChanged={load}
+                onSetInstance={(n) => void setCampaignInstance(c, n)}
                 onEnqueue={() => setEnqueueOpen(c)}
                 onAutoEnqueue={() => void autoEnqueue(c)}
                 onFire={() => void fireCampaign(c)}
@@ -253,7 +277,9 @@ function CampaignButton({ onCreated }: { onCreated: () => Promise<void> }) {
 function CampaignCard({
   campaign,
   messages,
+  connections,
   onChanged,
+  onSetInstance,
   onEnqueue,
   onAutoEnqueue,
   onFire,
@@ -262,7 +288,9 @@ function CampaignCard({
 }: {
   campaign: Campaign
   messages: QueueMessage[]
+  connections: WhatsAppConnection[]
   onChanged: () => void
+  onSetInstance: (instanceName: string | null) => void
   onEnqueue: () => void
   onAutoEnqueue: () => void
   onFire: () => void
@@ -270,6 +298,7 @@ function CampaignCard({
   onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const activeConnections = connections.filter((c) => c.status === 'connected')
   return (
     <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
       <div className="flex items-center justify-between mb-3">
@@ -314,6 +343,30 @@ function CampaignCard({
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-slate-300">{campaign.lead_count} leads</span>
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{campaign.success_count} sucessos</span>
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300">{campaign.fail_count} falhas</span>
+      </div>
+
+      <div className="flex items-center gap-2 mb-3">
+        <label className="text-[11px] text-slate-400 shrink-0">
+          Enviar por WhatsApp:
+        </label>
+        <select
+          value={campaign.whatsapp_instance ?? ''}
+          onChange={(e) => onSetInstance(e.target.value || null)}
+          disabled={activeConnections.length === 0}
+          className="flex-1 min-w-0 bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none focus:border-indigo-500"
+        >
+          <option value="">Padrão (configuração do backend)</option>
+          {activeConnections.map((c) => (
+            <option key={c.id} value={c.instance_name}>
+              {c.whatsapp_name ?? c.phone_number ?? c.instance_name}
+            </option>
+          ))}
+        </select>
+        {activeConnections.length === 0 && (
+          <span className="text-[11px] text-amber-400/80 shrink-0">
+            Nenhum WhatsApp conectado
+          </span>
+        )}
       </div>
 
       {campaign.status === 'pronta' && (
