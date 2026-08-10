@@ -366,7 +366,9 @@ export async function createInstanceForUser(
     const nowIso = new Date().toISOString();
     const insertRes = await fetch(`${supUrl()}/rest/v1/whatsapp_connections`, {
       method: 'POST',
-      headers: supHeaders(),
+      // Prefer: return=representation — sem ele o PostgREST responde 201 sem
+      // corpo (`return=minimal`), o que quebra o `.json()` abaixo.
+      headers: { ...supHeaders(), Prefer: 'return=representation' },
       body: JSON.stringify({
         user_id: userId,
         workspace_id: workspaceId,
@@ -379,9 +381,13 @@ export async function createInstanceForUser(
     });
     let connection: WhatsAppConnection | undefined;
     if (insertRes.ok) {
-      const created = (await insertRes.json()) as WhatsAppConnection;
-      connection = created;
-    } else {
+      const text = await insertRes.text();
+      if (text && text.trim().length > 0) {
+        const created = JSON.parse(text) as WhatsAppConnection;
+        connection = created;
+      }
+    }
+    if (!connection) {
       // Fallback: busca a linha recém-criada para retornar ao frontend.
       const found = await getUserConnections(userId);
       connection = found.find((c) => c.instance_name === instanceName) ?? found[0];
