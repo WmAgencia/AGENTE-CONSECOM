@@ -133,6 +133,7 @@ ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS call_moved_at     TIMESTAMPTZ;
 
 -- Status enum expandido (11 estados do funil + "Números para ligação" v10)
+ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status;
 ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status_check;
 UPDATE public.leads SET status = 'nao_fechado' WHERE status = 'perdido';
 ALTER TABLE public.leads ADD CONSTRAINT leads_status_check CHECK (

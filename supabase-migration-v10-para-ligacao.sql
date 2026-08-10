@@ -6,7 +6,10 @@
 -- =============================================================
 
 -- 1) NOVA ETAPA DO KANBAN: "Números para ligação" (status 'para_ligacao')
---    Estende o CHECK de leads sem quebrar os estados existentes.
+--    Estende o CHECK de leads sem quebrar os estados existentes. Remove AMBOS
+--    os nomes de constraint já usados nas migrations (leads_status_check e o
+--    leads_status do schema inicial) para garantir que o novo CHECK vingue.
+ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status;
 ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status_check;
 ALTER TABLE public.leads ADD CONSTRAINT leads_status_check CHECK (
   status IN (
