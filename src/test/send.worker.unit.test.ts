@@ -1,12 +1,14 @@
 /**
- * Testes do motor de campanha (SendWorker) — Regra A (intercalação por rodadas)
- * e Regra B (falha mantém a sequência ativa + retry; IA continua bloqueada).
+ * Testes do motor de campanha (SendWorker) — Regra A (fila SEQUENCIAL por
+ * lead: um lead por vez, sequência completa antes do próximo) e Regra B
+ * (falha mantém o lead ativo em retry; os demais aguardam a vez).
  *
  * O worker real é testado com um `fetch` mockado: o Supabase e a Evolution API
- * viram um armazenamento em memória, e cada `tick()` avança a fila exatamente
- * como em produção (cada run elegível avança UMA mensagem por tick).
+ * viram um armazenamento em memória, e cada `tick()` avança exatamente como em
+ * produção (em cada tick a campanha dispara APENAS o lead ativo, respeitando o
+ * intervalo next_send_at do próprio lead).
  *
- * Ordem esperada (intercalada): L1 M1, L2 M1, L3 M1 -> L1 M2, L2 M2, L3 M2 ...
+ * Ordem esperada (sequencial): L1 M1..M4 -> L2 M1..M4 -> L3 M1..M4
  */
 import { before, test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -54,7 +56,7 @@ interface Message {
   id: string
   campaign_id: string
   position: number
-  kind: 'text'
+  kind: 'text' | 'video'
   text: string
   media_url: string | null
   media_caption: string | null
@@ -111,11 +113,11 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
   if (url.includes('/rest/v1/send_runs')) {
     if (method === 'GET') {
       const campId = eq('campaign_id')
-      // Espelha a ordenação do worker (Regra A): menor current_position primeiro,
-      // depois created_at (ordem de entrada). next_send_at fica sempre no passado.
+      // Espelha a ordenação do worker (Regra A): ordem de ENTRADA (created_at,
+      // depois id). current_position/next_send_at são por-lead.
       const out = [...store.runs.values()]
         .filter((r) => r.campaign_id === campId && (r.status === 'pending' || r.status === 'running'))
-        .sort((a, b) => a.current_position - b.current_position || a.created_at.localeCompare(b.created_at))
+        .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
       return jsonRes(out)
     }
     if (method === 'PATCH') {
@@ -147,6 +149,19 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
   if (url.includes('/rest/v1/lead_status_history')) return jsonRes([])
   if (url.includes('/rest/v1/campaign_strategies')) return jsonRes([])
   if (url.includes('/rest/v1/agent_settings')) return jsonRes([])
+  if (url.includes('/rest/v1/consecom_conversations')) return jsonRes([])
+
+  if (url.includes('/message/sendMedia/')) {
+    const to = String(body?.number ?? '')
+    const kind = String(body?.mediatype ?? 'media')
+    const media = String(body?.media ?? '')
+    sendSeq++
+    if (store.failSend.has(`${to}|media:${kind}`)) {
+      return jsonRes({ error: 'boom' }, 500)
+    }
+    store.sent.push({ to, text: `[media:${kind}] ${media}` })
+    return jsonRes({ key: { id: `mock-${sendSeq}` } })
+  }
 
   if (url.includes('/message/sendText/')) {
     const to = String(body?.number ?? '')
@@ -171,7 +186,10 @@ async function newWorker() {
   return new SendWorker()
 }
 
-function setupCampaign(msgs: string[], delaySeconds = 0): void {
+type MsgSpec = { text: string; kind?: 'text' | 'video'; delay_seconds?: number }
+
+function setupCampaign(msgs: MsgSpec[], globalDelay: number | number[] = 0): void {
+  const delays = Array.isArray(globalDelay) ? globalDelay : msgs.map(() => globalDelay)
   store.campaigns.set('c1', {
     id: 'c1',
     name: 'C1',
@@ -187,11 +205,11 @@ function setupCampaign(msgs: string[], delaySeconds = 0): void {
       id: `m${i}`,
       campaign_id: 'c1',
       position: i,
-      kind: 'text' as const,
-      text: m,
-      media_url: null,
-      media_caption: null,
-      delay_seconds: delaySeconds,
+      kind: m.kind ?? 'text',
+      text: m.text,
+      media_url: m.kind === 'video' ? 'videos/promo.mp4' : null,
+      media_caption: m.kind === 'video' ? m.text : null,
+      delay_seconds: m.delay_seconds ?? delays[i] ?? 0,
     })),
   )
 }
@@ -210,7 +228,7 @@ function enqueue(lead: Lead, createdMs: number): Run {
     lead_id: lead.id,
     status: 'pending',
     current_position: 0,
-    // next_send_at no passado: todos os runs ficam elegíveis já no 1º tick.
+    // next_send_at no passado: o 1º run da fila fica elegível já no 1º tick.
     next_send_at: '2000-01-01T00:00:00.000Z',
     created_at: at,
   }
@@ -218,15 +236,23 @@ function enqueue(lead: Lead, createdMs: number): Run {
   return r
 }
 
-function resetBoard(msgCount: number, delaySeconds = 0, ...leads: Lead[]): { now: number } {
+function resetBoard(
+  msgs: number | MsgSpec[],
+  delaySeconds: number | number[] = 0,
+  ...leads: Lead[]
+): { now: number } {
   store.runs.clear()
   store.sent.length = 0
   store.finalizeSeq.length = 0
   store.failSend.clear()
   sendSeq = 0
-  setupCampaign(Array.from({ length: msgCount }, (_, i) => `M${i + 1}`), delaySeconds)
+  const specs: MsgSpec[] =
+    typeof msgs === 'number'
+      ? Array.from({ length: msgs }, (_, i) => ({ text: `M${i + 1}` }))
+      : msgs
+  setupCampaign(specs, delaySeconds)
   const now = Date.now()
-  // created_at distinto (ordem de entrada: L1 mais antigo => processado primeiro).
+  // created_at distinto (ordem de entrada: L1 mais antigo => dispara primeiro).
   leads.forEach((l, i) => enqueue(l, now + i))
   return { now }
 }
@@ -244,7 +270,88 @@ function makeDue(...leadIds: string[]): void {
   }
 }
 
-test('A) intercalação por rodadas: L1M1,L2M1,L3M1 -> L1M2,L2M2,L3M2 -> L1M3... e finalização 1x', async () => {
+test('1) OBRIGATÓRIO: 3 leads x 4 mensagens (3 texto + 1 vídeo), intervalos 6s/3s/3s — um lead por vez', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  const l3 = setupLead('Lead 3', '11999990003')
+  resetBoard(
+    [
+      { text: 'M1', delay_seconds: 6 },
+      { text: 'M2', delay_seconds: 3 },
+      { text: 'M3', delay_seconds: 3 },
+      { text: 'M4', kind: 'video' },
+    ],
+    0,
+    l1,
+    l2,
+    l3,
+  )
+
+  const w = await newWorker()
+
+  // Tick 1: apenas L1 M1 (texto). L2/L3 NÃO começam.
+  await w.tick()
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
+
+  // Intervalo de 6s do M1: ticks seguintes NÃO enviam nada (nem do L1, nem trocam de lead).
+  await runTicks(w, 3)
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
+  assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'running')
+  assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'pending', 'L2 aguarda a vez na fila')
+
+  // L1 M2 (3s) -> L1 M3 (3s) -> L1 M4 (vídeo) => L1 conclui inteiro.
+  makeDue(l1.id)
+  await w.tick()
+  makeDue(l1.id)
+  await w.tick()
+  makeDue(l1.id)
+  await w.tick()
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), [
+    '5511999990001|M1',
+    '5511999990001|M2',
+    '5511999990001|M3',
+    '5511999990001|[media:video] https://vyntra-mock.supabase.co/storage/v1/object/public/videos/promo.mp4',
+  ])
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado')
+
+  // Agora L2 começa (sequência do L1 terminou antes).
+  await w.tick()
+  assert.deepEqual(store.sent.slice(-1).map((s) => `${s.to}|${s.text}`), ['5511999990002|M1'])
+
+  // L2 completa a própria sequência.
+  makeDue(l2.id)
+  await w.tick()
+  makeDue(l2.id)
+  await w.tick()
+  makeDue(l2.id)
+  await w.tick()
+  assert.deepEqual(
+    store.sent.filter((s) => s.to === '5511999990002').map((s) => s.text),
+    ['M1', 'M2', 'M3', '[media:video] https://vyntra-mock.supabase.co/storage/v1/object/public/videos/promo.mp4'],
+  )
+  assert.equal(store.leads.get(l2.id)!.status, 'enviado')
+
+  // L3 por último.
+  await w.tick()
+  assert.deepEqual(store.sent.slice(-1).map((s) => `${s.to}|${s.text}`), ['5511999990003|M1'])
+  makeDue(l3.id)
+  await w.tick()
+  makeDue(l3.id)
+  await w.tick()
+  makeDue(l3.id)
+  await w.tick()
+  assert.deepEqual(
+    store.sent.filter((s) => s.to === '5511999990003').map((s) => s.text),
+    ['M1', 'M2', 'M3', '[media:video] https://vyntra-mock.supabase.co/storage/v1/object/public/videos/promo.mp4'],
+  )
+  assert.equal(store.leads.get(l3.id)!.status, 'enviado')
+
+  await w.tick() // finaliza
+  assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
+  assert.equal(store.finalizeSeq.length, 1)
+})
+
+test('A) sequencial por lead: L1 M1..M3 -> L2 M1..M3 -> L3 M1..M3 e finalização 1x', async () => {
   const l1 = setupLead('Lead 1', '11999990001')
   const l2 = setupLead('Lead 2', '11999990002')
   const l3 = setupLead('Lead 3', '11999990003')
@@ -253,68 +360,63 @@ test('A) intercalação por rodadas: L1M1,L2M1,L3M1 -> L1M2,L2M2,L3M2 -> L1M3...
   const w = await newWorker()
   await runTicks(w, 20)
 
-  const seq = store.sent.map((s) => `${s.to}|${s.text}`)
-  assert.deepEqual(seq, [
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), [
     '5511999990001|M1',
-    '5511999990002|M1',
-    '5511999990003|M1',
     '5511999990001|M2',
-    '5511999990002|M2',
-    '5511999990003|M2',
     '5511999990001|M3',
+    '5511999990002|M1',
+    '5511999990002|M2',
     '5511999990002|M3',
+    '5511999990003|M1',
+    '5511999990003|M2',
     '5511999990003|M3',
   ])
 
-  assert.equal(store.leads.get(l1.id)!.status, 'enviado')
-  assert.equal(store.leads.get(l2.id)!.status, 'enviado')
-  assert.equal(store.leads.get(l3.id)!.status, 'enviado')
+  for (const l of [l1, l2, l3]) {
+    assert.equal(store.leads.get(l.id)!.status, 'enviado')
+  }
 
   // Finalização única, só depois do último envio
   assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
   assert.equal(store.finalizeSeq.length, 1)
-  assert.ok(store.finalizeSeq[0] >= seq.length, 'finaliza depois do último envio')
+  assert.ok(store.finalizeSeq[0] >= store.sent.length, 'finaliza depois do último envio')
 })
 
-test('A2) intervalo configurado bloqueia TODOS os leads até o tempo passar (mesmo tick de rodada)', async () => {
+test('A2) intervalo configurado: bloqueia o MESMO lead e impede o próximo de começar', async () => {
   const l1 = setupLead('Lead 1', '11999990001')
   const l2 = setupLead('Lead 2', '11999990002')
-  resetBoard(2, 600, l1, l2) // delay 10min
+  resetBoard(2, 600, l1, l2) // delay 10min no M1
 
   const w = await newWorker()
-  await w.tick() // M1 de TODOS (mesma rodada)
+  await w.tick() // apenas L1 M1
 
-  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), [
-    '5511999990001|M1',
-    '5511999990002|M1',
-  ])
-
-  // Vários ticks imediatos NÃO avançam nenhum lead (nenhum M2 due).
-  await runTicks(w, 5)
-  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), [
-    '5511999990001|M1',
-    '5511999990002|M1',
-  ])
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
   assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'running')
-  assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'running')
+  assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'pending', 'L2 não inicia enquanto L1 aguarda')
 
-  // Simula o intervalo decorrido: próxima rodada envia M2 de todos.
-  makeDue(l1.id, l2.id)
+  // Vários ticks imediatos NÃO avançam L1 nem iniciam L2.
+  await runTicks(w, 5)
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
+
+  // Intervalo decorrido => L1 M2 (última) => L1 conclui.
+  makeDue(l1.id)
   await w.tick()
-  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), [
-    '5511999990001|M1',
-    '5511999990002|M1',
-    '5511999990001|M2',
-    '5511999990002|M2',
-  ])
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1', '5511999990001|M2'])
   assert.equal(store.leads.get(l1.id)!.status, 'enviado')
+
+  // Só depois L2 começa.
+  await w.tick()
+  assert.deepEqual(store.sent.slice(-1).map((s) => `${s.to}|${s.text}`), ['5511999990002|M1'])
+
+  makeDue(l2.id)
+  await w.tick()
   assert.equal(store.leads.get(l2.id)!.status, 'enviado')
 
   await w.tick() // finaliza (sem runs ativos)
   assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
 })
 
-test('B) falha na M2: sequência NÃO é concluída, fica ativa, retry agendado; após esgotar retries, falha', async () => {
+test('B) falha na M2: L1 fica ativo em retry, L2 NÃO inicia; após esgotar, L1 falha e L2 começa', async () => {
   const l1 = setupLead('Lead 1', '11999990001')
   const l2 = setupLead('Lead 2', '11999990002')
   resetBoard(3, 0, l1, l2)
@@ -323,11 +425,10 @@ test('B) falha na M2: sequência NÃO é concluída, fica ativa, retry agendado;
   const w = await newWorker()
   await runTicks(w, 3)
 
-  // L1: SÓ M1 foi enviada. M2 falhou (500, sendText sem retries internos) e o
-  // run permanece ATIVO ('running') com retry agendado — sequência ativa.
+  // L1: SÓ M1 foi enviada. M2 falhou (500) e o run permanece ATIVO ('running')
+  // com retry agendado — sequência ativa.
   const l1Sends = store.sent.filter((s) => s.to === '5511999990001')
   assert.deepEqual(l1Sends.map((s) => s.text), ['M1'])
-  assert.equal(l1Sends.filter((s) => s.text === 'M2').length, 0, 'M2 nunca é enviada')
 
   const run1 = store.runs.get(`run-${l1.id}`)!
   assert.equal(run1.status, 'running', 'sequência continua ativa após falha')
@@ -337,10 +438,9 @@ test('B) falha na M2: sequência NÃO é concluída, fica ativa, retry agendado;
   // L1 não vira 'enviado' (sequência incompleta)
   assert.equal(store.leads.get(l1.id)!.status, 'novo')
 
-  // L2 segue na rodada normalmente até concluir
-  const l2Sends = store.sent.filter((s) => s.to === '5511999990002')
-  assert.deepEqual(l2Sends.map((s) => s.text), ['M1', 'M2', 'M3'])
-  assert.equal(store.leads.get(l2.id)!.status, 'enviado')
+  // CRÍTICO: L2 NÃO começa enquanto L1 está em retry.
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990002'), [])
+  assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'pending', 'L2 aguarda a vez')
 
   // Enquanto o run de L1 segue ativo, a campanha NÃO finaliza.
   assert.equal(store.campaigns.get('c1')!.status, 'em_progresso')
@@ -351,7 +451,7 @@ test('B) falha na M2: sequência NÃO é concluída, fica ativa, retry agendado;
   assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'running')
   assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 1)
 
-  // Tentativa 3 => esgotou CONSECOM_SEND_MAX_RETRIES => run 'failed'
+  // Tentativa 3 => esgotou CONSECOM_SEND_MAX_RETRIES => L1 'failed'
   makeDue(l1.id)
   await w.tick()
   const run1Final = store.runs.get(`run-${l1.id}`)!
@@ -360,12 +460,22 @@ test('B) falha na M2: sequência NÃO é concluída, fica ativa, retry agendado;
   assert.equal(store.leads.get(l1.id)!.status, 'novo')
   assert.equal(store.sent.filter((s) => s.to === '5511999990001' && s.text === 'M2').length, 0)
 
+  // Agora L2 inicia e conclui normalmente.
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990002').map((s) => s.text), ['M1'])
+  makeDue(l2.id)
+  await w.tick()
+  makeDue(l2.id)
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990002').map((s) => s.text), ['M1', 'M2', 'M3'])
+  assert.equal(store.leads.get(l2.id)!.status, 'enviado')
+
   await w.tick() // finaliza após todos os runs terminarem
   assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
   assert.equal(store.finalizeSeq.length, 1)
 })
 
-test('E) múltiplas falhas na mesma rodada: cada lead independe e finalização 1x no fim', async () => {
+test('E) múltiplas falhas: leads falham um a um (sequencial), finalização 1x no fim', async () => {
   const l1 = setupLead('Lead 1', '11999990001')
   const l2 = setupLead('Lead 2', '11999990002')
   const l3 = setupLead('Lead 3', '11999990003')
@@ -375,33 +485,41 @@ test('E) múltiplas falhas na mesma rodada: cada lead independe e finalização 
   store.failSend.add('5511999990003|M2')
 
   const w = await newWorker()
-  await runTicks(w, 2)
+  await w.tick()
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
 
-  const seq = store.sent.map((s) => `${s.to}|${s.text}`)
-  assert.deepEqual(seq, ['5511999990001|M1', '5511999990002|M1', '5511999990003|M1'])
-
-  // Após a 1ª falha, todos seguem ATIVOS com retry agendado (sequência ativa).
-  for (const l of [l1, l2, l3]) {
-    assert.equal(store.runs.get(`run-${l.id}`)!.status, 'running')
-    assert.equal(store.runs.get(`run-${l.id}`)!.current_position, 1)
+  // L1 esgota retries da M2 => 'failed'
+  for (let i = 0; i < 3; i++) {
+    makeDue(l1.id)
+    await w.tick()
   }
+  assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'failed')
 
-  // Esgota as retries dos três => todos 'failed'
-  makeDue(l1.id, l2.id, l3.id)
-  await w.tick()
-  makeDue(l1.id, l2.id, l3.id)
-  await w.tick()
+  // L2 começa, falha na M2, esgota => 'failed'
+  await w.tick() // L2 M1
+  assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'running')
+  for (let i = 0; i < 3; i++) {
+    makeDue(l2.id)
+    await w.tick()
+  }
+  assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'failed')
+
+  // L3 idem
+  await w.tick() // L3 M1
+  assert.equal(store.runs.get(`run-${l3.id}`)!.status, 'running')
+  for (let i = 0; i < 3; i++) {
+    makeDue(l3.id)
+    await w.tick()
+  }
+  assert.equal(store.runs.get(`run-${l3.id}`)!.status, 'failed')
 
   for (const l of [l1, l2, l3]) {
-    assert.equal(store.runs.get(`run-${l.id}`)!.status, 'failed')
-    assert.equal(store.runs.get(`run-${l.id}`)!.current_position, 1)
     assert.equal(store.leads.get(l.id)!.status, 'novo')
   }
 
   await w.tick() // finaliza após todos os runs terminarem
   assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
   assert.equal(store.finalizeSeq.length, 1)
-  assert.ok(store.finalizeSeq[0] >= seq.length)
 })
 
 test('F) concorrência: ticks simultâneos não duplicam mensagem (execução única)', async () => {
@@ -413,10 +531,7 @@ test('F) concorrência: ticks simultâneos não duplicam mensagem (execução ú
   // Três ticks disparados ao mesmo tempo: apenas um processa (busy guard).
   await Promise.all([w.tick(), w.tick(), w.tick()])
 
-  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), [
-    '5511999990001|M1',
-    '5511999990002|M1',
-  ])
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
 
   await runTicks(w, 10)
 

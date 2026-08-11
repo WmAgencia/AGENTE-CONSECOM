@@ -1,31 +1,33 @@
 /**
  * Portão de sequência de campanha (Regra B).
  *
- * Enquanto um lead tem uma sequência de campanha ATIVA (existe um send_run com
- * status 'pending' ou 'running'), a IA NÃO deve responder às mensagens do lead.
- * As mensagens são recebidas e SALVAS (conversation store + historico
- * consecom_conversations), mas a IA não é chamada e nenhuma resposta é enviada.
+ * A IA fica bloqueada SOMENTE enquanto a sequência da campanha do lead está
+ * EM DISPARO (existe um send_run com status 'running' — o lead ativo que o
+ * worker está enviando no momento). Leads apenas enfileirados ('pending',
+ * aguardando a vez na fila sequencial) e leads concluídos ('done') ou
+ * interrompidos ('failed') ficam liberados para resposta automática.
  *
- * Quando a sequência termina (todas as mensagens confirmadas => run 'done')
- * ou é interrompida (run 'failed' por regra comercial / retries esgotados),
- * o portão libera e a IA volta a responder nas próximas mensagens.
+ * As mensagens recebidas durante o bloqueio são SALVAS (conversation store +
+ * historico consecom_conversations), mas a IA não é chamada e nenhuma resposta
+ * é enviada. Quando a sequência termina (run 'done') ou é interrompida (run
+ * 'failed'), o portão libera e a IA volta a responder nas próximas mensagens.
  *
  * A fonte da verdade é a tabela `send_runs` (estado individual por lead), não o
- * status do funil: durante a campanha o lead pode estar 'novo'/'enviado', e
- * ambos precisam ficar bloqueados até o fim da sequência.
+ * status do funil: durante a campanha o lead pode estar 'novo'/'enviado', e o
+ * bloqueio deve existir apenas no lead em disparo.
  */
 import { getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { getConversationStore } from './conversation.store.js';
 import { appendConversationTurn } from './supabase.leads.js';
 
-/** true quando o lead possui um send_run pendente/em andamento. */
+/** true quando o lead possui um send_run 'running' (em disparo agora). */
 export async function isLeadSequenceActive(leadId: string): Promise<boolean> {
   const cfg = getSupabaseProspeccaoConfig();
   if (!cfg.url || !cfg.serviceRoleKey || !leadId) return false;
   try {
     const res = await fetch(
-      `${cfg.url}/rest/v1/send_runs?select=id&lead_id=eq.${encodeURIComponent(leadId)}&status=in.("pending","running")&limit=1`,
+      `${cfg.url}/rest/v1/send_runs?select=id&lead_id=eq.${encodeURIComponent(leadId)}&status=eq.running&limit=1`,
       { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
     );
     if (!res.ok) return false;

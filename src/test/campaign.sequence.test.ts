@@ -1,11 +1,17 @@
 /**
  * Testes da Regra B — portão de sequência de campanha (campaign.gate.ts).
  *
- * 1) Com um send_run 'pending'/'running' (sequência ativa) a IA fica BLOQUEADA
- *    e a mensagem do lead é PRESERVADA (conversation store + consecom_conversations).
- * 2) Com run 'done'/'failed' (sequência concluída/interrompida) a IA é LIBERADA.
- * 3) Teste do webhook (rota /webhook/evolution): com sequência ativa, o evento é
- *    aceito, a mensagem é salva e NENHUMA resposta é enviada (IA não é chamada).
+ * A IA é bloqueada SOMENTE quando o lead está EM DISPARO (send_run com status
+ * 'running' — o lead ativo da fila sequencial). Nesses casos a mensagem do lead
+ * é PRESERVADA (conversation store + consecom_conversations).
+ *
+ * 1) Sem run ativo => IA LIBERADA.
+ * 2) Run 'pending' (aguardando a vez na fila) => IA LIBERADA (ainda não é o
+ *    lead em disparo).
+ * 3) Run 'running' (em disparo agora) => IA BLOQUEADA e mensagem preservada.
+ * 4) Run 'done'/'failed' (concluído/interrompido) => IA LIBERADA.
+ * 5) Teste do webhook (rota /webhook/evolution): com lead em disparo, o evento
+ *    é aceito, a mensagem é salva e NENHUMA resposta é enviada.
  *
  * O Supabase/Evolution viram um armazenamento em memória via fetch mockado.
  */
@@ -87,9 +93,10 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
   if (url.includes('/rest/v1/send_runs')) {
     if (method === 'GET') {
       const leadId = eqParam(url, 'lead_id')
-      const activeOnly = /status=in\.\("pending","running"\)/.test(url)
+      // Novo portão: só runs em disparo (status=eq.running) bloqueiam.
+      const runningOnly = /status=eq\.running/.test(url)
       let out = store.runs.filter((r) => !leadId || r.lead_id === leadId)
-      if (activeOnly) out = out.filter((r) => r.status === 'pending' || r.status === 'running')
+      if (runningOnly) out = out.filter((r) => r.status === 'running')
       return jsonRes(out)
     }
   }
@@ -167,7 +174,7 @@ test('1) sem run ativo => IA liberada (block=false, nada salvo)', async () => {
   assert.equal(store.evolutionSent.length, 0)
 })
 
-test('2) run pending => IA bloqueada e mensagem do lead preservada', async () => {
+test('2) run pending (aguardando a vez na fila) => IA LIBERADA (não é o lead em disparo)', async () => {
   clearStore()
   store.runs.push({ id: 'r1', lead_id: 'lead-1', campaign_id: 'c1', status: 'pending' })
 
@@ -177,7 +184,24 @@ test('2) run pending => IA bloqueada e mensagem do lead preservada', async () =>
     conversationId: 'wa:lead-1',
     text: 'Oi, quero saber mais',
   })
-  assert.equal(blocked, true, 'IA bloqueada durante sequência ativa')
+  assert.equal(blocked, false, 'lead apenas enfileirado não bloqueia a IA')
+
+  // nada é salvo / enviado quando a IA pode responder
+  assert.equal(store.conversations.length, 0)
+  assert.equal(store.evolutionSent.length, 0)
+})
+
+test('3) run running (lead em disparo) => IA bloqueada e mensagem do lead preservada', async () => {
+  clearStore()
+  store.runs.push({ id: 'r2', lead_id: 'lead-1', campaign_id: 'c1', status: 'running' })
+  const { isLeadSequenceActive, blockIfSequenceActive } = await newGate()
+  assert.equal(await isLeadSequenceActive('lead-1'), true)
+  const blocked = await blockIfSequenceActive({
+    leadId: 'lead-1',
+    conversationId: 'wa:lead-1',
+    text: 'Oi, quero saber mais',
+  })
+  assert.equal(blocked, true, 'IA bloqueada enquanto o lead está em disparo')
 
   // mensagem preservada no histórico persistido
   assert.deepEqual(
@@ -191,17 +215,6 @@ test('2) run pending => IA bloqueada e mensagem do lead preservada', async () =>
   const { getConversationStore } = await import('../services/conversation.store.js')
   const turns = await getConversationStore().get('wa:lead-1')
   assert.ok(turns.some((t) => t.role === 'user' && t.content === 'Oi, quero saber mais'))
-})
-
-test('3) run running => IA bloqueada', async () => {
-  clearStore()
-  store.runs.push({ id: 'r2', lead_id: 'lead-1', campaign_id: 'c1', status: 'running' })
-  const { isLeadSequenceActive, blockIfSequenceActive } = await newGate()
-  assert.equal(await isLeadSequenceActive('lead-1'), true)
-  assert.equal(
-    await blockIfSequenceActive({ leadId: 'lead-1', conversationId: 'wa:x', text: 'oi2' }),
-    true,
-  )
 })
 
 test('4) run done => IA liberada (sequência concluída)', async () => {

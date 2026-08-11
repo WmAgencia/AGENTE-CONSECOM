@@ -11,12 +11,13 @@
  *     `next_send_at`.
  *   - On completion marks the run `done` and the lead status `enviado`.
  *
- * ORDERING (intercalado por rodadas — Regra A): a cada tick, TODOS os runs
- * elegíveis avançam UMA mensagem, na ordem `current_position` (menor primeiro),
- * `next_send_at`, `created_at`. Assim nunca enviamos 2 mensagens do mesmo lead
- * no mesmo tick e a sequência avança em rodadas:
- *   L1 M1, L2 M1, L3 M1 -> L1 M2, L2 M2, L3 M2 -> L1 M3, L2 M3, L3 M3
- * (e não "todas as mensagens de um lead antes do próximo").
+ * ORDERING (sequencial por lead — Regra A): a cada tick a campanha dispara
+ * SOMENTE o lead ativo, em ordem de entrada (`created_at`): o primeiro run
+ * 'running' é o lead em andamento; sem nenhum, o primeiro 'pending' (mais
+ * antigo) inicia. A sequência completa de um lead (M1..Mn com os intervalos
+ * `delay_seconds` de cada mensagem) termina ANTES de o próximo lead começar:
+ *   L1 M1 -> (6s) L1 M2 -> (3s) L1 M3 -> (3s) L1 M4 ... -> L2 M1 -> ...
+ * Os demais leads ('pending') aguardam a vez e não disparam em paralelo.
  *
  * FAILURE (Regra B): quando um envio falha, a sequência NÃO é considerada
  * concluída. O run permanece ATIVO ('running') com um retry agendado
@@ -131,11 +132,12 @@ export class SendWorker {
   }
 
   private async getCampaignRuns(campaignId: string): Promise<SendRunRow[]> {
-    // Ordenação da rodada (Regra A): menor current_position primeiro, depois
-    // horário e criação. Assim cada tick processa a próxima mensagem de cada
-    // lead (um step por run) antes de qualquer run avançar para o step seguinte.
+    // Ordenação da fila (Regra A): por ordem de ENTRADA (created_at). O
+    // primeiro 'running' é o lead em disparo; sem nenhum, o primeiro 'pending'
+    // (mais antigo) é o próximo a iniciar. current_position/next_send_at são
+    // por-lead e não mais usados para intercalar rodadas.
     const r = await fetch(
-      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at&campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.("pending","running")&order=current_position.asc,next_send_at.asc,created_at.asc`,
+      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at&campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.("pending","running")&order=created_at.asc,id.asc`,
       { headers: this.headers() },
     );
     if (!r.ok) return [];
@@ -583,25 +585,36 @@ export class SendWorker {
           log.info({ campaignId: camp.id }, 'send-worker: campaign finalized / no active runs');
           continue;
         }
-        // EXECUÇÃO INTERCALADA POR RODADAS (Regra A): em cada tick, TODO run
-        // elegível (next_send_at <= now) avança UMA mensagem, na ordem da fila
-        // (current_position menor primeiro). Assim a sequência avança como:
-        //   L1 M1, L2 M1, L3 M1 -> L1 M2, L2 M2, L3 M2 -> L1 M3, L2 M3, L3 M3
-        // e NUNCA "todas as mensagens de um lead antes do próximo".
-        const due = runs.filter(
-          (r) => !r.next_send_at || new Date(r.next_send_at).getTime() <= now,
-        );
-        for (const run of due) {
-          if (this.processingRuns.has(run.id)) continue;
-          this.processingRuns.add(run.id);
-          try {
-            await this.processRun(run);
-          } catch (e) {
-            log.error({ runId: run.id, err: e instanceof Error ? e.message : e }, 'send-worker: run crashed');
-            await this.patchSendRun(run.id, { status: 'failed', fail_reason: 'crashed' });
-          } finally {
-            this.processingRuns.delete(run.id);
+        // EXECUÇÃO SEQUENCIAL POR LEAD (Regra A): a campanha dispara UM lead
+        // por vez, em ordem de entrada (created_at). O lead ativo é o primeiro
+        // run 'running' (em andamento); sem nenhum, o primeiro 'pending'
+        // (mais antigo) inicia a própria sequência. Os demais leads aguardam:
+        //   L1 M1 -> (delay L1 M1) L1 M2 -> ... -> L1 Mn -> L2 M1 -> ...
+        const active =
+          runs.find((r) => r.status === 'running') ??
+          runs.find((r) => r.status === 'pending');
+        if (!active) continue;
+        // Intervalo entre mensagens do MESMO lead: enquanto next_send_at não
+        // vence, o lead ativo aguarda e nenhum outro lead começa.
+        const due =
+          !active.next_send_at ||
+          new Date(active.next_send_at).getTime() <= now;
+        if (!due) continue;
+        if (this.processingRuns.has(active.id)) continue;
+        this.processingRuns.add(active.id);
+        try {
+          if (active.status === 'pending') {
+            // Início do disparo do lead: marca 'running' imediatamente para
+            // fechar a janela do portão da IA (só o lead em disparo fica
+            // bloqueado; 'pending' na fila não bloqueia).
+            await this.patchSendRun(active.id, { status: 'running' });
           }
+          await this.processRun(active);
+        } catch (e) {
+          log.error({ runId: active.id, err: e instanceof Error ? e.message : e }, 'send-worker: run crashed');
+          await this.patchSendRun(active.id, { status: 'failed', fail_reason: 'crashed' });
+        } finally {
+          this.processingRuns.delete(active.id);
         }
       }
       await this.processRemarketing();
