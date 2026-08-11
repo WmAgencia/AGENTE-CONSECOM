@@ -60,9 +60,8 @@ export async function ensureChannels(): Promise<void> {
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (isNativeAlarmAvailable()) {
-    return true
-  }
+  // SEMPRE pedir (Android 13+/API 33 exige POST_NOTIFICATIONS), mesmo com o
+  // módulo nativo de alarme disponível — o receiver também mostra notificações.
   const current = await LocalNotifications.checkPermissions()
   if (current.display === 'granted') return true
   const req = await LocalNotifications.requestPermissions()
@@ -70,7 +69,6 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 export async function areNotificationsEnabled(): Promise<boolean> {
-  if (isNativeAlarmAvailable()) return true
   const s = await LocalNotifications.checkPermissions()
   return s.display === 'granted'
 }
@@ -289,6 +287,68 @@ export async function notifyEvent(
         body,
         schedule: { at: new Date(Date.now() + 1500), allowWhileIdle: true },
         channelId: CHANNEL_EVENTS,
+        extra: { tab: 'notificacoes' },
+      },
+    ],
+  })
+}
+
+// ---------------------------------------------------------------------
+// Testes reais de notificação (Ajustes)
+// ---------------------------------------------------------------------
+
+/** Evento de teste — faixa reservada, fora do sync de reuniões. */
+export const TEST_EVENT_ID = 995_001
+export const TEST_ALARM_ID = 995_002
+export const TEST_ALARM_CHANNEL = 'vyntra_test_channel'
+
+/** Notificação de evento imediata (app aberto ou em background). */
+export async function sendTestNotification(): Promise<void> {
+  await notifyEvent(
+    'VYNTRA',
+    'Teste de notificação do Vyntra. Funcionou!',
+    TEST_EVENT_ID,
+  )
+}
+
+/** Notificação de evento em `delayMs` (dá tempo de ir para background). */
+export async function scheduleTestEvent(delayMs = 20_000): Promise<void> {
+  await LocalNotifications.schedule({
+    notifications: [
+      {
+        id: TEST_EVENT_ID,
+        title: 'VYNTRA',
+        body: 'Notificação de teste agendada.',
+        schedule: { at: new Date(Date.now() + delayMs), allowWhileIdle: true },
+        channelId: CHANNEL_EVENTS,
+        extra: { tab: 'notificacoes' },
+      },
+    ],
+  })
+}
+
+/**
+ * Alarme NATIVO em 1 minuto (AlarmManager). Este funciona com o app FECHADO
+ * e em modo Doze — é o teste real do caso "app fechado".
+ */
+export async function scheduleTestAlarm(delayMs = 60_000): Promise<void> {
+  if (isNativeAlarmAvailable()) {
+    await VyntraAlarm.schedule({
+      id: TEST_ALARM_ID,
+      fireAt: new Date(Date.now() + delayMs).toISOString(),
+      title: 'VYNTRA',
+      body: 'Alarme de teste — este toca mesmo com o app fechado.',
+    })
+    return
+  }
+  await LocalNotifications.schedule({
+    notifications: [
+      {
+        id: TEST_ALARM_ID,
+        title: 'VYNTRA',
+        body: 'Alarme de teste.',
+        schedule: { at: new Date(Date.now() + delayMs), allowWhileIdle: true },
+        channelId: CHANNEL_MEETINGS,
       },
     ],
   })

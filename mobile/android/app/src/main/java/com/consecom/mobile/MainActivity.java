@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(VyntraAlarmPlugin.class);
+        registerPlugin(VyntraMicPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

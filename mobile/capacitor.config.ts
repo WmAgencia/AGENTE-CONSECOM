@@ -8,6 +8,12 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
     backgroundColor: '#0a0a0f',
   },
+  plugins: {
+    // HTTP nativo no Android: evita CORS do WebView ao chamar o backend.
+    CapacitorHttp: {
+      enabled: true,
+    },
+  },
 }
 
 export default config

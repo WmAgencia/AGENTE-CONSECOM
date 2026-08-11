@@ -13,8 +13,8 @@ import { supabase } from '../lib/supabase'
 //      e entra sem pedir senha.
 // =====================================================================
 
-const APK_URL = '/apk/vyntra-mobile-1.1.0.apk'
-const APP_VERSION = '1.1.0'
+const APK_URL = '/apk/vyntra-mobile-1.2.0.apk'
+const APP_VERSION = '1.2.0'
 
 export function MobileAppView() {
   const [sent, setSent] = useState(false)
@@ -54,7 +54,7 @@ export function MobileAppView() {
           <div>
             <h2 className="text-lg font-semibold">Vyntra Mobile</h2>
             <p className="text-sm text-slate-400">
-              v{APP_VERSION} — Acompanhe reuniões, alarmes e alertas no celular.
+              v{APP_VERSION} — Chat com a IA, reuniões, alarmes e alertas no celular.
             </p>
           </div>
         </div>

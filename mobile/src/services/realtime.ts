@@ -95,9 +95,13 @@ async function handleLeadUpdate(
 
   if (status === 'reuniao_marcada' && prevStatus !== 'reuniao_marcada') {
     if (await enabled(prefs, 'reuniao_marcada')) {
+      const time = formatMeetingTime(next.meeting_at as string | null)
+      const name = String(next.name ?? 'Lead')
       await notifyEvent(
-        'Reunião marcada',
-        `Nova reunião: ${String(next.name ?? 'sem nome')}`,
+        'VYNTRA',
+        time
+          ? `Nova reunião: ${name} — você tem um encontro agendado para ${time}.`
+          : `Nova reunião: ${name} agendada.`,
         nextId(),
         'reuniao_marcada',
       )
@@ -105,7 +109,7 @@ async function handleLeadUpdate(
   } else if (status === 'reuniao_cancelada') {
     if (await enabled(prefs, 'reuniao_cancelada')) {
       await notifyEvent(
-        'Reunião cancelada',
+        'VYNTRA',
         `${String(next.name ?? 'Lead')} cancelou a reunião.`,
         nextId(),
         'reuniao_cancelada',
@@ -120,12 +124,26 @@ async function handleLeadUpdate(
   ) {
     if (await enabled(prefs, 'reuniao_reagendada')) {
       await notifyEvent(
-        'Reunião reagendada',
-        `${String(next.name ?? 'Lead')} mudou o horário.`,
+        'VYNTRA',
+        `${String(next.name ?? 'Lead')} mudou o horário da reunião.`,
         nextId(),
         'reuniao_reagendada',
       )
     }
+  }
+}
+
+function formatMeetingTime(iso: string | null): string {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    return d.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return ''
   }
 }
 
@@ -137,8 +155,10 @@ async function handleLeadReply(
   if (!row || row.role !== 'user') return
   if (await enabled(prefs, 'lead_respondeu')) {
     await notifyEvent(
-      'Lead respondeu',
-      `${String(row.content ?? 'Nova mensagem do lead').slice(0, 90)}`,
+      'VYNTRA',
+      `Um lead respondeu e precisa da sua atenção: "${String(
+        row.content ?? '',
+      ).slice(0, 80)}"`,
       nextId(),
       'lead_atencao',
     )
@@ -168,16 +188,16 @@ async function handleCampaign(
   if (action === 'iniciada') {
     await saveCampaignVoiceState(nextState)
     if (await enabled(prefs, 'campanha_iniciada')) {
-      await notifyEvent('Campanha iniciada', `${name} começou a rodar.`, nextId(), 'campanha_iniciada')
+      await notifyEvent('VYNTRA', `${name} começou a rodar.`, nextId(), 'campanha_iniciada')
     }
   } else if (action === 'finalizada') {
     await saveCampaignVoiceState(nextState)
     if (await enabled(prefs, 'campanha_concluida')) {
-      await notifyEvent('Campanha concluída', `${name} terminou.`, nextId(), 'campanha_concluida')
+      await notifyEvent('VYNTRA', `${name} terminou.`, nextId(), 'campanha_concluida')
     }
   } else if (action === 'cancelada') {
     if (await enabled(prefs, 'campanha_erro')) {
-      await notifyEvent('Campanha cancelada', `${name} foi cancelada.`, nextId())
+      await notifyEvent('VYNTRA', `${name} foi cancelada.`, nextId())
     }
   }
 }
@@ -215,8 +235,10 @@ async function handleConnection(
   if (status !== 'connected' && prev === 'connected') {
     if (await enabled(prefs, 'whatsapp_desconectado')) {
       await notifyEvent(
-        'WhatsApp desconectado',
-        `Instância ${String(next.instance_name ?? '')} caiu. Reconecte no painel.`,
+        'VYNTRA',
+        `Sua conexão com o WhatsApp foi desconectada (instância ${String(
+          next.instance_name ?? '',
+        )}). Reconecte no painel.`,
         nextId(),
         'whatsapp_desconectado',
       )

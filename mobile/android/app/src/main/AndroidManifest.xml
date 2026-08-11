@@ -71,5 +71,9 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Dismiss do alarme (fazer o app soar/alto) -->
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Mensagem de voz no chat (MediaRecorder + SpeechRecognizer) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Notificações no Android 13+ (API 33) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
 </manifest>

@@ -1,9 +1,15 @@
 import { useMemo, useState } from 'react'
-import { LogOut, RotateCcw, Info } from 'lucide-react'
+import { LogOut, RotateCcw, Info, BellRing, AlarmClock, Clock } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { ReminderPrefs } from '../lib/types'
 import { formatReminder } from '../lib/format'
 import { syncAlarms } from '../services/alarms'
+import {
+  sendTestNotification,
+  scheduleTestEvent,
+  scheduleTestAlarm,
+} from '../services/alarms'
+import { isNativeAlarmAvailable } from '../native/vyntraAlarm'
 import { AlarmSoundPicker } from '../components/AlarmSoundPicker'
 import { VoiceSettings } from '../components/VoiceSettings'
 
@@ -98,6 +104,48 @@ export function SettingsScreen({ reminder, onReminderChange, onSoundChanged, las
         <p className="text-[11px] text-slate-500 mt-2">
           Use se as notificações foram negadas antes e depois concedidas, ou se suspeitar de alarmes
           faltando após reiniciar o celular.
+        </p>
+      </section>
+
+      {/* Teste real de notificações */}
+      <section>
+        <h2 className="text-sm font-semibold text-slate-300 mb-2">Testar notificações</h2>
+        <div className="space-y-2">
+          <button
+            onClick={() => void sendTestNotification()}
+            className="w-full rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3 text-sm text-slate-200 flex items-center justify-between hover:bg-white/[0.06] transition"
+          >
+            <span className="flex items-center gap-2">
+              <BellRing className="w-4 h-4 text-indigo-300" />
+              Enviar notificação agora
+            </span>
+            <span className="text-[11px] text-slate-500">imediata</span>
+          </button>
+          <button
+            onClick={() => void scheduleTestEvent()}
+            className="w-full rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3 text-sm text-slate-200 flex items-center justify-between hover:bg-white/[0.06] transition"
+          >
+            <span className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-indigo-300" />
+              Agendar teste em 20s (evento)
+            </span>
+            <span className="text-[11px] text-slate-500">app em 2º plano</span>
+          </button>
+          <button
+            onClick={() => void scheduleTestAlarm()}
+            className="w-full rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3 text-sm text-slate-200 flex items-center justify-between hover:bg-white/[0.06] transition"
+          >
+            <span className="flex items-center gap-2">
+              <AlarmClock className="w-4 h-4 text-amber-300" />
+              Alarme nativo em 1 min
+            </span>
+            <span className="text-[11px] text-slate-500">app fechado</span>
+          </button>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-2">
+          {isNativeAlarmAvailable()
+            ? 'O alarme nativo usa o AlarmManager do Android e toca mesmo com o app fechado (modo Doze). Eventos (realtime) aparecem com o app aberto ou em segundo plano.'
+            : 'Alarmes reais usam o alarme nativo do Android (disponível no APK instalado).'}
         </p>
       </section>
 
