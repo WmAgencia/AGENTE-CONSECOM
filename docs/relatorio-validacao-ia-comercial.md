@@ -120,6 +120,23 @@ O lead de teste (Ricardo) terminou com **2 propostas de reunião idênticas cola
 
 ---
 
+---
+
+## REPARO EXECUTADO (11/08/2026) — memória comercial funcional
+
+**3 bugs corrigidos e 1 melhoria:**
+
+1. **Classificação de papéis** (`memory.parse.ts`) — antes, com `agent_name="Alex"` e o vendedor real "Wesley", 100% das mensagens viravam `lead`. Agora: cascata (nomes do vendedor → contato do nome do arquivo → volume). Config `seller_names` adicionada no banco (`Wesley Tune - Consecom, Wesley, Wesley Tune`).
+2. **Transcript não era lido** (`memory.service.ts`) — o banco guarda o transcript como JSON string; `getConversationsByImport` só aceitava array → análise sempre via transcript vazio. Novo `parseTranscript()` normaliza ambos.
+3. **Dedup sem dependência de banco** (`memory.service.ts`) — `bulkCreateLearnings` exigia índice único `(user_id, category, content)` que não existe no Supabase (erro 400). Agora dedup em código.
+4. **Modelo ignorava o formato JSON** (`memory.analyze.ts`) — o `gpt-oss-20b` continuava a conversa em vez de analisar. Prompt com delimitadores `<TRANSCRIPT>` + instrução de "NUNCA retorne strings soltas" + `temperature:0` resolveu.
+
+**Resultado real no banco:** 14 aprendizados (`ai_memory_learnings`), 7 por conversa importada, status `ativo`, já injetados no prompt da IA (bloco "MEMÓRIA COMERCIAL" com 10 itens).
+
+**Simulação pós-fix:** a IA cumprimenta o lead pelo nome e faz perguntas de descoberta. Ainda faltam validações humanas (P1 do relatório) e a memória de preços/cases reais, que não existiam nas conversas importadas.
+
+---
+
 ## Referências
 
 [1] src/services/memory.parse.ts:492 — classificação de papel por nome do agente (bug raiz: "Wesley" ≠ "Alex" → tudo vira `lead`).
