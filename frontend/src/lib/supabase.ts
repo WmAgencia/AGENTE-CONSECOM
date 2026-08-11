@@ -55,6 +55,7 @@ export interface Lead {
   score?: number | null
   score_factors?: unknown
   strategy_id?: string | null
+  is_active_in_prospecting?: boolean
   created_at: string
   updated_at: string
 }

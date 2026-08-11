@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, type Lead, type LeadStatus, type Campaign, type CaptureSession } from '../lib/supabase'
+import { leadsApi, ApiRequestError } from '../lib/api'
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
   novo: 'Novo',
@@ -32,16 +33,39 @@ const STATUS_COLOR: Record<LeadStatus, string> = {
 export function LeadsView({ leads }: { leads: Lead[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sessions, setSessions] = useState<CaptureSession[]>([])
+  const [clearOpen, setClearOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [sendOpen, setSendOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [participating, setParticipating] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadSessions()
+    loadParticipation()
+  }, [])
+
+  // Indicador "já participou de campanha" (send_runs = participação real da
+  // campanha, preservada mesmo após limpar a lista ativa).
+  useEffect(() => {
+    const ch = supabase
+      .channel('leads-participation')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'send_runs' }, () => void loadParticipation())
+      .subscribe()
+    return () => {
+      supabase.removeChannel(ch)
+    }
   }, [])
 
   async function loadSessions() {
     const { data, error } = await supabase.from('capture_sessions').select('*').order('created_at', { ascending: false })
     if (!error && data) setSessions(data)
+  }
+
+  async function loadParticipation() {
+    const { data, error } = await supabase.from('send_runs').select('lead_id')
+    if (error || !data) return
+    setParticipating(new Set(data.map((r) => r.lead_id)))
   }
 
   const bySession = useMemo(() => {
@@ -70,13 +94,40 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
     setSelected(new Set(leads.map((l) => l.id)))
   }
 
-  async function doDelete() {
+  function errMsg(e: unknown): string {
+    if (e instanceof ApiRequestError) return e.detail?.message ?? e.message
+    return e instanceof Error ? e.message : 'Erro inesperado.'
+  }
+
+  /** "Limpar lista ativa": marca is_active_in_prospecting=false. Preserva histórico. */
+  async function doClearList() {
     if (selected.size === 0) return
-    const ids = Array.from(selected)
-    await supabase.from('lead_contacts').delete().in('lead_id', ids)
-    const { error } = await supabase.from('leads').delete().in('id', ids)
-    if (!error) {
+    setBusy(true)
+    setError('')
+    try {
+      await leadsApi.clearList(Array.from(selected))
       setSelected(new Set())
+      setClearOpen(false)
+    } catch (e) {
+      setError(errMsg(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** "Excluir histórico": exclusão DEFINITIVA via backend (senha validada lá). */
+  async function doPermanentDelete(password: string) {
+    if (selected.size === 0) return
+    setBusy(true)
+    setError('')
+    try {
+      await leadsApi.permanentDelete(Array.from(selected), password)
+      setSelected(new Set())
+      setDeleteOpen(false)
+    } catch (e) {
+      setError(errMsg(e))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -92,7 +143,7 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
           <div>
             <h1 className="text-lg font-semibold">Leads</h1>
             <p className="text-sm text-slate-400">
-              Empresas capturadas pela extensão, separadas por sessão de importação
+              Prospecção ativa — empresas capturadas pela extensão. O histórico de cada campanha fica preservado no Kanban.
             </p>
           </div>
           {selected.size > 0 && (
@@ -114,30 +165,27 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
           >
             Enviar ({selected.size})
           </button>
-          <div className="relative">
-            <button onClick={() => setDeleteOpen((v) => !v)}
-              disabled={selected.size === 0}
-              className="flex items-center gap-2 px-3 py-2 text-sm bg-rose-600/70 hover:bg-rose-500 disabled:opacity-40 rounded-lg font-medium">
-              Excluir ({selected.size})
-            </button>
-            {deleteOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setDeleteOpen(false)} />
-                <div className="absolute right-0 top-full mt-2 z-20 w-64 rounded-xl border border-white/10 bg-[#16161f] p-3 shadow-xl">
-                  <div className="text-xs text-slate-400 mb-1">
-                    Excluir <span className="text-rose-300 font-semibold">{selected.size} lead(s)</span> definitivamente?
-                    <div className="text-[10px] text-slate-500 mt-1">Também remove os contatos vinculados.</div>
-                  </div>
-                  <button
-                    onClick={() => { setDeleteOpen(false); void doDelete() }}
-                    className="w-full mt-1 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg px-3 py-2">
-                    Excluir selecionados
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          <button
+            onClick={() => setClearOpen(true)}
+            disabled={selected.size === 0}
+            title="Marca os selecionados como processados. O histórico, as campanhas e o Kanban continuam preservados."
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-amber-600/70 hover:bg-amber-500 disabled:opacity-40 rounded-lg font-medium">
+            Limpar lista ({selected.size})
+          </button>
+          <button
+            onClick={() => setDeleteOpen(true)}
+            disabled={selected.size === 0}
+            title="Exclusão definitiva (com senha): apaga o lead, conversas, reuniões e participações em todas as campanhas."
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-rose-600/70 hover:bg-rose-500 disabled:opacity-40 rounded-lg font-medium">
+            Excluir histórico ({selected.size})
+          </button>
         </div>
+
+        {error && (
+          <div className="text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+            {error}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto px-6 py-5 space-y-8">
@@ -192,6 +240,11 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
                         <td className="px-3 py-2.5">
                           <div className="font-medium">{lead.name || '—'}</div>
                           {lead.niche && <div className="text-[11px] text-indigo-300/80">{lead.niche}</div>}
+                          {participating.has(lead.id) && (
+                            <div className="text-[10px] text-emerald-300/90 mt-0.5" title="Este lead já esteve/está em uma campanha">
+                              ✓ Já participou de campanha
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-slate-400">{lead.category || '—'}</td>
                         <td className="px-3 py-2.5 text-slate-400">{lead.city ? `${lead.city}${lead.state ? ', ' + lead.state : ''}` : '—'}</td>
@@ -217,6 +270,23 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
         )}
       </div>
 
+      {clearOpen && (
+        <ClearListModal
+          count={selected.size}
+          busy={busy}
+          onClose={() => setClearOpen(false)}
+          onConfirm={() => void doClearList()}
+        />
+      )}
+      {deleteOpen && (
+        <PasswordDeleteModal
+          count={selected.size}
+          busy={busy}
+          onClose={() => setDeleteOpen(false)}
+          onConfirm={(password) => void doPermanentDelete(password)}
+        />
+      )}
+
       {sendOpen && (
         <SendModal
           leads={leads}
@@ -225,6 +295,77 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
           onSent={handleSent}
         />
       )}
+    </div>
+  )
+}
+function ClearListModal({ count, busy, onClose, onConfirm }: {
+  count: number
+  busy: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-semibold">Limpar lista ativa</div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+        </div>
+        <p className="text-sm text-slate-300 mb-2">
+          Remover <span className="font-semibold text-amber-300">{count} lead(s)</span> da prospecção ativa?
+        </p>
+        <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+          Isso apenas marca os leads como processados (sai da lista de trabalho).
+          <span className="text-emerald-300/90"> Nada é apagado</span>: histórico, conversas, reuniões, campanhas e Kanban
+          continuam preservados. Sem senha.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={onConfirm} disabled={busy}
+            className="px-4 py-2 text-sm bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-lg font-medium">
+            {busy ? 'Limpando...' : 'Limpar lista'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PasswordDeleteModal({ count, busy, onClose, onConfirm }: {
+  count: number
+  busy: boolean
+  onClose: () => void
+  onConfirm: (password: string) => void
+}) {
+  const [password, setPassword] = useState('')
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-semibold text-rose-300">Exclusão definitiva</div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+        </div>
+        <div className="text-sm text-slate-300 mb-2">
+          Excluir <span className="font-semibold text-rose-300">{count} lead(s)</span> e todo o histórico?
+        </div>
+        <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2 mb-3 text-xs text-slate-400 leading-relaxed">
+          Apaga <span className="text-slate-200">definitivamente</span>: conversas, reuniões, histórico de status e
+          a participação destes leads em <span className="text-slate-200">todas as campanhas</span>. Ação irreversível.
+        </div>
+        <label className="block text-xs text-slate-400 mb-3">
+          Senha (validada no servidor)
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            autoFocus
+            className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-rose-500" />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={() => onConfirm(password)} disabled={busy || !password.trim()}
+            className="px-4 py-2 text-sm bg-rose-600 hover:bg-rose-500 disabled:opacity-50 rounded-lg font-medium">
+            {busy ? 'Excluindo...' : 'Excluir definitivamente'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

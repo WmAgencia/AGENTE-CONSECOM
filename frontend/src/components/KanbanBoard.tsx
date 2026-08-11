@@ -106,6 +106,44 @@ export function KanbanBoard({
   const [modal, setModal] = useState<'meeting' | 'close' | null>(null)
   const [chatLead, setChatLead] = useState<Lead | null>(null)
   const [messagesByLead, setMessagesByLead] = useState<Map<string, ConversationMessage[]>>(new Map())
+  // Leads POR CAMPANHA vêm de send_runs (a participação real da campanha),
+  // NÃO da lista global /leads — assim "limpar lista" nunca apaga o Kanban.
+  const [byCampaign, setByCampaign] = useState<Map<string, Lead[]>>(new Map())
+  const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set())
+
+  // Leads por campanha via send_runs (fonte única para o pipeline).
+  useEffect(() => {
+    let active = true
+    async function load() {
+      const { data, error } = await supabase
+        .from('send_runs')
+        .select('campaign_id, lead:leads(*)')
+      if (error || !data) return
+      const map = new Map<string, Lead[]>()
+      const ids = new Set<string>()
+      for (const r of data as Array<{ campaign_id: string; lead: Lead | null }>) {
+        if (!r.lead) continue
+        ids.add(r.lead.id)
+        const arr = map.get(r.campaign_id) ?? []
+        if (!arr.some((l) => l.id === r.lead.id)) arr.push(r.lead)
+        map.set(r.campaign_id, arr)
+      }
+      if (active) {
+        setByCampaign(map)
+        setEnrolledIds(ids)
+      }
+    }
+    void load()
+    const ch = supabase
+      .channel('kanban-campaign-leads')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'send_runs' }, () => void load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => void load())
+      .subscribe()
+    return () => {
+      active = false
+      supabase.removeChannel(ch)
+    }
+  }, [])
 
   // Conversas em tempo real (métricas de engajamento) — recarrega quando uma
   // nova mensagem entra, com debounce para não refazer o fetch a cada evento.
@@ -154,26 +192,38 @@ export function KanbanBoard({
   }, [leads, messagesByLead])
 
   const list = useMemo(() => {
-    if (campaignFilter === 'all') return leads
-    if (campaignFilter === NO_CAMPAIGN) return leads.filter((l) => !l.campaign_id)
-    return leads.filter((l) => l.campaign_id === campaignFilter)
-  }, [leads, campaignFilter])
+    if (campaignFilter === 'all') {
+      const all = Array.from(byCampaign.values()).flat()
+      return all.filter((l, i) => all.findIndex((x) => x.id === l.id) === i)
+    }
+    if (campaignFilter === NO_CAMPAIGN) {
+      // Sem campanha = leads ativos ainda não vinculados a nenhuma campanha.
+      return leads.filter((l) => l.is_active_in_prospecting !== false && !enrolledIds.has(l.id))
+    }
+    return byCampaign.get(campaignFilter) ?? []
+  }, [leads, campaignFilter, byCampaign, enrolledIds])
 
   const perCampaign = useMemo(() => {
     const map = new Map<string | null, { total: number; sections: Record<Section, number> }>()
     for (const c of campaigns) map.set(c.id, { total: 0, sections: emptySections() })
     if (!map.has(null)) map.set(null, { total: 0, sections: emptySections() })
-    for (const l of leads) {
-      const key = l.campaign_id ?? null
-      if (!map.has(key)) map.set(key, { total: 0, sections: emptySections() })
-      const entry = map.get(key)!
+    const tally = (l: Lead, key: string | null) => {
+      const entry = map.get(key) ?? { total: 0, sections: emptySections() }
       entry.total++
       for (const sec of SECTIONS) {
         if (sec.statuses.includes(l.status)) entry.sections[sec.key]++
       }
+      map.set(key, entry)
+    }
+    for (const [cid, arr] of byCampaign) {
+      for (const l of arr) tally(l, cid)
+    }
+    // Sem campanha: leads ativos ainda não vinculados a nenhuma campanha.
+    for (const l of leads) {
+      if (l.is_active_in_prospecting !== false && !enrolledIds.has(l.id)) tally(l, null)
     }
     return map
-  }, [leads, campaigns])
+  }, [byCampaign, campaigns, leads, enrolledIds])
 
   const selectedCampaign = campaignFilter !== 'all'
     ? campaigns.find((c) => c.id === campaignFilter)

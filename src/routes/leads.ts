@@ -10,9 +10,13 @@
  * reply (agent_model = 'HUMAN_REPLY') so the chat UI can distinguish it from
  * AI messages, and touches last_message_sent on the lead.
  */
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { getLogger } from '../utils/logger.js';
-import { getSupabaseProspeccaoConfig } from '../config/env.js';
+import {
+  getConsecomAdminPassword,
+  getSupabaseProspeccaoConfig,
+} from '../config/env.js';
 import { sendText } from '../services/evolution.service.js';
 import {
   getUserConnection,
@@ -34,6 +38,56 @@ function supHeaders(key: string, json = false): Record<string, string> {
   return json
     ? { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }
     : { apikey: key, Authorization: `Bearer ${key}` };
+}
+
+/** Comparação de senha em tempo constante (evita timing attack). */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
+interface SupabaseCfg {
+  url: string;
+  serviceRoleKey: string;
+  rpc: string;
+}
+
+/** Registra a ação no log de auditoria (best-effort, service role). */
+async function writeAudit(
+  s: SupabaseCfg,
+  actor: string,
+  action: string,
+  targetType: string,
+  targetIds: string[],
+  details: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await fetch(`${s.url}/rest/v1/consecom_audit_log`, {
+      method: 'POST',
+      headers: supHeaders(s.serviceRoleKey, true),
+      body: JSON.stringify({
+        user_id: actor,
+        action,
+        target_type: targetType,
+        target_ids: targetIds,
+        details,
+      }),
+    });
+  } catch {
+    // auditoria é best-effort: falha aqui não deve bloquear a ação
+  }
+}
+
+/** Extrai e valida o array de ids do corpo da requisição. */
+function parseLeadIds(body: unknown): string[] | null {
+  const b = body as { lead_ids?: unknown } | null;
+  if (!Array.isArray(b?.lead_ids)) return null;
+  const ids = b.lead_ids.filter(
+    (x): x is string => typeof x === 'string' && x.trim().length > 0,
+  );
+  return ids.length > 0 ? ids : null;
 }
 
 export function registerLeadsRoutes(app: FastifyInstance): void {
@@ -117,6 +171,140 @@ export function registerLeadsRoutes(app: FastifyInstance): void {
       const em = err instanceof Error ? err.message : 'unknown';
       log.error({ errMessage: em, leadId }, 'leads: reply handler failed');
       return reply.status(502).send({ error: 'reply_failed', message: 'Erro interno ao enviar.' });
+    }
+  });
+
+  /**
+   * Limpar lista ativa de prospecção (soft clear).
+   *
+   * POST /api/leads/clear-list
+   *   Body: { lead_ids: string[] }
+   *   Auth: x-user-id / x-workspace-id
+   *
+   * Apenas marca is_active_in_prospecting = false. NÃO apaga o lead nem o
+   * histórico/campanhas/Kanban — tudo permanece preservado.
+   */
+  app.post('/api/leads/clear-list', async (req, reply) => {
+    const { workspaceId, userId } = getWorkspaceAndUser(req);
+    const identifier = workspaceId ?? userId;
+    if (!identifier) {
+      return reply.status(401).send({ error: 'unauthorized' });
+    }
+
+    const leadIds = parseLeadIds(req.body);
+    if (!leadIds) {
+      return reply.status(400).send({ error: 'lead_ids_required' });
+    }
+
+    const s = sup();
+    if (!s) {
+      return reply.status(503).send({ error: 'server_misconfigured' });
+    }
+
+    try {
+      const inList = leadIds.map((x) => encodeURIComponent(x)).join(',');
+      const url = `${s.url}/rest/v1/leads?id=in.(${inList})`;
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: supHeaders(s.serviceRoleKey, true),
+        body: JSON.stringify({ is_active_in_prospecting: false }),
+      });
+      if (!res.ok) {
+        return reply.status(502).send({ error: 'clear_failed' });
+      }
+
+      await writeAudit(s, identifier, 'leads.clear_list', 'lead', leadIds, {
+        count: leadIds.length,
+      });
+      log.info({ count: leadIds.length }, 'leads: lista ativa limpa');
+      return reply.send({ ok: true, cleared: leadIds.length });
+    } catch (err) {
+      const em = err instanceof Error ? err.message : 'unknown';
+      log.error({ errMessage: em }, 'leads: clear-list handler failed');
+      return reply.status(502).send({ error: 'clear_failed' });
+    }
+  });
+
+  /**
+   * Exclusão DEFINITIVA de leads + todo o histórico (conversas, reuniões,
+   * lead_status_history e participações em TODAS as campanhas).
+   *
+   * POST /api/leads/permanent-delete
+   *   Body: { lead_ids: string[], password: string }
+   *   Auth: x-user-id / x-workspace-id + CONSECOM_ADMIN_PASSWORD (env)
+   *
+   * A senha é validada SOMENTE aqui (backend), em tempo constante, e nunca é
+   * enviada/validada no frontend. Toda tentativa (sucesso ou falha) é
+   * registrada em consecom_audit_log.
+   */
+  app.post('/api/leads/permanent-delete', async (req, reply) => {
+    const { workspaceId, userId } = getWorkspaceAndUser(req);
+    const identifier = workspaceId ?? userId;
+    if (!identifier) {
+      return reply.status(401).send({ error: 'unauthorized' });
+    }
+
+    const leadIds = parseLeadIds(req.body);
+    if (!leadIds) {
+      return reply.status(400).send({ error: 'lead_ids_required' });
+    }
+
+    const body = req.body as { password?: unknown } | null;
+    const password = typeof body?.password === 'string' ? body.password : '';
+    if (!password) {
+      return reply.status(400).send({ error: 'password_required' });
+    }
+
+    const adminPassword = getConsecomAdminPassword();
+    if (!adminPassword) {
+      return reply.status(503).send({ error: 'admin_password_not_configured' });
+    }
+    if (!safeEqual(password, adminPassword)) {
+      log.warn({ identifier }, 'leads: exclusão definitiva rejeitada (senha inválida)');
+      const s = sup();
+      if (s) {
+        await writeAudit(s, identifier, 'leads.permanent_delete_denied', 'lead', leadIds, {
+          reason: 'invalid_password',
+        });
+      }
+      return reply.status(403).send({ error: 'invalid_password' });
+    }
+
+    const s = sup();
+    if (!s) {
+      return reply.status(503).send({ error: 'server_misconfigured' });
+    }
+
+    try {
+      const inList = leadIds.map((x) => encodeURIComponent(x)).join(',');
+      const url = `${s.url}/rest/v1/leads?id=in.(${inList})`;
+
+      // Conta/nomes do alvo para o log de auditoria (best-effort).
+      let names: string[] = [];
+      const sel = await fetch(`${url}&select=id,name`, {
+        headers: supHeaders(s.serviceRoleKey),
+      });
+      if (sel.ok) {
+        const rows = (await sel.json()) as Array<{ name?: string | null }>;
+        names = rows.map((r) => r.name ?? '(sem nome)');
+      }
+
+      // DELETE cascateia para send_runs, conversas, histórico, contatos.
+      const del = await fetch(url, { method: 'DELETE', headers: supHeaders(s.serviceRoleKey) });
+      if (!del.ok) {
+        return reply.status(502).send({ error: 'delete_failed' });
+      }
+
+      await writeAudit(s, identifier, 'leads.permanent_delete', 'lead', leadIds, {
+        count: leadIds.length,
+        names,
+      });
+      log.info({ count: leadIds.length }, 'leads: histórico excluído definitivamente');
+      return reply.send({ ok: true, deleted: leadIds.length });
+    } catch (err) {
+      const em = err instanceof Error ? err.message : 'unknown';
+      log.error({ errMessage: em }, 'leads: permanent-delete handler failed');
+      return reply.status(502).send({ error: 'delete_failed' });
     }
   });
 

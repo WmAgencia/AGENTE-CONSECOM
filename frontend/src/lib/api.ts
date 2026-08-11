@@ -526,3 +526,45 @@ export const memoryApi = {
     await api.del(`/api/ai/memory/learnings/${encodeURIComponent(id)}`)
   },
 }
+
+// ===== Leads: Limpar lista ativa vs. Exclusão definitiva (histórico) =====
+
+export interface LeadsClearResult {
+  ok: boolean
+  cleared: number
+}
+
+export interface LeadsDeleteResult {
+  ok: boolean
+  deleted: number
+}
+
+async function leadsHeaders(): Promise<Record<string, string>> {
+  return userIdHeader()
+}
+
+/**
+ * "Limpar lista ativa" — marca is_active_in_prospecting = false (soft clear).
+ * NÃO apaga o lead nem o histórico/campanhas/Kanban. Sem senha.
+ */
+export const leadsApi = {
+  async clearList(leadIds: string[]): Promise<LeadsClearResult> {
+    return request<LeadsClearResult>('/api/leads/clear-list', {
+      method: 'POST',
+      body: JSON.stringify({ lead_ids: leadIds }),
+      headers: await leadsHeaders(),
+    })
+  },
+  /**
+   * "Excluir histórico" — exclusão DEFINITIVA do lead + conversas, reuniões,
+   * histórico e participações em todas as campanhas. A senha é validada no
+   * backend (CONSECOM_ADMIN_PASSWORD). Nunca fica no frontend.
+   */
+  async permanentDelete(leadIds: string[], password: string): Promise<LeadsDeleteResult> {
+    return request<LeadsDeleteResult>('/api/leads/permanent-delete', {
+      method: 'POST',
+      body: JSON.stringify({ lead_ids: leadIds, password }),
+      headers: await leadsHeaders(),
+    })
+  },
+}

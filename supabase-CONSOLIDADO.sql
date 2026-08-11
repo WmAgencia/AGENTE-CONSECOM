@@ -130,7 +130,14 @@ ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS first_msg_sent_at TIMESTAMPTZ,
   -- Migration v10: coluna "Números para ligação" (status para_ligacao)
   ADD COLUMN IF NOT EXISTS call_reason       TEXT,
-  ADD COLUMN IF NOT EXISTS call_moved_at     TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS call_moved_at     TIMESTAMPTZ,
+  -- Migration v11: leads ativos na prospecção vs. histórico arquivado.
+  -- "Limpar lista" em /leads marca is_active_in_prospecting = false (soft);
+  -- o lead e todo o histórico/campanhas/Kanban permanecem preservados.
+  ADD COLUMN IF NOT EXISTS is_active_in_prospecting BOOLEAN NOT NULL DEFAULT true;
+
+CREATE INDEX IF NOT EXISTS leads_active_prospecting_idx
+  ON public.leads (is_active_in_prospecting);
 
 -- Status enum expandido (11 estados do funil + "Números para ligação" v10)
 ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status;
@@ -383,6 +390,25 @@ BEGIN
 END;
 $$;
 
+-- ===== Migration v11 (Leads ativos vs. histórico + auditoria) =====
+
+-- Log de auditoria das ações de limpeza/exclusão de leads.
+-- user_id/workspace vêm dos headers x-user-id/x-workspace-id (backend).
+-- action: leads.clear_list | leads.permanent_delete | leads.permanent_delete_denied
+CREATE TABLE IF NOT EXISTS public.consecom_audit_log (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     TEXT,
+  action      TEXT NOT NULL,
+  target_type TEXT,
+  target_ids  JSONB,
+  details     JSONB,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS consecom_audit_log_created_idx
+  ON public.consecom_audit_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS consecom_audit_log_action_idx
+  ON public.consecom_audit_log (action);
+
 -- ===== RLS (idempotente) =====
 
 ALTER TABLE public.leads                 ENABLE ROW LEVEL SECURITY;
@@ -398,6 +424,7 @@ ALTER TABLE public.agent_learning        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.whatsapp_connections  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_groups   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.consecom_audit_log    ENABLE ROW LEVEL SECURITY;
 
 -- Drops idempotentes (remover se existir)
 DROP POLICY IF EXISTS leads_anon_delete      ON public.leads;
@@ -435,6 +462,7 @@ DROP POLICY IF EXISTS agent_learning_auth_all      ON public.agent_learning;
 DROP POLICY IF EXISTS whatsapp_connections_auth_all ON public.whatsapp_connections;
 DROP POLICY IF EXISTS notification_groups_auth_all  ON public.notification_groups;
 DROP POLICY IF EXISTS notification_settings_auth_all ON public.notification_settings;
+DROP POLICY IF EXISTS consecom_audit_log_auth_read ON public.consecom_audit_log;
 DROP POLICY IF EXISTS consecom_media_insert    ON storage.objects;
 DROP POLICY IF EXISTS consecom_media_update    ON storage.objects;
 DROP POLICY IF EXISTS consecom_media_select_public ON storage.objects;
@@ -443,7 +471,9 @@ DROP POLICY IF EXISTS consecom_media_select_public ON storage.objects;
 CREATE POLICY leads_auth_read    ON public.leads FOR SELECT USING (auth.role() = 'authenticated');
 CREATE POLICY leads_auth_insert  ON public.leads FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 CREATE POLICY leads_auth_update  ON public.leads FOR UPDATE USING (auth.role() = 'authenticated');
-CREATE POLICY leads_auth_delete  ON public.leads FOR DELETE USING (auth.role() = 'authenticated');
+-- Migration v11: SEM policy de DELETE em leads. A exclusão definitiva só é
+-- permitida via rota POST /api/leads/permanent-delete (senha validada no
+-- backend). "Limpar lista" usa UPDATE (is_active_in_prospecting=false).
 
 -- Anon: IMPORTAR leads (extensão) e checar duplicados. NÃO pode deletar.
 CREATE POLICY leads_anon_insert ON public.leads FOR INSERT TO anon WITH CHECK (true);
@@ -487,6 +517,11 @@ CREATE POLICY notification_groups_auth_all  ON public.notification_groups FOR AL
 
 CREATE POLICY notification_settings_auth_all ON public.notification_settings FOR ALL USING (auth.role() = 'authenticated');
 
+-- Auditoria: leitura visível p/ usuários autenticados; escrita só via
+-- service role (backend). "Limpar lista"/"Excluir histórico" gravam aqui.
+CREATE POLICY consecom_audit_log_auth_read ON public.consecom_audit_log
+  FOR SELECT USING (auth.role() = 'authenticated');
+
 -- Storage: bucket "consecom-media"
 CREATE POLICY consecom_media_insert         ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'consecom-media' AND auth.role() = 'authenticated');
 CREATE POLICY consecom_media_update         ON storage.objects FOR UPDATE USING (bucket_id = 'consecom-media' AND auth.role() = 'authenticated');
@@ -497,7 +532,9 @@ GRANT EXECUTE ON FUNCTION public.consecom_marcar_reuniao(UUID, TIMESTAMPTZ, TEXT
 GRANT EXECUTE ON FUNCTION public.consecom_associar_campanha(UUID[], UUID) TO service_role;
 GRANT EXECUTE ON FUNCTION public.consecom_fechar_lead(UUID, BOOLEAN, TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION public.consecom_agent_outcome(UUID, TEXT, TEXT, TEXT, INTEGER) TO service_role;
-GRANT EXECUTE ON FUNCTION public.consecom_excluir_leads(UUID[], TEXT) TO service_role, authenticated;
+-- Migration v11: exclusão definitiva só via backend (senha). Clientes
+-- (authenticated) não executam mais consecom_excluir_leads diretamente.
+GRANT EXECUTE ON FUNCTION public.consecom_excluir_leads(UUID[], TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION public.consecom_cleanup_no_interest() TO service_role;
 
 -- ===== Colunas TEXT para workspace_id/user_id (multi-tenant com slugs) =====

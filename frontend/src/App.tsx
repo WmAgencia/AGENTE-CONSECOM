@@ -23,12 +23,13 @@ const APP_VERSION = '2.1.0'
 
 interface ShellProps {
   leads: Lead[]
+  activeLeads: Lead[]
   campaigns: Campaign[]
   onMeeting: (id: string, meeting_at: string, notes: string) => Promise<boolean>
   onCloseLead: (id: string, closed: boolean, motivo: string, valor: number | null) => Promise<boolean>
 }
 
-function Shell({ leads, campaigns, onMeeting, onCloseLead }: ShellProps) {
+function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -147,8 +148,8 @@ function Shell({ leads, campaigns, onMeeting, onCloseLead }: ShellProps) {
         <Routes>
           <Route path="/" element={<Navigate to="/kanban" replace />} />
           <Route path="/kanban" element={<KanbanBoard leads={leads} campaigns={campaigns} onMeeting={onMeeting} onClose={onCloseLead} />} />
-          <Route path="/leads" element={<LeadsView leads={leads} />} />
-          <Route path="/campanhas" element={<CampaignsView leads={leads} />} />
+          <Route path="/leads" element={<LeadsView leads={activeLeads} />} />
+          <Route path="/campanhas" element={<CampaignsView leads={activeLeads} />} />
           <Route path="/agenda" element={<AgendaView />} />
           <Route path="/dashboard" element={<DashboardView leads={leads} />} />
           <Route path="/agente" element={<AgentConfig />} />
@@ -173,6 +174,10 @@ export default function App() {
   const [session, setSession] = useState<boolean | null>(null)
   const [leads, setLeads] = useState<Lead[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+
+  // Leads ativos na prospecção (/leads). Leads arquivados ("limpar lista")
+  // seguem no estado `leads` (total) para dashboard/Kanban da campanha.
+  const activeLeads = leads.filter((l) => l.is_active_in_prospecting !== false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(!!data.session))
@@ -287,5 +292,5 @@ export default function App() {
     return <LoginScreen />
   }
 
-  return <Shell leads={leads} campaigns={campaigns} onMeeting={markMeeting} onCloseLead={closeLead} />
+  return <Shell leads={leads} activeLeads={activeLeads} campaigns={campaigns} onMeeting={markMeeting} onCloseLead={closeLead} />
 }

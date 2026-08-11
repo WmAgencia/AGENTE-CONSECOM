@@ -260,6 +260,14 @@ const envSchema = z.object({
       message: 'CONSECOM_SEND_RETRY_BACKOFF_MS must be a positive integer',
     }),
 
+  // === Exclusão definitiva de leads/histórico ===
+  // Senha exigida na rota POST /api/leads/permanent-delete (validada SOMENTE no
+  // backend). Nunca é enviada/validada no frontend. Se não configurada, a rota
+  // de exclusão definitiva fica desativada (retorna 503).
+  CONSECOM_ADMIN_PASSWORD: z
+    .string()
+    .optional(),
+
   // === Rate limiting (Etapa 2C) ===
   RATE_LIMIT_MAX: z
     .string()
@@ -486,8 +494,7 @@ export function getEvolutionConfig(): {
  * Returns the Consecom prospection config (Supabase) for backend calls only.
  * Never log or return the service role key from HTTP handlers.
  */
-export function getSupabaseProspeccaoConfig(): {
-  url: string;
+export function getSupabaseProspeccaoConfig(): {  url: string;
   serviceRoleKey: string;
   rpc: string;
 } {
@@ -510,4 +517,12 @@ export function hasSupabaseProspeccao(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Returns the configured admin password for permanent lead/history deletion.
+ * Empty when not configured (the permanent-delete route stays disabled).
+ */
+export function getConsecomAdminPassword(): string {
+  return getEnv().CONSECOM_ADMIN_PASSWORD ?? '';
 }
