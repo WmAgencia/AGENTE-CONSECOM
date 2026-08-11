@@ -1,8 +1,75 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter";
 
+/* ===== Tema claro/escuro (Tailwind v4, tokens semânticos) =====
+ * Padrão = CLARO. `html[data-theme="dark"]` = tema escuro (visual original).
+ * Os tokens são expostos como utilitários (bg-app, bg-panel, text-fg,
+ * border-line, etc.) via @theme inline; os valores vivem nas variáveis
+ * --c-* e trocam conforme o atributo data-theme no <html>. */
+
+@theme inline {
+  --color-app: var(--c-app);
+  --color-sidebar: var(--c-sidebar);
+  --color-panel: var(--c-panel);
+  --color-field: var(--c-field);
+  --color-subtle: var(--c-subtle);
+  --color-subtle-2: var(--c-subtle-2);
+  --color-line: var(--c-line);
+  --color-line-2: var(--c-line-2);
+  --color-line-strong: var(--c-line-strong);
+  --color-fg: var(--c-fg);
+  --color-secondary: var(--c-secondary);
+  --color-muted: var(--c-muted);
+  --color-faint: var(--c-faint);
+  /* Chat (LeadChat, estilo WhatsApp) */
+  --color-chat-bar: var(--c-chat-bar);
+  --color-chat-bg: var(--c-chat-bg);
+  --color-chat-in: var(--c-chat-in);
+  --color-chat-input: var(--c-chat-input);
+}
+
+/* Padrão: tema claro */
 :root {
+  color-scheme: light;
+  --c-app: #eef1f6;
+  --c-sidebar: #ffffff;
+  --c-panel: #ffffff;
+  --c-field: #ffffff;
+  --c-subtle: rgba(15, 23, 42, 0.04);
+  --c-subtle-2: rgba(15, 23, 42, 0.07);
+  --c-line: #e4e7ee;
+  --c-line-2: #d5dae4;
+  --c-line-strong: #c6cdd9;
+  --c-fg: #0f172a;
+  --c-secondary: #334155;
+  --c-muted: #64748b;
+  --c-faint: #94a3b8;
+  --c-chat-bar: #e9edf3;
+  --c-chat-bg: #e7eaf2;
+  --c-chat-in: #ffffff;
+  --c-chat-input: #ffffff;
+}
+
+/* Tema escuro (visual original) */
+html[data-theme="dark"] {
   color-scheme: dark;
+  --c-app: #0a0a0f;
+  --c-sidebar: #0d0d14;
+  --c-panel: #16161f;
+  --c-field: rgba(0, 0, 0, 0.3);
+  --c-subtle: rgba(255, 255, 255, 0.05);
+  --c-subtle-2: rgba(255, 255, 255, 0.1);
+  --c-line: rgba(255, 255, 255, 0.06);
+  --c-line-2: rgba(255, 255, 255, 0.1);
+  --c-line-strong: rgba(255, 255, 255, 0.2);
+  --c-fg: #ffffff;
+  --c-secondary: #cbd5e1;
+  --c-muted: #94a3b8;
+  --c-faint: #64748b;
+  --c-chat-bar: #202c33;
+  --c-chat-bg: #0b141a;
+  --c-chat-in: #202c33;
+  --c-chat-input: #2a3942;
 }
 
 html, body, #root {
@@ -12,7 +79,8 @@ html, body, #root {
 
 body {
   font-family: "Inter Variable", system-ui, -apple-system, sans-serif;
-  background: #0a0a0f;
-  color: #e7e7ef;
+  background: var(--c-app);
+  color: var(--c-fg);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }

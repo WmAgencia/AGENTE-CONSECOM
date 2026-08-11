@@ -68,26 +68,26 @@ export function AgentConfig() {
     setCfg((c) => ({ ...c, [key]: val }))
   }
 
-  const input = 'w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
-  const label = 'block text-xs text-slate-400 mb-1'
+  const input = 'w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const label = 'block text-xs text-muted mb-1'
 
   return (
     <div className="h-full overflow-auto px-6 py-5 max-w-3xl">
       <h1 className="text-lg font-semibold mb-1">Configuração do Agente</h1>
-      <p className="text-sm text-slate-400 mb-6">Como a IA apresenta o serviço/projeto e conduz o remarketing.</p>
+      <p className="text-sm text-muted mb-6">Como a IA apresenta o serviço/projeto e conduz o remarketing.</p>
 
       <div className="space-y-6">
-        <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-300">Apresentação</h2>
+        <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-secondary">Apresentação</h2>
           <div>
             <label className={label}>Nome do agente</label>
             <input value={cfg.agent_name} onChange={(e) => set('agent_name', e.target.value)} placeholder="Ex: Alex" className={input} />
-            <p className="text-[11px] text-slate-500 mt-1">Quando definido, aparece em *negrito* acima de toda mensagem enviada pela IA.</p>
+            <p className="text-[11px] text-faint mt-1">Quando definido, aparece em *negrito* acima de toda mensagem enviada pela IA.</p>
           </div>
           <div>
             <label className={label}>Sobre a empresa</label>
             <textarea value={cfg.company} onChange={(e) => set('company', e.target.value)} placeholder="Explique a empresa, o mercado, o que ela vende, diferenciais, público-alvo..." rows={4} className={input} />
-            <p className="text-[11px] text-slate-500 mt-1">A IA usa esse contexto para entender o negócio e vender melhor.</p>
+            <p className="text-[11px] text-faint mt-1">A IA usa esse contexto para entender o negócio e vender melhor.</p>
           </div>
           <div>
             <label className={label}>Mensagem de saudação</label>
@@ -107,9 +107,9 @@ export function AgentConfig() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-300">Remarketing automático</h2>
-          <label className="flex items-center gap-2 text-sm text-slate-300">
+        <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-secondary">Remarketing automático</h2>
+          <label className="flex items-center gap-2 text-sm text-secondary">
             <input type="checkbox" checked={cfg.remarket_active} onChange={(e) => set('remarket_active', e.target.checked)} className="accent-indigo-500" />
             Reenviar mensagem para quem não respondeu
           </label>
@@ -123,12 +123,12 @@ export function AgentConfig() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-300">Sem interesse</h2>
+        <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-secondary">Sem interesse</h2>
           <div>
             <label className={label}>Prazo de bloqueio (meses)</label>
             <input type="number" min={1} value={cfg.no_interest_months} onChange={(e) => set('no_interest_months', Number(e.target.value))} className={input} />
-            <p className="text-[11px] text-slate-500 mt-1">Enquanto vigente, a extensão mostra o lead como "Sem interesse".</p>
+            <p className="text-[11px] text-faint mt-1">Enquanto vigente, a extensão mostra o lead como "Sem interesse".</p>
           </div>
         </section>
       </div>

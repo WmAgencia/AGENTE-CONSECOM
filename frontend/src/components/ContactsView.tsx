@@ -117,22 +117,22 @@ export function ContactsView() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold mb-1">Contatos</h1>
-          <p className="text-sm text-slate-400">Importe uma planilha (.csv ou .xlsx) com nomes e telefones para povoar a prospecção.</p>
+          <p className="text-sm text-muted">Importe uma planilha (.csv ou .xlsx) com nomes e telefones para povoar a prospecção.</p>
         </div>
-        <button onClick={() => void loadLists()} className="text-xs text-slate-400 hover:text-white inline-flex items-center gap-1.5">
+        <button onClick={() => void loadLists()} className="text-xs text-muted hover:text-fg inline-flex items-center gap-1.5">
           <RefreshCcw className="w-3.5 h-3.5" /> Atualizar listas
         </button>
       </div>
 
       {/* ===== Importação ===== */}
-      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+      <div className="rounded-xl border border-line bg-subtle p-5">
         <div className="flex items-center gap-2 mb-3">
           <FileSpreadsheet className="w-4 h-4 text-indigo-300" />
           <span className="text-sm font-semibold">Importar planilha</span>
         </div>
 
         <label
-          className="block border-2 border-dashed border-white/10 hover:border-indigo-500/50 rounded-xl px-6 py-8 text-center cursor-pointer transition"
+          className="block border-2 border-dashed border-line-2 hover:border-indigo-500/50 rounded-xl px-6 py-8 text-center cursor-pointer transition"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault()
@@ -150,15 +150,15 @@ export function ContactsView() {
               if (f) handleFile(f)
             }}
           />
-          <UploadCloud className="w-8 h-8 mx-auto text-slate-500 mb-2" />
-          <div className="text-sm text-slate-300">
+          <UploadCloud className="w-8 h-8 mx-auto text-faint mb-2" />
+          <div className="text-sm text-secondary">
             {fileName || 'Arraste um arquivo ou clique para escolher'}
           </div>
-          <div className="text-xs text-slate-500 mt-1">Colunas esperadas: <b>nome</b> e <b>telefone</b> (qualquer ordem).</div>
+          <div className="text-xs text-faint mt-1">Colunas esperadas: <b>nome</b> e <b>telefone</b> (qualquer ordem).</div>
         </label>
 
         {!fileName && (
-          <div className="mt-3 text-xs text-slate-500 flex items-center gap-1.5">
+          <div className="mt-3 text-xs text-faint flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5" />
             A detecção de colunas é automática: <code>nome</code>, <code>name</code>, <code>cliente</code> e <code>telefone</code>, <code>phone</code>, <code>whatsapp</code>, <code>celular</code>. Exemplo: <code>nome,telefone</code>.
           </div>
@@ -169,11 +169,11 @@ export function ContactsView() {
 
       {/* ===== Validação ===== */}
       {parsed && stats && (
-        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+        <div className="rounded-xl border border-line bg-subtle p-5">
           <div className="flex items-center gap-2 mb-4">
             <Table className="w-4 h-4 text-indigo-300" />
             <span className="text-sm font-semibold">Validação</span>
-            <span className="text-xs text-slate-500 ml-auto font-mono">{fileName}</span>
+            <span className="text-xs text-faint ml-auto font-mono">{fileName}</span>
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
@@ -181,26 +181,26 @@ export function ContactsView() {
               <div className="flex items-center gap-1.5 text-emerald-300 text-sm font-semibold">
                 <CheckCircle2 className="w-4 h-4" /> {stats.valid}
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">válidos</div>
+              <div className="text-[11px] text-muted mt-0.5">válidos</div>
             </div>
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
               <div className="flex items-center gap-1.5 text-amber-300 text-sm font-semibold">
                 <AlertTriangle className="w-4 h-4" /> {stats.invalid}
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">inválidos</div>
+              <div className="text-[11px] text-muted mt-0.5">inválidos</div>
             </div>
             <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3">
               <div className="flex items-center gap-1.5 text-rose-300 text-sm font-semibold">
                 <XCircle className="w-4 h-4" /> {stats.dupes}
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">duplicados (arquivo)</div>
+              <div className="text-[11px] text-muted mt-0.5">duplicados (arquivo)</div>
             </div>
           </div>
 
           {guessedCols && (
-            <div className="text-[11px] text-slate-400 mb-3 flex flex-wrap gap-x-4 gap-y-1">
-              <span>Coluna <b className="text-slate-200">nome</b>: <code className="text-emerald-300">{guessedCols.nameCol || '—'}</code></span>
-              <span>Coluna <b className="text-slate-200">telefone</b>: <code className="text-emerald-300">{guessedCols.phoneCol || '—'}</code></span>
+            <div className="text-[11px] text-muted mb-3 flex flex-wrap gap-x-4 gap-y-1">
+              <span>Coluna <b className="text-fg">nome</b>: <code className="text-emerald-300">{guessedCols.nameCol || '—'}</code></span>
+              <span>Coluna <b className="text-fg">telefone</b>: <code className="text-emerald-300">{guessedCols.phoneCol || '—'}</code></span>
               {!guessedCols.phoneCol && (
                 <span className="text-rose-300">⚠ nenhuma coluna de telefone detectada — o arquivo pode ser inválido</span>
               )}
@@ -224,10 +224,10 @@ export function ContactsView() {
 
           {stats.invalid > 0 && (
             <div className="mt-4">
-              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-2">Linhas ignoradas</div>
+              <div className="text-[11px] uppercase tracking-wide text-faint mb-2">Linhas ignoradas</div>
               <div className="max-h-40 overflow-auto space-y-1">
                 {parsed.invalid.slice(0, 50).map((i, idx) => (
-                  <div key={idx} className="text-xs text-slate-400 flex gap-2 items-center">
+                  <div key={idx} className="text-xs text-muted flex gap-2 items-center">
                     <span className="text-slate-600 font-mono">L{i.row}</span>
                     <span className="truncate">{i.name}</span>
                     <span className="text-slate-600 truncate">{i.phone}</span>
@@ -235,7 +235,7 @@ export function ContactsView() {
                   </div>
                 ))}
                 {parsed.invalid.length > 50 && (
-                  <div className="text-[11px] text-slate-500">… e mais {parsed.invalid.length - 50} linhas</div>
+                  <div className="text-[11px] text-faint">… e mais {parsed.invalid.length - 50} linhas</div>
                 )}
               </div>
             </div>
@@ -245,21 +245,21 @@ export function ContactsView() {
 
       {/* ===== Listas + contatos ===== */}
       {activeList ? (
-        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+        <div className="rounded-xl border border-line bg-subtle p-5">
           <button
             onClick={() => setActiveList(null)}
-            className="text-xs text-slate-400 hover:text-white inline-flex items-center gap-1 mb-3"
+            className="text-xs text-muted hover:text-fg inline-flex items-center gap-1 mb-3"
           >
             <ChevronLeft className="w-3.5 h-3.5" /> Voltar para listas
           </button>
           <div className="flex items-center gap-2 mb-4">
             <ContactRound className="w-4 h-4 text-indigo-300" />
             <span className="text-sm font-semibold">{activeList.name}</span>
-            <span className="text-xs text-slate-500">{activeList.count} contatos</span>
+            <span className="text-xs text-faint">{activeList.count} contatos</span>
           </div>
 
           {contactsState.kind === 'loading' && (
-            <div className="flex items-center gap-2 text-sm text-slate-400 py-6">
+            <div className="flex items-center gap-2 text-sm text-muted py-6">
               <Loader2 className="w-4 h-4 animate-spin" /> Carregando contatos…
             </div>
           )}
@@ -269,7 +269,7 @@ export function ContactsView() {
           )}
 
           {contactsState.kind === 'ready' && contacts.length === 0 && (
-            <div className="text-sm text-slate-500 py-6 text-center">
+            <div className="text-sm text-faint py-6 text-center">
               Nenhum contato nesta lista.
             </div>
           )}
@@ -278,7 +278,7 @@ export function ContactsView() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-white/5">
+                  <tr className="text-left text-[11px] uppercase tracking-wide text-faint border-b border-line">
                     <th className="py-2 pr-3 font-medium">Nome</th>
                     <th className="py-2 pr-3 font-medium">Telefone</th>
                     <th className="py-2 font-medium">Status</th>
@@ -286,10 +286,10 @@ export function ContactsView() {
                 </thead>
                 <tbody>
                   {contacts.map((c) => (
-                    <tr key={c.id} className="border-b border-white/5 last:border-0">
-                      <td className="py-2 pr-3 text-slate-200">{c.name}</td>
-                      <td className="py-2 pr-3 text-slate-400 font-mono text-xs">{c.phone}</td>
-                      <td className="py-2 text-slate-400">{c.status ?? 'novo'}</td>
+                    <tr key={c.id} className="border-b border-line last:border-0">
+                      <td className="py-2 pr-3 text-fg">{c.name}</td>
+                      <td className="py-2 pr-3 text-muted font-mono text-xs">{c.phone}</td>
+                      <td className="py-2 text-muted">{c.status ?? 'novo'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -298,15 +298,15 @@ export function ContactsView() {
           )}
         </div>
       ) : (
-        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+        <div className="rounded-xl border border-line bg-subtle p-5">
           <div className="flex items-center gap-2 mb-4">
             <Users className="w-4 h-4 text-indigo-300" />
             <span className="text-sm font-semibold">Listas importadas</span>
-            {listsState.kind === 'loading' && <Loader2 className="w-4 h-4 animate-spin text-slate-500 ml-auto" />}
+            {listsState.kind === 'loading' && <Loader2 className="w-4 h-4 animate-spin text-faint ml-auto" />}
           </div>
 
           {listsState.kind === 'loading' && (
-            <div className="flex items-center gap-2 text-sm text-slate-400 py-6">
+            <div className="flex items-center gap-2 text-sm text-muted py-6">
               <Loader2 className="w-4 h-4 animate-spin" /> Carregando listas…
             </div>
           )}
@@ -316,7 +316,7 @@ export function ContactsView() {
           )}
 
           {listsState.kind === 'ready' && lists.length === 0 && (
-            <div className="text-sm text-slate-500 py-6 text-center">
+            <div className="text-sm text-faint py-6 text-center">
               Nenhum contato encontrado.
               <br />
               Importe seus contatos para começar uma campanha.
@@ -329,11 +329,11 @@ export function ContactsView() {
                 <button
                   key={l.id}
                   onClick={() => void loadListDetail(l)}
-                  className="w-full flex items-center gap-3 text-sm py-2 border-b border-white/5 last:border-0 hover:bg-white/5 rounded px-2 -mx-2 transition"
+                  className="w-full flex items-center gap-3 text-sm py-2 border-b border-line last:border-0 hover:bg-subtle rounded px-2 -mx-2 transition"
                 >
-                  <span className="truncate text-slate-200">{l.name}</span>
+                  <span className="truncate text-fg">{l.name}</span>
                   <span className="text-slate-600 text-xs">{l.count} contatos</span>
-                  <span className="ml-auto text-xs text-slate-500">{fmtDate(l.createdAt)}</span>
+                  <span className="ml-auto text-xs text-faint">{fmtDate(l.createdAt)}</span>
                 </button>
               ))}
             </div>
@@ -351,7 +351,7 @@ function ErrorBlock({ onRetry, message }: { onRetry: () => void; message: string
         <AlertCircle className="w-4 h-4" />
         Não foi possível carregar os contatos.
       </div>
-      <div className="text-xs text-slate-500">{message}</div>
+      <div className="text-xs text-faint">{message}</div>
       <button
         onClick={onRetry}
         className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium inline-flex items-center gap-2 transition"

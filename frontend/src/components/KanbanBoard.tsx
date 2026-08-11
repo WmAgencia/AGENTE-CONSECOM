@@ -236,31 +236,31 @@ export function KanbanBoard({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between gap-3 flex-wrap">
+      <div className="px-6 py-4 border-b border-line flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-lg font-semibold">Pipeline de prospecção</h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted">
             {campaignFilter === 'all'
               ? 'Visão geral por campanha — clique numa campanha para abrir a pipeline'
               : selectedCampaign
                 ? `Leads da campanha "${selectedCampaign.name}"`
                 : 'Leads sem campanha vinculada'}
             {campaignFilter !== 'all' && (
-              <span className="text-slate-500"> · Ctrl + scroll navega pelas etapas</span>
+              <span className="text-faint"> · Ctrl + scroll navega pelas etapas</span>
             )}
           </p>
         </div>
         <div className="flex items-center gap-3">
           {campaignFilter !== 'all' && (
             <button onClick={() => setCampaignFilter('all')}
-              className="text-xs text-indigo-300 hover:text-white transition">
+              className="text-xs text-indigo-300 hover:text-fg transition">
               ← Todas as campanhas
             </button>
           )}
-          <label className="text-xs text-slate-400">
+          <label className="text-xs text-muted">
             Filtrar por campanha
             <select value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)}
-              className="ml-2 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none focus:border-indigo-500">
+              className="ml-2 bg-field border border-line-2 rounded-lg px-2 py-1.5 text-sm text-fg outline-none focus:border-indigo-500">
               <option value="all">Todos</option>
               <option value={NO_CAMPAIGN}>Sem campanha</option>
               {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -281,25 +281,25 @@ export function KanbanBoard({
                 <button
                   key={cid ?? NO_CAMPAIGN}
                   onClick={() => setCampaignFilter(cid ?? NO_CAMPAIGN)}
-                  className="text-left rounded-xl border border-white/5 bg-white/[0.02] hover:border-indigo-500/40 hover:bg-white/[0.04] transition p-4 group"
+                  className="text-left rounded-xl border border-line bg-subtle hover:border-indigo-500/40 hover:bg-subtle-2 transition p-4 group"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate group-hover:text-indigo-200">{name}</div>
                       {campaign?.description && (
-                        <div className="text-[11px] text-slate-500 truncate mt-0.5">{campaign.description}</div>
+                        <div className="text-[11px] text-faint truncate mt-0.5">{campaign.description}</div>
                       )}
                     </div>
-                    <span className="shrink-0 text-xs text-slate-400 bg-white/5 rounded-full px-2 py-0.5">
+                    <span className="shrink-0 text-xs text-muted bg-subtle rounded-full px-2 py-0.5">
                       {c.total} lead{c.total === 1 ? '' : 's'}
                     </span>
                   </div>
                   {visibleSections.length > 0 ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {visibleSections.map((s) => (
-                        <span key={s.key} className="inline-flex items-center gap-1 text-[11px] text-slate-300 bg-white/5 rounded-full px-2 py-0.5">
+                        <span key={s.key} className="inline-flex items-center gap-1 text-[11px] text-secondary bg-subtle rounded-full px-2 py-0.5">
                           <span className="text-[10px]">{s.icon}</span>
-                          {s.label} <span className="text-slate-400 font-semibold">{c.sections[s.key]}</span>
+                          {s.label} <span className="text-muted font-semibold">{c.sections[s.key]}</span>
                         </span>
                       ))}
                     </div>
@@ -323,12 +323,12 @@ export function KanbanBoard({
                   ? [...items].sort((a, b) => (b.call_moved_at ?? '').localeCompare(a.call_moved_at ?? ''))
                   : items
             return (
-              <div key={sec.key} className="w-72 shrink-0 rounded-xl border border-white/5 bg-white/[0.02] flex flex-col">
+              <div key={sec.key} className="w-72 shrink-0 rounded-xl border border-line bg-subtle flex flex-col">
                 <div className="px-4 py-3 flex items-center gap-2">
                   <span className="text-sm">{sec.icon}</span>
-                  <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">{sec.label}</span>
+                  <span className="text-xs font-semibold text-secondary uppercase tracking-wide">{sec.label}</span>
                   <span className={`w-2 h-2 rounded-full ${SECTION_COLOR[sec.key]}`} />
-                  <span className="ml-auto text-xs text-slate-500 bg-white/5 rounded-full px-2 py-0.5">{items.length}</span>
+                  <span className="ml-auto text-xs text-faint bg-subtle rounded-full px-2 py-0.5">{items.length}</span>
                 </div>
                 <div className="flex-1 px-2 pb-2 space-y-2 overflow-y-auto">
                   {ordered.map((lead) => (
@@ -343,7 +343,7 @@ export function KanbanBoard({
                     />
                   ))}
                   {ordered.length === 0 && (
-                    <div className="text-xs text-slate-600 text-center py-6 border border-dashed border-white/5 rounded-lg">Sem leads</div>
+                    <div className="text-xs text-slate-600 text-center py-6 border border-dashed border-line rounded-lg">Sem leads</div>
                   )}
                 </div>
               </div>
@@ -382,7 +382,7 @@ export function KanbanBoard({
 }
 
 const STATUS_BADGE: Record<LeadStatus, { label: string; cls: string }> = {
-  novo: { label: 'Novo', cls: 'bg-slate-500/15 text-slate-300' },
+  novo: { label: 'Novo', cls: 'bg-slate-500/15 text-secondary' },
   na_fila: { label: 'Na fila', cls: 'bg-amber-500/15 text-amber-300' },
   enviado: { label: 'Enviado', cls: 'bg-sky-500/15 text-sky-300' },
   conversando: { label: 'Conversando', cls: 'bg-violet-500/15 text-violet-300' },
@@ -411,7 +411,7 @@ export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClos
   const badge = STATUS_BADGE[lead.status]
   const tooltip = engagementTooltip(engagement)
   return (
-    <div className="group relative rounded-lg bg-[#16161f] border border-white/5 p-3 hover:border-white/10 transition cursor-pointer"
+    <div className="group relative rounded-lg bg-panel border border-line p-3 hover:border-line-2 transition cursor-pointer"
       onClick={onChat}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -420,7 +420,7 @@ export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClos
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <button onClick={(e) => { e.stopPropagation(); onAction() }} title="Abrir conversa (WhatsApp)"
-            className="text-slate-600 hover:text-white text-xs">•••</button>
+            className="text-slate-600 hover:text-fg text-xs">•••</button>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
         </div>
       </div>
@@ -428,11 +428,11 @@ export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClos
       {engagement && (
         <div title={tooltip} className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <span className="text-sm leading-none">{engagement.emoji}</span>
-          <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+          <div className="flex-1 h-1.5 rounded-full bg-subtle overflow-hidden">
             <div className="h-full rounded-full transition-all"
               style={{ width: `${engagement.total}%`, background: BAR_COLOR[engagement.band] }} />
           </div>
-          <span className="text-[11px] font-semibold text-slate-300">{engagement.total}%</span>
+          <span className="text-[11px] font-semibold text-secondary">{engagement.total}%</span>
         </div>
       )}
 
@@ -447,7 +447,7 @@ export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClos
         </div>
       )}
       {(lead.status === 'fechado' || lead.status === 'nao_fechado') && (
-        <div className="mt-2 space-y-1 text-[11px] text-slate-400">
+        <div className="mt-2 space-y-1 text-[11px] text-muted">
           {lead.status === 'fechado' && lead.sale_value != null && lead.sale_value > 0 && (
             <div className="text-emerald-300 bg-emerald-500/10 rounded-md px-2 py-1">
               💰 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(lead.sale_value)}
@@ -465,24 +465,24 @@ export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClos
         </div>
       )}
 
-      <div className="mt-2 space-y-1 text-[11px] text-slate-400">
+      <div className="mt-2 space-y-1 text-[11px] text-muted">
         {lead.phone && <div className="truncate">☎ {lead.phone}</div>}
         {lead.city && <div className="truncate">📍 {lead.city}{lead.state ? ', ' + lead.state : ''}</div>}
       </div>
 
       <div className="mt-2.5 flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
         {lead.status === 'reuniao_marcada' && (
-          <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-emerald-300">
+          <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-subtle hover:bg-subtle-2 text-emerald-300">
             Reagendar
           </button>
         )}
         {lead.status !== 'reuniao_marcada' && lead.status !== 'fechado' && lead.status !== 'nao_fechado' && (
-          <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-indigo-300">
+          <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-subtle hover:bg-subtle-2 text-indigo-300">
             Marcar reunião
           </button>
         )}
         {onClose && lead.status !== 'fechado' && lead.status !== 'nao_fechado' && (
-          <button onClick={onClose} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-white/5 hover:bg-white/10 text-slate-300">
+          <button onClick={onClose} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-subtle hover:bg-subtle-2 text-secondary">
             Concluir
           </button>
         )}
@@ -511,27 +511,27 @@ function MeetingModal({ lead, onClose, onSave }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+      <div className="w-full max-w-sm rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="font-semibold">Reunião</div>
-            <div className="text-xs text-slate-400 truncate max-w-[220px]">{lead.name || 'Sem nome'}</div>
+            <div className="text-xs text-muted truncate max-w-[220px]">{lead.name || 'Sem nome'}</div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
         </div>
-        <label className="block text-xs text-slate-400 mb-3">
+        <label className="block text-xs text-muted mb-3">
           Data e hora
           <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)}
-            className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
         </label>
-        <label className="block text-xs text-slate-400 mb-3">
+        <label className="block text-xs text-muted mb-3">
           Observações
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
-            className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 resize-none" />
+            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 resize-none" />
         </label>
         {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Cancelar</button>
           <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
             {busy ? 'Salvando...' : 'Salvar'}
           </button>
@@ -577,40 +577,40 @@ function CloseModal({ lead, onClose, onSave }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+      <div className="w-full max-w-sm rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="font-semibold">Concluir lead</div>
-            <div className="text-xs text-slate-400 truncate max-w-[220px]">{lead.name || 'Sem nome'}</div>
+            <div className="text-xs text-muted truncate max-w-[220px]">{lead.name || 'Sem nome'}</div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
         </div>
         <div className="space-y-2 mb-3">
-          <label className="flex items-center gap-2 text-sm text-slate-300">
+          <label className="flex items-center gap-2 text-sm text-secondary">
             <input type="radio" checked={closed} onChange={() => setClosed(true)} className="accent-emerald-500" />
             Fechado (cliente fechou)
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-300">
+          <label className="flex items-center gap-2 text-sm text-secondary">
             <input type="radio" checked={!closed} onChange={() => setClosed(false)} className="accent-rose-500" />
             Não fechado
           </label>
         </div>
         {closed && (
-          <label className="block text-xs text-slate-400 mb-3">
+          <label className="block text-xs text-muted mb-3">
             Valor da venda (R$)
             <input value={valor} onChange={(e) => setValor(e.target.value)}
               inputMode="decimal" placeholder="Ex.: 1500"
-              className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
           </label>
         )}
-        <label className="block text-xs text-slate-400 mb-3">
+        <label className="block text-xs text-muted mb-3">
           Motivo
           <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: fora do orçamento, já tem fornecedor..."
-            className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
         </label>
         {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Cancelar</button>
           <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
             {busy ? 'Salvando...' : 'Concluir'}
           </button>

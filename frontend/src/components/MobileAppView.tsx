@@ -44,7 +44,7 @@ export function MobileAppView() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-6">
+      <div className="rounded-2xl border border-line bg-subtle p-6">
         <div className="flex items-center gap-3 mb-2">
           <img
             src="/vyntra-logo.png"
@@ -53,7 +53,7 @@ export function MobileAppView() {
           />
           <div>
             <h2 className="text-lg font-semibold">Vyntra Mobile</h2>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-muted">
               v{APP_VERSION} — Chat com a IA, reuniões, alarmes e alertas no celular.
             </p>
           </div>
@@ -70,7 +70,7 @@ export function MobileAppView() {
           </a>
           <button
             onClick={() => void connect()}
-            className="flex items-center gap-2 justify-center px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-medium transition border border-white/10"
+            className="flex items-center gap-2 justify-center px-4 py-3 rounded-xl bg-subtle hover:bg-subtle-2 text-sm font-medium transition border border-line-2"
           >
             <Link2 className="w-4 h-4 text-indigo-300" />
             Conectar neste aparelho
@@ -89,7 +89,7 @@ export function MobileAppView() {
           </div>
         )}
 
-        <ol className="mt-6 space-y-2 text-sm text-slate-400">
+        <ol className="mt-6 space-y-2 text-sm text-muted">
           <li>
             1. Baixe o APK e instale no seu celular (permita "fontes desconhecidas").
           </li>
@@ -97,7 +97,7 @@ export function MobileAppView() {
             2. Abra o app uma vez — ele exibe "Conecte seu app".
           </li>
           <li>
-            3. Volte aqui e toque em <span className="text-slate-200">"Conectar neste aparelho"</span>.
+            3. Volte aqui e toque em <span className="text-fg">"Conectar neste aparelho"</span>.
           </li>
         </ol>
       </div>

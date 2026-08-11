@@ -46,10 +46,10 @@ interface FileState {
 }
 
 const STATUS_BADGE: Record<LearningStatus, { label: string; cls: string }> = {
-  identificado: { label: 'Identificado', cls: 'text-slate-300 bg-white/5 border-white/10' },
+  identificado: { label: 'Identificado', cls: 'text-secondary bg-subtle border-line-2' },
   validado: { label: 'Validado', cls: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/30' },
   ativo: { label: 'Ativo', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
-  inativo: { label: 'Inativo', cls: 'text-slate-400 bg-white/5 border-white/10' },
+  inativo: { label: 'Inativo', cls: 'text-muted bg-subtle border-line-2' },
 }
 
 const CATEGORY_CHIP: Record<string, string> = {
@@ -63,7 +63,7 @@ const CATEGORY_CHIP: Record<string, string> = {
   successful_patterns: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
   unsuccessful_patterns: 'text-rose-300 bg-rose-500/10 border-rose-500/30',
   common_objections: 'text-orange-300 bg-orange-500/10 border-orange-500/30',
-  conversation_patterns: 'text-slate-300 bg-white/5 border-white/10',
+  conversation_patterns: 'text-secondary bg-subtle border-line-2',
 }
 
 const OUTCOME_LABEL: Record<string, string> = {
@@ -73,7 +73,7 @@ const OUTCOME_LABEL: Record<string, string> = {
 }
 
 const STATUS_TEXT: Record<string, { label: string; cls: string }> = {
-  imported: { label: 'Importada', cls: 'text-slate-300 bg-white/5 border-white/10' },
+  imported: { label: 'Importada', cls: 'text-secondary bg-subtle border-line-2' },
   processing: { label: 'Processando…', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
   processed: { label: 'Processada', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
   failed: { label: 'Falhou', cls: 'text-rose-300 bg-rose-500/10 border-rose-500/30' },
@@ -427,14 +427,14 @@ export function CommercialMemory() {
   const inProcessing = Math.max(0, (dash?.conversationsImported ?? 0) - (dash?.conversationsProcessed ?? 0))
 
   return (
-    <div className="h-full overflow-auto rounded-xl border border-white/5 bg-white/[0.02]">
+    <div className="h-full overflow-auto rounded-xl border border-line bg-subtle">
       {/* ===== Header ===== */}
-      <div className="px-5 py-4 border-b border-white/5 flex flex-wrap items-center gap-3">
+      <div className="px-5 py-4 border-b border-line flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2.5">
           <Brain className="w-5 h-5 text-indigo-300" />
           <div>
             <div className="text-sm font-semibold">Memória Comercial da IA</div>
-            <div className="text-[11px] text-slate-500">
+            <div className="text-[11px] text-faint">
               Importe conversas reais e transforme em aprendizados que orientam a IA — sem alterar a persona.
             </div>
           </div>
@@ -448,7 +448,7 @@ export function CommercialMemory() {
           <button
             onClick={() => void refresh()}
             disabled={loading}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-40 transition"
+            className="p-2 rounded-lg text-muted hover:text-fg hover:bg-subtle disabled:opacity-40 transition"
             title="Atualizar"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -482,7 +482,7 @@ export function CommercialMemory() {
         {/* ===== Stats (números reais do dashboard) ===== */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Conversas importadas', value: dash?.conversationsImported ?? 0, accent: 'text-slate-200' },
+            { label: 'Conversas importadas', value: dash?.conversationsImported ?? 0, accent: 'text-fg' },
             { label: 'Processadas', value: dash?.conversationsProcessed ?? 0, accent: 'text-emerald-300' },
             { label: 'Em processamento', value: inProcessing, accent: 'text-amber-300' },
             { label: 'Aprendizados', value: dash?.learnings ?? 0, accent: 'text-indigo-300' },
@@ -491,21 +491,21 @@ export function CommercialMemory() {
             { label: 'Padrões extraídos', value: dash?.patterns ?? 0, accent: 'text-sky-300' },
             { label: 'Objeções mapeadas', value: dash?.objections ?? 0, accent: 'text-orange-300' },
             { label: 'Estratégias de reunião', value: dash?.meetingStrategies ?? 0, accent: 'text-fuchsia-300' },
-            { label: 'Lotes de importação', value: dash?.totalImports ?? 0, accent: 'text-slate-200' },
+            { label: 'Lotes de importação', value: dash?.totalImports ?? 0, accent: 'text-fg' },
           ].map((s) => (
-            <div key={s.label} className="rounded-lg border border-white/5 bg-black/20 px-3 py-2.5">
+            <div key={s.label} className="rounded-lg border border-line bg-subtle-2 px-3 py-2.5">
               <div className={`text-lg font-semibold leading-tight ${s.accent}`}>{s.value}</div>
-              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-500">{s.label}</div>
+              <div className="mt-0.5 text-[10px] uppercase tracking-wide text-faint">{s.label}</div>
             </div>
           ))}
         </div>
 
         {/* ===== O que a IA aprendeu ===== */}
         {tab === 'aprendizados' && learnings.length > 0 && (
-          <div className="rounded-lg border border-white/5 bg-black/10 p-4">
+          <div className="rounded-lg border border-line bg-subtle p-4">
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-4 h-4 text-emerald-300" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">O que a IA aprendeu</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">O que a IA aprendeu</span>
             </div>
             <ul className="space-y-1.5">
               {learnings
@@ -513,23 +513,23 @@ export function CommercialMemory() {
                 .sort((a, b) => Number(b.important) - Number(a.important))
                 .slice(0, 7)
                 .map((l) => (
-                  <li key={l.id} className="text-xs text-slate-300 flex gap-2">
+                  <li key={l.id} className="text-xs text-secondary flex gap-2">
                     <ArrowRight className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
                     <span>
-                      <span className="font-semibold text-slate-200">[{categoryLabel(l.category)}]</span>{' '}
+                      <span className="font-semibold text-fg">[{categoryLabel(l.category)}]</span>{' '}
                       {l.content}
                     </span>
                   </li>
                 ))}
             </ul>
-            <p className="text-[10px] text-slate-500 mt-2">
+            <p className="text-[10px] text-faint mt-2">
               Padrões validados são injetados no contexto comercial da IA ({learnings.length} no total).
             </p>
           </div>
         )}
 
         {/* ===== Tabs (rotas reais) ===== */}
-        <div className="flex items-center gap-1 border-b border-white/5 pb-1">
+        <div className="flex items-center gap-1 border-b border-line pb-1">
           {([
             { key: 'lotes', label: 'Lotes', icon: Database },
             { key: 'conversas', label: 'Conversas', icon: MessageSquareText },
@@ -542,7 +542,7 @@ export function CommercialMemory() {
                 key={t.key}
                 onClick={() => switchTab(t.key)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs font-medium transition ${
-                  active ? 'text-white bg-white/5 border border-b-0 border-white/10' : 'text-slate-400 hover:text-white'
+                  active ? 'text-fg bg-subtle border border-b-0 border-line-2' : 'text-muted hover:text-fg'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -559,14 +559,14 @@ export function CommercialMemory() {
         {tab === 'lotes' && (
           <div className="space-y-2">
             {imports.length === 0 && (
-              <div className="text-xs text-slate-500 py-6 text-center">Nenhum lote importado ainda. Clique em “Importar conversas”.</div>
+              <div className="text-xs text-faint py-6 text-center">Nenhum lote importado ainda. Clique em “Importar conversas”.</div>
             )}
             {imports.map((imp) => (
-              <div key={imp.id} className="rounded-lg border border-white/5 bg-black/20 px-4 py-3 flex flex-wrap items-center gap-3">
+              <div key={imp.id} className="rounded-lg border border-line bg-subtle-2 px-4 py-3 flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-sm text-slate-200 font-medium">{imp.file_name}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase text-slate-400 bg-white/5 border-white/10">
+                    <span className="truncate text-sm text-fg font-medium">{imp.file_name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full border uppercase text-muted bg-subtle border-line-2">
                       {ORIGIN_LABEL[imp.origin] ?? imp.origin}
                     </span>
                     {imp.status === 'processing' && (
@@ -585,14 +585,14 @@ export function CommercialMemory() {
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
+                  <div className="text-[11px] text-faint mt-0.5">
                     {imp.conversations_found} conversas · {imp.learnings_generated} aprendizados
                     {imp.failures > 0 ? ` · ${imp.failures} falhas` : ''} · {new Date(imp.created_at).toLocaleString('pt-BR')}
                   </div>
                 </div>
                 <button
                   onClick={() => void onDeleteImport(imp.id, imp.file_name)}
-                  className="p-2 rounded-lg text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition"
+                  className="p-2 rounded-lg text-faint hover:text-rose-300 hover:bg-rose-500/10 transition"
                   title="Excluir lote"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -605,15 +605,15 @@ export function CommercialMemory() {
         {/* ===== Conversas ===== */}
         {tab === 'conversas' && (
           <div className="space-y-2">
-            {convs.length === 0 && <div className="text-xs text-slate-500 py-6 text-center">Nenhuma conversa importada.</div>}
+            {convs.length === 0 && <div className="text-xs text-faint py-6 text-center">Nenhuma conversa importada.</div>}
             {convs.map((c) => {
               const st = STATUS_TEXT[c.status] ?? STATUS_TEXT.imported
               return (
-                <div key={c.id} className="rounded-lg border border-white/5 bg-black/20 px-4 py-3 flex flex-wrap items-center gap-3">
+                <div key={c.id} className="rounded-lg border border-line bg-subtle-2 px-4 py-3 flex flex-wrap items-center gap-3">
                   <MessageSquareText className="w-4 h-4 text-indigo-300 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm text-slate-200 font-medium truncate">
+                      <span className="text-sm text-fg font-medium truncate">
                         {c.contact_name ?? c.source_file ?? 'Conversa'}
                       </span>
                       {c.outcome && (
@@ -623,7 +623,7 @@ export function CommercialMemory() {
                       )}
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
                     </div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">
+                    <div className="text-[11px] text-faint mt-0.5">
                       {c.messages_count} mensagens · {c.direction ? (DIRECTION_LABEL[c.direction] ?? c.direction) : '—'}
                       {c.source_file ? ` · ${c.source_file}` : ''} · {new Date(c.created_at).toLocaleString('pt-BR')}
                     </div>
@@ -640,7 +640,7 @@ export function CommercialMemory() {
                   </button>
                   <button
                     onClick={() => void onDeleteConversation(c.id)}
-                    className="p-2 rounded-lg text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition"
+                    className="p-2 rounded-lg text-faint hover:text-rose-300 hover:bg-rose-500/10 transition"
                     title="Excluir conversa"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -656,13 +656,13 @@ export function CommercialMemory() {
           <div className="space-y-3">
             {/* Filtros + busca */}
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/20 border border-white/5 text-slate-400">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-subtle-2 border border-line text-muted">
                 <Search className="w-3.5 h-3.5 shrink-0" />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Buscar por título, conteúdo ou categoria…"
-                  className="bg-transparent outline-none text-xs text-slate-200 placeholder-slate-500 w-52"
+                  className="bg-transparent outline-none text-xs text-fg placeholder-slate-500 w-52"
                 />
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -673,23 +673,23 @@ export function CommercialMemory() {
                     className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
                       filter === f.key
                         ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
-                        : 'text-slate-400 border-white/10 hover:text-white'
+                        : 'text-muted border-line-2 hover:text-fg'
                     }`}
                   >
                     {f.label}
                   </button>
                 ))}
               </div>
-              <span className="ml-auto text-[11px] text-slate-500">{filteredLearnings.length} de {learnings.length}</span>
+              <span className="ml-auto text-[11px] text-faint">{filteredLearnings.length} de {learnings.length}</span>
             </div>
 
             {learnings.length === 0 && (
-              <div className="text-xs text-slate-500 py-6 text-center">
+              <div className="text-xs text-faint py-6 text-center">
                 Nenhum aprendizado ainda. Importe conversas para a IA extrair padrões ou use “+ Adicionar aprendizado”.
               </div>
             )}
             {filteredLearnings.length === 0 && learnings.length > 0 && (
-              <div className="text-xs text-slate-500 py-6 text-center">Nenhum aprendizado corresponde ao filtro/busca.</div>
+              <div className="text-xs text-faint py-6 text-center">Nenhum aprendizado corresponde ao filtro/busca.</div>
             )}
             {filteredLearnings.map((l) => {
               const badge = STATUS_BADGE[l.status]
@@ -697,7 +697,7 @@ export function CommercialMemory() {
               const evidence = normalizeEvidence(l.evidence)
               const expanded = expandedEvidence.has(l.id)
               return (
-                <div key={l.id} className="rounded-lg border border-white/5 bg-black/20 px-4 py-3 flex items-start gap-3">
+                <div key={l.id} className="rounded-lg border border-line bg-subtle-2 px-4 py-3 flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${chip}`}>{categoryLabel(l.category)}</span>
@@ -733,13 +733,13 @@ export function CommercialMemory() {
                             ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
                             : l.confidence === 'media'
                               ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
-                              : 'text-slate-400 bg-white/5 border-white/10'
+                              : 'text-muted bg-subtle border-line-2'
                         }`}
                       >
                         confiança {l.confidence}
                       </span>
                     </div>
-                    <p className="mt-1.5 text-sm text-slate-200 leading-snug">{l.content}</p>
+                    <p className="mt-1.5 text-sm text-fg leading-snug">{l.content}</p>
                     {evidence.length > 0 ? (
                       <div className="mt-1.5">
                         <button
@@ -751,7 +751,7 @@ export function CommercialMemory() {
                               return next
                             })
                           }
-                          className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500 hover:text-indigo-300 transition"
+                          className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-faint hover:text-indigo-300 transition"
                         >
                           <Eye className="w-3 h-3" />
                           {evidence.length === 1 ? '1 evidência' : `${evidence.length} evidências`}
@@ -759,7 +759,7 @@ export function CommercialMemory() {
                         {(expanded || evidence.length <= 2) && (
                           <div className="mt-1 space-y-1">
                             {(expanded ? evidence : evidence.slice(0, 2)).map((e, i) => (
-                              <div key={i} className="text-[11px] text-slate-400 bg-white/[0.03] border border-white/5 rounded-md px-2 py-1">
+                              <div key={i} className="text-[11px] text-muted bg-subtle border border-line rounded-md px-2 py-1">
                                 “{e}”
                               </div>
                             ))}
@@ -773,14 +773,14 @@ export function CommercialMemory() {
                   <div className="flex flex-col gap-1.5 shrink-0">
                     <button
                       onClick={() => void onToggleImportant(l)}
-                      className={`p-1.5 rounded-lg transition ${l.important ? 'text-amber-300 bg-amber-500/15' : 'text-slate-500 hover:text-amber-300 hover:bg-white/5'}`}
+                      className={`p-1.5 rounded-lg transition ${l.important ? 'text-amber-300 bg-amber-500/15' : 'text-faint hover:text-amber-300 hover:bg-subtle'}`}
                       title={l.important ? 'Desmarcar importante' : 'Marcar importante'}
                     >
                       <Star className="w-4 h-4" fill={l.important ? 'currentColor' : 'none'} />
                     </button>
                     <button
                       onClick={() => openEdit(l)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition"
+                      className="p-1.5 rounded-lg text-faint hover:text-fg hover:bg-subtle transition"
                       title="Editar aprendizado"
                     >
                       <Pencil className="w-4 h-4" />
@@ -790,7 +790,7 @@ export function CommercialMemory() {
                       className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition ${
                         l.status === 'ativo'
                           ? 'text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10'
-                          : 'text-slate-400 border-white/10 hover:text-white hover:bg-white/5'
+                          : 'text-muted border-line-2 hover:text-fg hover:bg-subtle'
                       }`}
                       title={l.status === 'ativo' ? 'Desativar (não entra na memória)' : 'Ativar (entra na memória comercial)'}
                     >
@@ -798,7 +798,7 @@ export function CommercialMemory() {
                     </button>
                     <button
                       onClick={() => void onDeleteLearning(l.id)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition"
+                      className="p-1.5 rounded-lg text-faint hover:text-rose-300 hover:bg-rose-500/10 transition"
                       title="Remover aprendizado"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -815,7 +815,7 @@ export function CommercialMemory() {
       {importOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !uploading && setImportOpen(false)}>
           <div
-            className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl"
+            className="w-full max-w-xl rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -824,14 +824,14 @@ export function CommercialMemory() {
                   <Upload className="w-4 h-4 text-indigo-300" />
                   Importar conversas
                 </div>
-                <div className="text-xs text-slate-400 mt-0.5">
+                <div className="text-xs text-muted mt-0.5">
                   Aceita .txt (exportação do WhatsApp), .csv e .zip com vários arquivos. Até 100MB por arquivo.
                 </div>
               </div>
               <button
                 onClick={() => !uploading && setImportOpen(false)}
                 disabled={uploading}
-                className="text-slate-400 hover:text-white"
+                className="text-muted hover:text-fg"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -862,12 +862,12 @@ export function CommercialMemory() {
               }}
               onClick={() => fileInputRef.current?.click()}
               className={`border-2 border-dashed rounded-xl px-6 py-8 flex flex-col items-center justify-center text-center transition cursor-pointer ${
-                dragOver ? 'border-indigo-400 bg-indigo-500/5' : 'border-white/10 hover:border-white/20'
+                dragOver ? 'border-indigo-400 bg-indigo-500/5' : 'border-line-2 hover:border-line-strong'
               }`}
             >
-              <FileUp className="w-8 h-8 text-slate-500 mb-2" />
-              <div className="text-sm text-slate-300">Arraste aqui ou clique para selecionar</div>
-              <div className="text-[11px] text-slate-500 mt-1">Você pode enviar vários arquivos de uma vez</div>
+              <FileUp className="w-8 h-8 text-faint mb-2" />
+              <div className="text-sm text-secondary">Arraste aqui ou clique para selecionar</div>
+              <div className="text-[11px] text-faint mt-1">Você pode enviar vários arquivos de uma vez</div>
             </div>
 
             {fileList.length > 0 && (
@@ -877,9 +877,9 @@ export function CommercialMemory() {
                     {f.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 text-amber-300 animate-spin" />}
                     {f.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />}
                     {f.status === 'error' && <TriangleAlert className="w-3.5 h-3.5 text-rose-300" />}
-                    {f.status === 'queued' && <Clock className="w-3.5 h-3.5 text-slate-500" />}
-                    <span className="truncate text-slate-300 flex-1">{f.name}</span>
-                    <span className="text-slate-500 shrink-0">
+                    {f.status === 'queued' && <Clock className="w-3.5 h-3.5 text-faint" />}
+                    <span className="truncate text-secondary flex-1">{f.name}</span>
+                    <span className="text-faint shrink-0">
                       {f.status === 'uploading' && 'enviando…'}
                       {f.status === 'done' && 'importado'}
                       {f.status === 'error' && (f.detail ?? 'erro')}
@@ -890,7 +890,7 @@ export function CommercialMemory() {
             )}
 
             <div className="mt-4 flex items-center justify-between">
-              <p className="text-[10px] text-slate-500">
+              <p className="text-[10px] text-faint">
                 As conversas são analisadas em background automaticamente. Os aprendizados ficam como “Identificados” — você decide o que ativar.
               </p>
               <button
@@ -909,7 +909,7 @@ export function CommercialMemory() {
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !saving && setModal(null)}>
           <div
-            className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl"
+            className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -918,35 +918,35 @@ export function CommercialMemory() {
                   <Sparkles className="w-4 h-4 text-emerald-300" />
                   {modal.mode === 'create' ? 'Adicionar aprendizado' : 'Editar aprendizado'}
                 </div>
-                <div className="text-xs text-slate-400 mt-0.5">
+                <div className="text-xs text-muted mt-0.5">
                   {modal.mode === 'edit' && modal.learning
                     ? `Origem: ${modal.learning.origin === 'manual' ? 'Manual' : 'Gerado pela IA'}`
                     : 'Conhecimento manual que orientará a IA.'}
                 </div>
               </div>
-              <button onClick={() => !saving && setModal(null)} className="text-slate-400 hover:text-white">
+              <button onClick={() => !saving && setModal(null)} className="text-muted hover:text-fg">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Aprendizado *</label>
+                <label className="block text-xs text-muted mb-1">Aprendizado *</label>
                 <textarea
                   value={form.content}
                   onChange={(e) => setForm({ ...form, content: e.target.value })}
                   rows={3}
                   placeholder="Ex.: Sempre entender o problema antes de apresentar preço"
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                 />
               </div>
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Categoria</label>
+                  <label className="block text-xs text-muted mb-1">Categoria</label>
                   <select
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value as LearningCategory })}
-                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                    className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                   >
                     {CATEGORY_OPTIONS.map((c) => (
                       <option key={c} value={c}>{categoryLabel(c)}</option>
@@ -954,11 +954,11 @@ export function CommercialMemory() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Confiança</label>
+                  <label className="block text-xs text-muted mb-1">Confiança</label>
                   <select
                     value={form.confidence}
                     onChange={(e) => setForm({ ...form, confidence: e.target.value as LearningForm['confidence'] })}
-                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                    className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                   >
                     <option value="alta">Alta</option>
                     <option value="media">Média</option>
@@ -968,11 +968,11 @@ export function CommercialMemory() {
               </div>
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Status</label>
+                  <label className="block text-xs text-muted mb-1">Status</label>
                   <select
                     value={form.status}
                     onChange={(e) => setForm({ ...form, status: e.target.value as LearningStatus })}
-                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                    className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                   >
                     <option value="identificado">Identificado (pendente)</option>
                     <option value="validado">Validado</option>
@@ -981,11 +981,11 @@ export function CommercialMemory() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Performance</label>
+                  <label className="block text-xs text-muted mb-1">Performance</label>
                   <select
                     value={form.performance}
                     onChange={(e) => setForm({ ...form, performance: e.target.value as LearningForm['performance'] })}
-                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                    className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                   >
                     <option value="neutro">Neutro</option>
                     <option value="positivo">Funcionou</option>
@@ -994,16 +994,16 @@ export function CommercialMemory() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Evidências (opcional — uma por linha)</label>
+                <label className="block text-xs text-muted mb-1">Evidências (opcional — uma por linha)</label>
                 <textarea
                   value={form.evidenceText}
                   onChange={(e) => setForm({ ...form, evidenceText: e.target.value })}
                   rows={3}
                   placeholder={'Trecho 1\nTrecho 2'}
-                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                  className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                 />
               </div>
-              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
+              <label className="flex items-center gap-2 text-xs text-secondary cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={form.important}
@@ -1012,7 +1012,7 @@ export function CommercialMemory() {
                 />
                 Marcar como importante
               </label>
-              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
+              <label className="flex items-center gap-2 text-xs text-secondary cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={form.status === 'ativo'}
@@ -1030,7 +1030,7 @@ export function CommercialMemory() {
                 <button
                   onClick={() => !saving && setModal(null)}
                   disabled={saving}
-                  className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white transition disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg text-sm text-muted hover:text-fg transition disabled:opacity-50"
                 >
                   Cancelar
                 </button>

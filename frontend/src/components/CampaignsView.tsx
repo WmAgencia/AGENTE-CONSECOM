@@ -174,15 +174,15 @@ async function loadRuns() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-line flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold">Campanhas &amp; fila de envio</h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted">
             Monte a sequência, enfileire leads e acompanhe o envio (WhatsApp)
           </p>
         </div>
         <button onClick={load}
-          className="px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 rounded-lg transition">
+          className="px-3 py-1.5 text-xs bg-subtle hover:bg-subtle-2 rounded-lg transition">
           Atualizar
         </button>
       </div>
@@ -208,7 +208,7 @@ async function loadRuns() {
               />
             ))}
             {campaigns.length === 0 && (
-              <p className="col-span-full text-sm text-slate-500">
+              <p className="col-span-full text-sm text-faint">
                 Nenhuma campanha criada ainda.
               </p>
             )}
@@ -217,7 +217,7 @@ async function loadRuns() {
 
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
               Fila de envio ({runs.filter((r) => r.status === 'pending' || r.status === 'running').length} ativos)
             </h2>
           </div>
@@ -270,14 +270,14 @@ function CampaignButton({ onCreated }: { onCreated: () => Promise<void> }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Nome da campanha"
-            className="flex-1 max-w-xs bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+            className="flex-1 max-w-xs bg-field border border-line-2 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
           />
           <button type="submit"
             className="px-3 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg transition">
             Criar
           </button>
           <button type="button" onClick={() => setOpen(false)}
-            className="px-3 py-1.5 text-sm bg-white/5 hover:bg-white/10 rounded-lg">
+            className="px-3 py-1.5 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
             Cancelar
           </button>
         </form>
@@ -319,11 +319,11 @@ function CampaignCard({
   const [open, setOpen] = useState(false)
   const activeConnections = connections.filter((c) => c.status === 'connected')
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+    <div className="rounded-xl border border-line bg-subtle p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="font-medium">{campaign.name}</div>
-          <div className="text-[11px] text-slate-400">
+          <div className="text-[11px] text-muted">
             {messages.length} mensagens na sequência
           </div>
         </div>
@@ -344,14 +344,14 @@ function CampaignCard({
           </button>
           <button
             onClick={() => setOpen((o) => !o)}
-            className="text-[11px] px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10"
+            className="text-[11px] px-2 py-1 rounded-lg bg-subtle hover:bg-subtle-2"
           >
             {open ? 'Fechar' : 'Montar sequência'}
           </button>
           <button
             onClick={onDelete}
             title="Excluir campanha"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+            className="p-1.5 rounded-lg text-faint hover:text-rose-400 hover:bg-rose-500/10 transition"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -359,20 +359,20 @@ function CampaignCard({
       </div>
 
       <div className="flex flex-wrap gap-2 mb-3">
-        <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-slate-300">{campaign.lead_count} leads</span>
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-subtle text-secondary">{campaign.lead_count} leads</span>
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{campaign.success_count} sucessos</span>
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300">{campaign.fail_count} falhas</span>
       </div>
 
       <div className="flex items-center gap-2 mb-3">
-        <label className="text-[11px] text-slate-400 shrink-0">
+        <label className="text-[11px] text-muted shrink-0">
           Enviar por WhatsApp:
         </label>
         <select
           value={campaign.whatsapp_instance ?? ''}
           onChange={(e) => onSetInstance(e.target.value || null)}
           disabled={activeConnections.length === 0}
-          className="flex-1 min-w-0 bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-200 outline-none focus:border-indigo-500"
+          className="flex-1 min-w-0 bg-field border border-line-2 rounded-lg px-2 py-1 text-xs text-fg outline-none focus:border-indigo-500"
         >
           <option value="">Padrão (configuração do backend)</option>
           {activeConnections.map((c) => (
@@ -409,14 +409,14 @@ function CampaignCard({
       {!open ? (
         <ol className="space-y-1.5">
           {messages.map((m, i) => (
-            <li key={m.id} className="text-xs flex items-center gap-2 text-slate-300">
-              <span className="w-5 h-5 shrink-0 rounded-full bg-white/5 flex items-center justify-center text-[10px] text-slate-400">
+            <li key={m.id} className="text-xs flex items-center gap-2 text-secondary">
+              <span className="w-5 h-5 shrink-0 rounded-full bg-subtle flex items-center justify-center text-[10px] text-muted">
                 {i + 1}
               </span>
               <KindBadge kind={m.kind} />
               <span className="truncate flex-1">{m.text || (m.media_url ? 'Mídia' : '...')}</span>
               {m.delay_seconds > 0 && (
-                <span className="text-[10px] text-slate-500 shrink-0">+{m.delay_seconds}s</span>
+                <span className="text-[10px] text-faint shrink-0">+{m.delay_seconds}s</span>
               )}
             </li>
           ))}
@@ -485,25 +485,25 @@ function EnqueueModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+      <div className="w-full max-w-lg rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="font-semibold">Enfileirar leads</div>
-            <div className="text-xs text-slate-400">Campanha: {campaign.name}</div>
+            <div className="text-xs text-muted">Campanha: {campaign.name}</div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">
             ×
           </button>
         </div>
 
         <div className="max-h-72 overflow-y-auto space-y-1.5 mb-4">
           {leads.length === 0 && (
-            <p className="text-sm text-slate-500">Nenhum lead cadastrado ainda.</p>
+            <p className="text-sm text-faint">Nenhum lead cadastrado ainda.</p>
           )}
           {leads.map((lead) => (
             <label
               key={lead.id}
-              className="flex items-center gap-3 rounded-lg border border-white/5 px-3 py-2 cursor-pointer hover:bg-white/5"
+              className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 cursor-pointer hover:bg-subtle"
             >
               <input
                 type="checkbox"
@@ -513,9 +513,9 @@ function EnqueueModal({
               />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm truncate">{lead.name || 'Sem nome'}</span>
-                {lead.phone && <span className="block text-[11px] text-slate-500">{lead.phone}</span>}
+                {lead.phone && <span className="block text-[11px] text-faint">{lead.phone}</span>}
               </span>
-              <span className="text-[10px] text-slate-500 shrink-0">{lead.status}</span>
+              <span className="text-[10px] text-faint shrink-0">{lead.status}</span>
             </label>
           ))}
         </div>
@@ -523,10 +523,10 @@ function EnqueueModal({
         {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
 
         <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-400">{selected.size} selecionado(s)</span>
+          <span className="text-xs text-muted">{selected.size} selecionado(s)</span>
           <div className="flex gap-2">
             <button onClick={onClose}
-              className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">
+              className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
               Cancelar
             </button>
             <button onClick={() => void submit()} disabled={busy}
@@ -541,7 +541,7 @@ function EnqueueModal({
 }
 
 const CAMPAIGN_STATUS: Record<Campaign['status'], { label: string; cls: string }> = {
-  pronta: { label: 'Pronta', cls: 'bg-white/5 text-slate-300' },
+  pronta: { label: 'Pronta', cls: 'bg-subtle text-secondary' },
   em_progresso: { label: 'Em andamento', cls: 'bg-emerald-500/15 text-emerald-300' },
   pausada: { label: 'Pausada', cls: 'bg-amber-500/15 text-amber-300' },
   finalizada: { label: 'Concluída', cls: 'bg-sky-500/15 text-sky-300' },
@@ -586,7 +586,7 @@ function CampaignStatusBanner({ status }: { status: Campaign['status'] }) {
 }
 
 const RUN_STATUS: Record<SendRun['status'], { label: string; cls: string }> = {
-  pending: { label: 'Pendente', cls: 'bg-slate-500/15 text-slate-300' },
+  pending: { label: 'Pendente', cls: 'bg-slate-500/15 text-secondary' },
   running: { label: 'Rodando', cls: 'bg-amber-500/15 text-amber-300' },
   done: { label: 'Concluído', cls: 'bg-emerald-500/15 text-emerald-300' },
   failed: { label: 'Falhou', cls: 'bg-rose-500/15 text-rose-300' },
@@ -603,16 +603,16 @@ const FAIL_REASON_LABEL: Record<string, string> = {
 function RunsTable({ runs, onRemove }: { runs: SendRun[]; onRemove: (r: SendRun) => void }) {
   if (runs.length === 0) {
     return (
-      <p className="text-sm text-slate-500 border border-dashed border-white/10 rounded-lg px-4 py-6 text-center">
+      <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-6 text-center">
         Nenhuma execução de envio ainda. Enfileire leads em uma campanha para começar.
       </p>
     )
   }
   return (
-    <div className="rounded-xl border border-white/5 overflow-hidden">
+    <div className="rounded-xl border border-line overflow-hidden">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-white/5">
+          <tr className="text-left text-[11px] uppercase tracking-wide text-faint border-b border-line">
             <th className="px-4 py-2.5 font-medium">Lead</th>
             <th className="px-4 py-2.5 font-medium">Campanha</th>
             <th className="px-4 py-2.5 font-medium">Etapa</th>
@@ -625,13 +625,13 @@ function RunsTable({ runs, onRemove }: { runs: SendRun[]; onRemove: (r: SendRun)
           {runs.map((r) => {
             const st = RUN_STATUS[r.status]
             return (
-              <tr key={r.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+              <tr key={r.id} className="border-b border-line last:border-0 hover:bg-subtle">
                 <td className="px-4 py-2.5">
                   <div className="font-medium truncate max-w-[200px]">{r.lead?.name ?? '—'}</div>
-                  {r.lead?.phone && <div className="text-[11px] text-slate-500">{r.lead.phone}</div>}
+                  {r.lead?.phone && <div className="text-[11px] text-faint">{r.lead.phone}</div>}
                 </td>
-                <td className="px-4 py-2.5 text-slate-300">{r.campaign?.name ?? '—'}</td>
-                <td className="px-4 py-2.5 text-slate-400">#{(r.current_position ?? 0) + 1}</td>
+                <td className="px-4 py-2.5 text-secondary">{r.campaign?.name ?? '—'}</td>
+                <td className="px-4 py-2.5 text-muted">#{(r.current_position ?? 0) + 1}</td>
                 <td className="px-4 py-2.5">
                   <span className={`${st.cls} px-2 py-0.5 rounded text-[11px] font-medium`}>
                     {st.label}
@@ -642,7 +642,7 @@ function RunsTable({ runs, onRemove }: { runs: SendRun[]; onRemove: (r: SendRun)
                     </div>
                   )}
                 </td>
-                <td className="px-4 py-2.5 text-slate-500">
+                <td className="px-4 py-2.5 text-faint">
                   {r.next_send_at ? new Date(r.next_send_at).toLocaleString('pt-BR') : '—'}
                 </td>
                 <td className="px-4 py-2.5 text-right">
@@ -650,7 +650,7 @@ function RunsTable({ runs, onRemove }: { runs: SendRun[]; onRemove: (r: SendRun)
                     <button
                       onClick={() => onRemove(r)}
                       title="Desenfileirar"
-                      className="text-slate-500 hover:text-rose-400 text-lg leading-none"
+                      className="text-faint hover:text-rose-400 text-lg leading-none"
                     >
                       ×
                     </button>

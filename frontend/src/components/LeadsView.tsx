@@ -17,7 +17,7 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
 }
 
 const STATUS_COLOR: Record<LeadStatus, string> = {
-  novo: 'bg-slate-500/15 text-slate-300',
+  novo: 'bg-slate-500/15 text-secondary',
   na_fila: 'bg-amber-500/15 text-amber-300',
   enviado: 'bg-sky-500/15 text-sky-300',
   conversando: 'bg-violet-500/15 text-violet-300',
@@ -138,11 +138,11 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-white/5 space-y-3">
+      <div className="px-6 py-4 border-b border-line space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold">Leads</h1>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-muted">
               Prospecção ativa — empresas capturadas pela extensão. O histórico de cada campanha fica preservado no Kanban.
             </p>
           </div>
@@ -155,7 +155,7 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
 
         <div className="flex flex-wrap items-center gap-3">
           <button onClick={selectAll}
-            className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">
+            className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
             Selecionar todos ({leads.length})
           </button>
           <button
@@ -195,10 +195,10 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
           return (
             <section key={sid}>
               <div className="flex items-center gap-3 mb-3">
-                <h2 className="text-sm font-semibold text-slate-300">
+                <h2 className="text-sm font-semibold text-secondary">
                   {session ? new Date(session.created_at).toLocaleString('pt-BR') : 'Sem sessão'}
                 </h2>
-                <span className="text-xs text-slate-500 bg-white/5 rounded-full px-2 py-0.5">{list.length}</span>
+                <span className="text-xs text-faint bg-subtle rounded-full px-2 py-0.5">{list.length}</span>
                 <div className="ml-auto flex items-center gap-2">
                   <button
                     onClick={() => {
@@ -212,10 +212,10 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/5 overflow-hidden">
+              <div className="rounded-xl border border-line overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-white/5">
+                    <tr className="text-left text-[11px] uppercase tracking-wide text-faint border-b border-line">
                       <th className="px-3 py-2.5 font-medium w-8">
                         <input type="checkbox" checked={allSelected && list.length > 0}
                           onChange={() => {
@@ -231,9 +231,9 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
                       <th className="px-3 py-2.5 font-medium">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-line">
                     {list.map((lead) => (
-                      <tr key={lead.id} className="hover:bg-white/[0.02]">
+                      <tr key={lead.id} className="hover:bg-subtle">
                         <td className="px-3 py-2.5">
                           <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggle(lead.id)} className="accent-indigo-500" />
                         </td>
@@ -246,9 +246,9 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
                             </div>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 text-slate-400">{lead.category || '—'}</td>
-                        <td className="px-3 py-2.5 text-slate-400">{lead.city ? `${lead.city}${lead.state ? ', ' + lead.state : ''}` : '—'}</td>
-                        <td className="px-3 py-2.5 text-slate-400">{lead.phone || '—'}</td>
+                        <td className="px-3 py-2.5 text-muted">{lead.category || '—'}</td>
+                        <td className="px-3 py-2.5 text-muted">{lead.city ? `${lead.city}${lead.state ? ', ' + lead.state : ''}` : '—'}</td>
+                        <td className="px-3 py-2.5 text-muted">{lead.phone || '—'}</td>
                         <td className="px-3 py-2.5">
                           <span className={`inline-block text-[11px] px-2 py-1 rounded-full ${STATUS_COLOR[lead.status]}`}>
                             {STATUS_LABEL[lead.status]}
@@ -264,7 +264,7 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
         })}
 
         {leads.length === 0 && (
-          <p className="text-sm text-slate-500 border border-dashed border-white/10 rounded-lg px-4 py-8 text-center">
+          <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-8 text-center">
             Nenhum lead ainda. Use a extensão do Google Maps para capturar empresas.
           </p>
         )}
@@ -306,21 +306,21 @@ function ClearListModal({ count, busy, onClose, onConfirm }: {
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-3">
           <div className="font-semibold">Limpar lista ativa</div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
         </div>
-        <p className="text-sm text-slate-300 mb-2">
+        <p className="text-sm text-secondary mb-2">
           Remover <span className="font-semibold text-amber-300">{count} lead(s)</span> da prospecção ativa?
         </p>
-        <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+        <p className="text-xs text-faint mb-4 leading-relaxed">
           Isso apenas marca os leads como processados (sai da lista de trabalho).
           <span className="text-emerald-300/90"> Nada é apagado</span>: histórico, conversas, reuniões, campanhas e Kanban
           continuam preservados. Sem senha.
         </p>
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Cancelar</button>
           <button onClick={onConfirm} disabled={busy}
             className="px-4 py-2 text-sm bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-lg font-medium">
             {busy ? 'Limpando...' : 'Limpar lista'}
@@ -340,26 +340,26 @@ function PasswordDeleteModal({ count, busy, onClose, onConfirm }: {
   const [password, setPassword] = useState('')
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-3">
           <div className="font-semibold text-rose-300">Exclusão definitiva</div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
         </div>
-        <div className="text-sm text-slate-300 mb-2">
+        <div className="text-sm text-secondary mb-2">
           Excluir <span className="font-semibold text-rose-300">{count} lead(s)</span> e todo o histórico?
         </div>
-        <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2 mb-3 text-xs text-slate-400 leading-relaxed">
-          Apaga <span className="text-slate-200">definitivamente</span>: conversas, reuniões, histórico de status e
-          a participação destes leads em <span className="text-slate-200">todas as campanhas</span>. Ação irreversível.
+        <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2 mb-3 text-xs text-muted leading-relaxed">
+          Apaga <span className="text-fg">definitivamente</span>: conversas, reuniões, histórico de status e
+          a participação destes leads em <span className="text-fg">todas as campanhas</span>. Ação irreversível.
         </div>
-        <label className="block text-xs text-slate-400 mb-3">
+        <label className="block text-xs text-muted mb-3">
           Senha da sua conta (a mesma do login)
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             autoFocus
-            className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-rose-500" />
+            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-rose-500" />
         </label>
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Cancelar</button>
           <button onClick={() => onConfirm(password)} disabled={busy || !password.trim()}
             className="px-4 py-2 text-sm bg-rose-600 hover:bg-rose-500 disabled:opacity-50 rounded-lg font-medium">
             {busy ? 'Excluindo...' : 'Excluir definitivamente'}
@@ -414,31 +414,31 @@ function SendModal({ leads, selected, onClose, onSent }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#16161d] p-5 shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="font-semibold">Enviar leads para campanha</div>
-            <div className="text-xs text-slate-400">{leadIds.length} lead(s) vou para esta campanha</div>
+            <div className="text-xs text-muted">{leadIds.length} lead(s) vou para esta campanha</div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
         </div>
 
         <div className="space-y-2 mb-4">
           <div className="flex gap-2">
-            <button onClick={() => setMode('new')} className={`flex-1 px-3 py-2 text-sm rounded-lg border ${mode === 'new' ? 'border-indigo-500 bg-indigo-600/20 text-white' : 'border-white/10 bg-white/5 text-slate-300'}`}>
+            <button onClick={() => setMode('new')} className={`flex-1 px-3 py-2 text-sm rounded-lg border ${mode === 'new' ? 'border-indigo-500 bg-indigo-600/20 text-fg' : 'border-line-2 bg-subtle text-secondary'}`}>
               Nova campanha
             </button>
-            <button onClick={() => setMode('existing')} className={`flex-1 px-3 py-2 text-sm rounded-lg border ${mode === 'existing' ? 'border-indigo-500 bg-indigo-600/20 text-white' : 'border-white/10 bg-white/5 text-slate-300'}`}>
+            <button onClick={() => setMode('existing')} className={`flex-1 px-3 py-2 text-sm rounded-lg border ${mode === 'existing' ? 'border-indigo-500 bg-indigo-600/20 text-fg' : 'border-line-2 bg-subtle text-secondary'}`}>
               Campanha existente
             </button>
           </div>
 
           {mode === 'new' ? (
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nome da nova campanha"
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
           ) : (
             <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+              className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
               {campaigns.length === 0 && <option value="">Nenhuma campanha criada</option>}
               {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -448,7 +448,7 @@ function SendModal({ leads, selected, onClose, onSent }: {
         {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
 
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Cancelar</button>
           <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
             {busy ? 'Enviando...' : 'Enviar para campanha'}
           </button>

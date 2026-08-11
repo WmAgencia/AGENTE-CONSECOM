@@ -235,9 +235,9 @@ export function AgendaView() {
     }
   }
 
-  const panel = 'rounded-xl border border-white/10 bg-white/[0.02] p-4'
+  const panel = 'rounded-xl border border-line-2 bg-subtle p-4'
   const input =
-    'bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+    'bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
   const btnPrimary =
     'px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium'
 
@@ -252,24 +252,24 @@ export function AgendaView() {
           <div className="flex items-center gap-1 ml-auto">
             <button
               onClick={() => setAnchor((a) => new Date(a.getFullYear(), a.getMonth(), a.getDate() - 7))}
-              className="p-2 rounded-lg border border-white/10 hover:bg-white/5 text-slate-300"
+              className="p-2 rounded-lg border border-line-2 hover:bg-subtle text-secondary"
               aria-label="Semana anterior"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="px-3 py-1.5 text-sm text-slate-300 border border-white/10 rounded-lg">
+            <span className="px-3 py-1.5 text-sm text-secondary border border-line-2 rounded-lg">
               {humanDate(range.start)} – {humanDate(range.end)}
             </span>
             <button
               onClick={() => setAnchor((a) => new Date(a.getFullYear(), a.getMonth(), a.getDate() + 7))}
-              className="p-2 rounded-lg border border-white/10 hover:bg-white/5 text-slate-300"
+              className="p-2 rounded-lg border border-line-2 hover:bg-subtle text-secondary"
               aria-label="Próxima semana"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
             <button
               onClick={() => setAnchor(new Date())}
-              className="p-2 rounded-lg border border-white/10 hover:bg-white/5 text-slate-300"
+              className="p-2 rounded-lg border border-line-2 hover:bg-subtle text-secondary"
               title="Voltar para esta semana"
             >
               <RotateCcw className="w-4 h-4" />
@@ -284,7 +284,7 @@ export function AgendaView() {
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-16 text-slate-400">
+          <div className="flex items-center justify-center py-16 text-muted">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
             Carregando agenda...
           </div>
@@ -297,7 +297,7 @@ export function AgendaView() {
                 <div className="text-sm font-medium">Configuração</div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <label className="text-xs text-slate-400">
+                <label className="text-xs text-muted">
                   Duração (min)
                   <input
                     type="number"
@@ -308,7 +308,7 @@ export function AgendaView() {
                     className={`${input} w-full mt-1`}
                   />
                 </label>
-                <label className="text-xs text-slate-400">
+                <label className="text-xs text-muted">
                   Intervalo entre reuniões (min)
                   <input
                     type="number"
@@ -319,7 +319,7 @@ export function AgendaView() {
                     className={`${input} w-full mt-1`}
                   />
                 </label>
-                <label className="text-xs text-slate-400">
+                <label className="text-xs text-muted">
                   Dias consultados à frente
                   <input
                     type="number"
@@ -331,7 +331,7 @@ export function AgendaView() {
                   />
                 </label>
               </div>
-              <p className="text-[11px] text-slate-500 mt-2">
+              <p className="text-[11px] text-faint mt-2">
                 A IA só oferece horários dentro das janelas abaixo e respeitando estes parâmetros.
               </p>
             </div>
@@ -350,20 +350,20 @@ export function AgendaView() {
                   return (
                     <div
                       key={day}
-                      className="flex flex-wrap items-center gap-3 rounded-lg border border-white/5 px-3 py-2"
+                      className="flex flex-wrap items-center gap-3 rounded-lg border border-line px-3 py-2"
                     >
                       <button
                         onClick={() => toggleDay(day)}
                         className={`w-5 h-5 rounded-md border flex items-center justify-center transition ${
                           slot
                             ? 'bg-indigo-600 border-indigo-500 text-white'
-                            : 'border-white/20 text-transparent hover:border-indigo-400'
+                            : 'border-line-strong text-transparent hover:border-indigo-400'
                         }`}
                         aria-label={slot ? `Desativar ${label}` : `Ativar ${label}`}
                       >
                         <Check className="w-3.5 h-3.5" />
                       </button>
-                      <span className={`text-sm w-20 ${slot ? 'text-slate-200' : 'text-slate-500'}`}>{label}</span>
+                      <span className={`text-sm w-20 ${slot ? 'text-fg' : 'text-faint'}`}>{label}</span>
                       {slot ? (
                         <>
                           <input
@@ -372,7 +372,7 @@ export function AgendaView() {
                             onChange={(e) => patchDay(day, { start: toMin(e.target.value) })}
                             className={`${input} w-32`}
                           />
-                          <span className="text-slate-500 text-sm">até</span>
+                          <span className="text-faint text-sm">até</span>
                           <input
                             type="time"
                             value={toMinStr(slot.end)}
@@ -393,11 +393,11 @@ export function AgendaView() {
             <div className={panel}>
               <div className="text-sm font-medium mb-3">Bloqueios (feriados, ausências)</div>
               <div className="grid grid-cols-1 sm:grid-cols-[auto_auto_1fr_auto] gap-2 items-center mb-3">
-                <label className="text-xs text-slate-400">
+                <label className="text-xs text-muted">
                   De
                   <input type="date" value={blockStart} onChange={(e) => setBlockStart(e.target.value)} className={`${input} w-40 ml-1`} />
                 </label>
-                <label className="text-xs text-slate-400">
+                <label className="text-xs text-muted">
                   Até
                   <input type="date" value={blockEnd} onChange={(e) => setBlockEnd(e.target.value)} className={`${input} w-40 ml-1`} />
                 </label>
@@ -417,14 +417,14 @@ export function AgendaView() {
               ) : (
                 <ul className="space-y-1.5">
                   {blocks.map((b) => (
-                    <li key={b.id} className="flex items-center gap-3 rounded-lg border border-white/5 px-3 py-2 text-sm">
-                      <span className="text-slate-300">
+                    <li key={b.id} className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm">
+                      <span className="text-secondary">
                         {humanDate(b.start_at.slice(0, 10))} – {humanDate(b.end_at.slice(0, 10))}
                       </span>
-                      {b.reason && <span className="text-slate-500">{b.reason}</span>}
+                      {b.reason && <span className="text-faint">{b.reason}</span>}
                       <button
                         onClick={() => removeBlock(b.id)}
-                        className="ml-auto text-slate-500 hover:text-rose-400"
+                        className="ml-auto text-faint hover:text-rose-400"
                         aria-label="Remover bloqueio"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -445,12 +445,12 @@ export function AgendaView() {
                   {meetings.map((m) => {
                     const st = STATUS_STYLE[m.status] ?? STATUS_STYLE.reuniao_marcada
                     return (
-                      <li key={m.leadId} className="flex flex-wrap items-center gap-3 rounded-lg border border-white/5 px-3 py-2.5">
-                        <span className="text-sm text-slate-200 flex-1 min-w-40">
+                      <li key={m.leadId} className="flex flex-wrap items-center gap-3 rounded-lg border border-line px-3 py-2.5">
+                        <span className="text-sm text-fg flex-1 min-w-40">
                           {m.name ?? 'Lead ' + m.leadId}
-                          {m.phone && <span className="text-slate-500 ml-2 text-xs">{m.phone}</span>}
+                          {m.phone && <span className="text-faint ml-2 text-xs">{m.phone}</span>}
                         </span>
-                        <span className="text-xs text-slate-400">{meetingLabel(m)}</span>
+                        <span className="text-xs text-muted">{meetingLabel(m)}</span>
                         <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${st}`}>
                           {STATUS_LABEL[m.status] ?? m.status}
                         </span>
@@ -495,9 +495,9 @@ export function AgendaView() {
                   {available.map((s) => (
                     <div
                       key={s.start}
-                      className="rounded-lg border border-white/5 bg-black/20 px-2 py-1.5 text-xs text-slate-300"
+                      className="rounded-lg border border-line bg-subtle-2 px-2 py-1.5 text-xs text-secondary"
                     >
-                      <span className="text-slate-400">{humanDate(s.day)}</span> ·{' '}
+                      <span className="text-muted">{humanDate(s.day)}</span> ·{' '}
                       <span className="text-indigo-300">{s.time}</span>
                     </div>
                   ))}

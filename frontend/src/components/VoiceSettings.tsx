@@ -21,20 +21,20 @@ export function VoiceSettings() {
   return (
     <div className="h-full overflow-auto px-6 py-5 max-w-3xl">
       <h1 className="text-lg font-semibold mb-1">Notificações de voz</h1>
-      <p className="text-sm text-slate-400 mb-6">
+      <p className="text-sm text-muted mb-6">
         Cada narração pode ser ativada ou desativada individualmente. Vale para o painel (site)
         e para o app mobile. Toque em "Ouvir" para pré-ouvir o áudio.
       </p>
 
-      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-1">
-        <h2 className="text-sm font-semibold text-slate-300 mb-3">Alarme de reunião (agendado)</h2>
+      <section className="rounded-xl border border-line bg-subtle p-5 space-y-1">
+        <h2 className="text-sm font-semibold text-secondary mb-3">Alarme de reunião (agendado)</h2>
         {VOICE_EVENTS.filter((v) => v.kind === 'alarme').map((v) => (
           <Row key={v.key} label={v.label} on={prefs[`voz_${v.key}`] ?? true} onChange={(on) => toggle(v.key, on)} voiceKey={v.key} />
         ))}
       </section>
 
-      <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-1 mt-6">
-        <h2 className="text-sm font-semibold text-slate-300 mb-3">Eventos (tempo real)</h2>
+      <section className="rounded-xl border border-line bg-subtle p-5 space-y-1 mt-6">
+        <h2 className="text-sm font-semibold text-secondary mb-3">Eventos (tempo real)</h2>
         {VOICE_EVENTS.filter((v) => v.kind === 'evento').map((v) => (
           <Row key={v.key} label={v.label} on={prefs[`voz_${v.key}`] ?? true} onChange={(on) => toggle(v.key, on)} voiceKey={v.key} />
         ))}
@@ -55,14 +55,14 @@ function Row({
   voiceKey: string
 }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+    <div className="flex items-center justify-between py-2 border-b border-line last:border-0">
       <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-300">{label}</span>
+        <span className="text-sm text-secondary">{label}</span>
       </div>
       <div className="flex items-center gap-3">
         <button
           onClick={() => playVoice(voiceKey)}
-          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-white/5"
+          className="flex items-center gap-1.5 text-xs text-muted hover:text-fg transition px-2 py-1 rounded-lg hover:bg-subtle"
         >
           <Volume2 className="w-3.5 h-3.5" />
           Ouvir
@@ -72,7 +72,7 @@ function Row({
           aria-checked={on}
           onClick={() => onChange(!on)}
           className={`relative w-10 h-6 rounded-full transition-colors ${
-            on ? 'bg-indigo-500' : 'bg-white/10'
+            on ? 'bg-indigo-500' : 'bg-subtle-2'
           }`}
         >
           <span

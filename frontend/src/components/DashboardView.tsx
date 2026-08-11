@@ -36,7 +36,7 @@ function ProgressRing({ pct, size = 140 }: { pct: number | null; size?: number }
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <div className="text-2xl font-bold" style={{ color }}>{pct == null ? '—' : `${Math.round(pct)}%`}</div>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wide">da meta</div>
+        <div className="text-[10px] text-faint uppercase tracking-wide">da meta</div>
       </div>
     </div>
   )
@@ -44,25 +44,25 @@ function ProgressRing({ pct, size = 140 }: { pct: number | null; size?: number }
 
 // ===== Card base =====
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-xl border border-white/5 bg-white/[0.02] p-5 ${className}`}>{children}</div>
+  return <div className={`rounded-xl border border-line bg-subtle p-5 ${className}`}>{children}</div>
 }
 
 function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
   return (
     <Card>
-      <div className="text-xs text-slate-400 uppercase tracking-wide">{label}</div>
+      <div className="text-xs text-muted uppercase tracking-wide">{label}</div>
       <div className={`text-3xl font-bold mt-2 ${accent ?? ''}`}>{value}</div>
-      {sub && <div className="text-xs text-slate-500 mt-1">{sub}</div>}
+      {sub && <div className="text-xs text-faint mt-1">{sub}</div>}
     </Card>
   )
 }
 
 function RateCell({ label, value, tooltip }: { label: string; value: number | null; tooltip?: string }) {
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5" title={tooltip}>
-      <div className="text-xs text-slate-400 uppercase tracking-wide">{label}</div>
+    <div className="rounded-xl border border-line bg-subtle p-5" title={tooltip}>
+      <div className="text-xs text-muted uppercase tracking-wide">{label}</div>
       <div className="text-3xl font-bold mt-2">
-        {value == null ? <span className="text-base text-slate-500 font-normal">Sem dados suficientes</span> : `${value}%`}
+        {value == null ? <span className="text-base text-faint font-normal">Sem dados suficientes</span> : `${value}%`}
       </div>
     </div>
   )
@@ -127,52 +127,52 @@ function GoalModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Target className="w-5 h-5 text-indigo-400" />
             <div>
               <div className="font-semibold">Configurar meta comercial</div>
-              <div className="text-xs text-slate-400">A projeção é calculada em tempo real conforme você digita</div>
+              <div className="text-xs text-muted">A projeção é calculada em tempo real conforme você digita</div>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-xs text-slate-400">
+          <label className="block text-xs text-muted">
             Meta de faturamento (R$)
             <input type="number" min={0} value={form.goal_amount || ''}
               onChange={(e) => set('goal_amount', Number(e.target.value) || 0)}
-              className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
           </label>
-          <label className="block text-xs text-slate-400">
+          <label className="block text-xs text-muted">
             Período (dias)
             <select value={form.period_days} onChange={(e) => set('period_days', Number(e.target.value) as 30 | 60 | 90)}
-              className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
               <option value={30}>30 dias</option>
               <option value={60}>60 dias</option>
               <option value={90}>90 dias</option>
             </select>
           </label>
-          <label className="block text-xs text-slate-400">
+          <label className="block text-xs text-muted">
             Ticket médio (R$)
             <input type="number" min={0} value={form.avg_ticket || ''}
               onChange={(e) => set('avg_ticket', Number(e.target.value) || 0)}
-              className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
           </label>
-          <label className="block text-xs text-slate-400">
+          <label className="block text-xs text-muted">
             Conversão reunião → venda (%)
             <input type="number" min={0} max={100} value={form.meeting_close_rate || ''}
               onChange={(e) => set('meeting_close_rate', Number(e.target.value) || 0)}
-              className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
           </label>
-          <label className="block text-xs text-slate-400 sm:col-span-2">
+          <label className="block text-xs text-muted sm:col-span-2">
             Leads/dia (opcional — para estimar conversões necessárias)
             <input type="number" min={0} value={form.leads_per_day ?? ''}
               onChange={(e) => set('leads_per_day', e.target.value ? Number(e.target.value) : null)}
               placeholder="Ex.: 20"
-              className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
           </label>
         </div>
 
@@ -182,29 +182,29 @@ function GoalModal({
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="text-center">
-              <div className="text-[10px] text-slate-400 uppercase">Vendas necessárias</div>
+              <div className="text-[10px] text-muted uppercase">Vendas necessárias</div>
               <div className="text-lg font-bold">{p ? formatNumber(p.vendasNecessarias) : '…'}</div>
             </div>
             <div className="text-center">
-              <div className="text-[10px] text-slate-400 uppercase">Reuniões necessárias</div>
+              <div className="text-[10px] text-muted uppercase">Reuniões necessárias</div>
               <div className="text-lg font-bold">{p ? formatNumber(p.reunioesNecessarias) : '…'}</div>
             </div>
             <div className="text-center">
-              <div className="text-[10px] text-slate-400 uppercase">Reuniões/dia</div>
+              <div className="text-[10px] text-muted uppercase">Reuniões/dia</div>
               <div className="text-lg font-bold">{p ? formatNumber(p.reunioesPorDia) : '…'}</div>
             </div>
             {p?.leadsPorDia != null && (
               <>
                 <div className="text-center">
-                  <div className="text-[10px] text-slate-400 uppercase">Leads no período</div>
+                  <div className="text-[10px] text-muted uppercase">Leads no período</div>
                   <div className="text-lg font-bold">{p.leadsNecessarios != null ? formatNumber(p.leadsNecessarios) : '—'}</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-[10px] text-slate-400 uppercase">Conv. lead→reunião nec.</div>
+                  <div className="text-[10px] text-muted uppercase">Conv. lead→reunião nec.</div>
                   <div className="text-lg font-bold">{p.conversaoLeadReuniaoNecessaria != null ? `${p.conversaoLeadReuniaoNecessaria}%` : '—'}</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-[10px] text-slate-400 uppercase">Conv. lead→venda nec.</div>
+                  <div className="text-[10px] text-muted uppercase">Conv. lead→venda nec.</div>
                   <div className="text-lg font-bold">{p.conversaoLeadVendaNecessaria != null ? `${p.conversaoLeadVendaNecessaria}%` : '—'}</div>
                 </div>
               </>
@@ -214,7 +214,7 @@ function GoalModal({
 
         {error && <p className="text-sm text-rose-400 mt-3">{error}</p>}
         <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-white/5 hover:bg-white/10 rounded-lg">Cancelar</button>
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Cancelar</button>
           <button onClick={() => void save()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
             {busy ? 'Salvando...' : 'Salvar meta'}
           </button>
@@ -270,10 +270,10 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
       <div className="flex items-start justify-between gap-3 flex-wrap mb-6">
         <div>
           <h1 className="text-lg font-semibold">Metas e Inteligência Comercial</h1>
-          <p className="text-sm text-slate-400">Projeção vs resultados reais — tudo com dados reais, sem estimativas fictícias</p>
+          <p className="text-sm text-muted">Projeção vs resultados reais — tudo com dados reais, sem estimativas fictícias</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => void load()} className="flex items-center gap-2 text-xs text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg px-3 py-2 transition">
+          <button onClick={() => void load()} className="flex items-center gap-2 text-xs text-muted hover:text-fg bg-subtle hover:bg-subtle-2 rounded-lg px-3 py-2 transition">
             <RefreshCw className="w-3.5 h-3.5" /> Atualizar
           </button>
           <button onClick={() => setShowGoal(true)} className="flex items-center gap-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg px-3 py-2 transition">
@@ -284,15 +284,15 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
 
       {loading && !data ? (
         <div className="space-y-4">
-          <div className="h-40 rounded-xl border border-white/5 bg-white/[0.02] animate-pulse" />
+          <div className="h-40 rounded-xl border border-line bg-subtle animate-pulse" />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => <div key={i} className="h-28 rounded-xl border border-white/5 bg-white/[0.02] animate-pulse" />)}
+            {[1, 2, 3, 4].map((i) => <div key={i} className="h-28 rounded-xl border border-line bg-subtle animate-pulse" />)}
           </div>
         </div>
       ) : error ? (
         <Card>
           <p className="text-sm text-rose-400">{error}</p>
-          <button onClick={() => void load()} className="mt-3 text-xs text-indigo-300 hover:text-white">Tentar novamente</button>
+          <button onClick={() => void load()} className="mt-3 text-xs text-indigo-300 hover:text-fg">Tentar novamente</button>
         </Card>
       ) : real ? (
         <>
@@ -300,37 +300,37 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <div className="flex items-center justify-between mb-2">
-                <div className="text-xs text-slate-400 uppercase tracking-wide">Faturamento real</div>
-                <div className="text-[11px] text-slate-500">Σ vendas fechadas com valor</div>
+                <div className="text-xs text-muted uppercase tracking-wide">Faturamento real</div>
+                <div className="text-[11px] text-faint">Σ vendas fechadas com valor</div>
               </div>
               <div className="text-4xl font-bold">{formatBRL(real.faturamento)}</div>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
-                <div className="rounded-lg bg-white/[0.03] p-3">
-                  <div className="text-[10px] text-slate-400 uppercase">Vendas fechadas</div>
+                <div className="rounded-lg bg-subtle p-3">
+                  <div className="text-[10px] text-muted uppercase">Vendas fechadas</div>
                   <div className="text-xl font-semibold">{formatNumber(real.vendas)}</div>
                 </div>
-                <div className="rounded-lg bg-white/[0.03] p-3">
-                  <div className="text-[10px] text-slate-400 uppercase">Com valor</div>
+                <div className="rounded-lg bg-subtle p-3">
+                  <div className="text-[10px] text-muted uppercase">Com valor</div>
                   <div className="text-xl font-semibold">{formatNumber(real.vendasComValor)}</div>
                 </div>
-                <div className="rounded-lg bg-white/[0.03] p-3">
-                  <div className="text-[10px] text-slate-400 uppercase">Leads trabalhados</div>
+                <div className="rounded-lg bg-subtle p-3">
+                  <div className="text-[10px] text-muted uppercase">Leads trabalhados</div>
                   <div className="text-xl font-semibold">{formatNumber(real.leadsTrabalhados)}</div>
                 </div>
               </div>
             </Card>
 
             <Card className="flex flex-col items-center justify-center">
-              <div className="text-xs text-slate-400 uppercase tracking-wide mb-3">Meta vs real</div>
+              <div className="text-xs text-muted uppercase tracking-wide mb-3">Meta vs real</div>
               {goal ? (
                 <>
                   <ProgressRing pct={real.metaAtingida} />
                   <div className="mt-3 text-center text-sm">
                     <span className="text-emerald-300">{formatBRL(real.faturamento)}</span>
-                    <span className="text-slate-500"> de </span>
-                    <span className="text-slate-200">{formatBRL(goal.goal_amount)}</span>
+                    <span className="text-faint"> de </span>
+                    <span className="text-fg">{formatBRL(goal.goal_amount)}</span>
                   </div>
-                  <div className="mt-2 text-xs text-slate-500">
+                  <div className="mt-2 text-xs text-faint">
                     {real.diasRestantes > 0
                       ? `${real.diasRestantes} dia${real.diasRestantes === 1 ? '' : 's'} restante${real.diasRestantes === 1 ? '' : 's'}`
                       : 'Período encerrado'}
@@ -342,7 +342,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
               ) : (
                 <>
                   <div className="text-3xl font-bold text-slate-600">—</div>
-                  <p className="text-sm text-slate-500 mt-3 text-center">
+                  <p className="text-sm text-faint mt-3 text-center">
                     Configure uma meta para acompanhar o progresso do faturamento.
                   </p>
                   <button onClick={() => setShowGoal(true)} className="mt-4 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg px-3 py-2">
@@ -355,7 +355,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
 
           {/* Hoje */}
           <div className="mt-4">
-            <h2 className="text-sm font-semibold mb-3 text-slate-300 flex items-center gap-2">
+            <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
               <CalendarDays className="w-4 h-4 text-indigo-400" /> Hoje
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -368,7 +368,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
           {/* Projeção vs Real */}
           {goal && projection && (
             <div className="mt-6">
-              <h2 className="text-sm font-semibold mb-3 text-slate-300 flex items-center gap-2">
+              <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-indigo-400" /> Projeção para atingir a meta
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -382,7 +382,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
 
           {/* Conversões reais */}
           <div className="mt-6">
-            <h2 className="text-sm font-semibold mb-3 text-slate-300 flex items-center gap-2">
+            <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
               <Coins className="w-4 h-4 text-indigo-400" /> Conversões reais
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -394,7 +394,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
 
           {/* Funil */}
           <div className="mt-6">
-            <h2 className="text-sm font-semibold mb-3 text-slate-300 flex items-center gap-2">
+            <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
               <Users className="w-4 h-4 text-indigo-400" /> Funil de conversão
             </h2>
             <Card>
@@ -403,12 +403,12 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
                 const width = denom > 0 ? (f.value / denom) * 100 : 0
                 const colors = ['bg-sky-500', 'bg-violet-500', 'bg-emerald-500', 'bg-green-500', 'bg-indigo-500']
                 return (
-                  <div key={f.label} className="flex items-center gap-3 px-1 py-2.5 border-b border-white/5 last:border-0">
-                    <span className="w-44 text-xs text-slate-400">{f.label}</span>
-                    <div className="flex-1 h-2.5 rounded-full bg-white/5 overflow-hidden">
+                  <div key={f.label} className="flex items-center gap-3 px-1 py-2.5 border-b border-line last:border-0">
+                    <span className="w-44 text-xs text-muted">{f.label}</span>
+                    <div className="flex-1 h-2.5 rounded-full bg-subtle overflow-hidden">
                       <div className={`h-full ${colors[i % colors.length]}`} style={{ width: `${width}%` }} />
                     </div>
-                    <span className="text-xs text-slate-300 w-10 text-right">{f.value}</span>
+                    <span className="text-xs text-secondary w-10 text-right">{f.value}</span>
                   </div>
                 )
               })}
@@ -419,7 +419,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
           <div className="mt-6">
             <button
               onClick={() => setExpanded(expanded === 'historico' ? null : 'historico')}
-              className="w-full flex items-center justify-between text-sm font-semibold text-slate-300 mb-3 hover:text-white transition"
+              className="w-full flex items-center justify-between text-sm font-semibold text-secondary mb-3 hover:text-fg transition"
             >
               <span className="flex items-center gap-2">
                 <MessagesSquare className="w-4 h-4 text-indigo-400" /> Faturamento histórico vs meta
@@ -429,22 +429,22 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
             {expanded === 'historico' && (
               <Card>
                 {historico.length === 0 ? (
-                  <p className="text-sm text-slate-500">Sem vendas registradas ainda. Feche vendas com valor no Kanban para ver o histórico.</p>
+                  <p className="text-sm text-faint">Sem vendas registradas ainda. Feche vendas com valor no Kanban para ver o histórico.</p>
                 ) : (
                   <div className="space-y-3">
                     {historico.map((h) => (
                       <div key={h.mes} className="flex items-center gap-3">
-                        <span className="w-14 text-xs text-slate-400 uppercase">{formatMonth(h.mes)}</span>
-                        <div className="flex-1 h-6 rounded-md bg-white/5 overflow-hidden relative">
+                        <span className="w-14 text-xs text-muted uppercase">{formatMonth(h.mes)}</span>
+                        <div className="flex-1 h-6 rounded-md bg-subtle overflow-hidden relative">
                           <div
                             className={`h-full ${goal && h.faturamento >= goal.goal_amount ? 'bg-green-500' : 'bg-indigo-500'}`}
                             style={{ width: `${maxHistorico > 0 ? (h.faturamento / maxHistorico) * 100 : 0}%` }}
                           />
-                          <span className="absolute right-2 inset-y-0 flex items-center text-[11px] text-slate-300 font-medium">
+                          <span className="absolute right-2 inset-y-0 flex items-center text-[11px] text-secondary font-medium">
                             {formatBRL(h.faturamento)}
                           </span>
                         </div>
-                        {goal && <span className="text-[10px] text-slate-500 w-20 text-right">meta {formatBRL(goal.goal_amount)}</span>}
+                        {goal && <span className="text-[10px] text-faint w-20 text-right">meta {formatBRL(goal.goal_amount)}</span>}
                       </div>
                     ))}
                   </div>

@@ -182,11 +182,11 @@ export function SequenceEditor({
     <div className="space-y-4">
       {/* Sequência atual */}
       <div>
-        <div className="text-xs uppercase tracking-wide text-slate-400 mb-2">
+        <div className="text-xs uppercase tracking-wide text-muted mb-2">
           Sequência ({messages.length} etapas)
         </div>
         {messages.length === 0 ? (
-          <p className="text-sm text-slate-500 border border-dashed border-white/10 rounded-lg px-4 py-3">
+          <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-3">
             Ainda não há mensagens. Adicione abaixo a ordem de envio (ex.: 1º
             texto de apresentação, 2º vídeo prévia, 3º áudio...).
           </p>
@@ -195,7 +195,7 @@ export function SequenceEditor({
             {messages.map((m, i) => (
               <li
                 key={m.id}
-                className="flex items-center gap-3 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
+                className="flex items-center gap-3 rounded-lg border border-line bg-subtle px-3 py-2"
               >
                 <span className="w-6 h-6 shrink-0 rounded-full bg-indigo-600/30 flex items-center justify-center text-xs font-medium">
                   {i + 1}
@@ -203,7 +203,7 @@ export function SequenceEditor({
                 <button
                   onClick={() => reorder(m.id, -1)}
                   disabled={i === 0}
-                  className="text-slate-500 hover:text-white disabled:opacity-30 text-xs"
+                  className="text-faint hover:text-fg disabled:opacity-30 text-xs"
                   title="Subir"
                 >
                   ↑
@@ -211,7 +211,7 @@ export function SequenceEditor({
                 <button
                   onClick={() => reorder(m.id, 1)}
                   disabled={i === messages.length - 1}
-                  className="text-slate-500 hover:text-white disabled:opacity-30 text-xs"
+                  className="text-faint hover:text-fg disabled:opacity-30 text-xs"
                   title="Descer"
                 >
                   ↓
@@ -219,15 +219,15 @@ export function SequenceEditor({
                 <span className={`${KIND_META[m.kind].cls} px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0`}>
                   {KIND_META[m.kind].label}
                 </span>
-                <span className="truncate flex-1 text-sm text-slate-300">
+                <span className="truncate flex-1 text-sm text-secondary">
                   {m.text || m.media_caption || m.media_url || '...'}
                 </span>
                 {m.delay_seconds > 0 && (
-                  <span className="text-[11px] text-slate-400 shrink-0">+{m.delay_seconds}s</span>
+                  <span className="text-[11px] text-muted shrink-0">+{m.delay_seconds}s</span>
                 )}
                 <button
                   onClick={() => removeMessage(m.id)}
-                  className="text-slate-500 hover:text-rose-400 text-xs shrink-0"
+                  className="text-faint hover:text-rose-400 text-xs shrink-0"
                 >
                   ✕
                 </button>
@@ -238,8 +238,8 @@ export function SequenceEditor({
       </div>
 
       {/* Nova etapa */}
-      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
-        <div className="text-xs uppercase tracking-wide text-slate-400">
+      <div className="rounded-xl border border-line-2 bg-subtle p-4 space-y-3">
+        <div className="text-xs uppercase tracking-wide text-muted">
           Adicionar etapa
         </div>
 
@@ -250,8 +250,8 @@ export function SequenceEditor({
               onClick={() => setField({ kind: k })}
               className={`px-3 py-1.5 text-xs rounded-lg border transition ${
                 draft.kind === k
-                  ? 'border-indigo-500 bg-indigo-600/20 text-white'
-                  : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                  ? 'border-indigo-500 bg-indigo-600/20 text-fg'
+                  : 'border-line-2 bg-subtle text-secondary hover:bg-subtle-2'
               }`}
             >
               {KIND_META[k].label}
@@ -265,7 +265,7 @@ export function SequenceEditor({
             onChange={(e) => setField({ text: e.target.value })}
             rows={4}
             placeholder="Escreva a mensagem de texto. Use variáveis como {nome_empresa}..."
-            className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+            className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
           />
         ) : (
           <div className="space-y-2">
@@ -274,13 +274,13 @@ export function SequenceEditor({
                 <span className="truncate">{draft.media_name || 'Arquivo enviado'}</span>
                 <button
                   onClick={() => setField({ media_url: '', media_name: '' })}
-                  className="text-slate-500 hover:text-rose-400"
+                  className="text-faint hover:text-rose-400"
                 >
                   trocar
                 </button>
               </div>
             ) : (
-              <label className="block cursor-pointer rounded-lg border border-dashed border-white/20 px-4 py-5 text-center text-sm text-slate-400 hover:border-indigo-500 hover:text-white transition">
+              <label className="block cursor-pointer rounded-lg border border-dashed border-line-strong px-4 py-5 text-center text-sm text-muted hover:border-indigo-500 hover:text-fg transition">
                 {draft.uploading
                   ? `Enviando... ${draft.progress}%`
                   : `Clique para enviar o arquivo (${KIND_META[draft.kind].label})`}
@@ -296,7 +296,7 @@ export function SequenceEditor({
               </label>
             )}
             {draft.uploading && (
-              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-1.5 rounded-full bg-subtle-2 overflow-hidden">
                 <div
                   className="h-full bg-indigo-500 transition-all"
                   style={{ width: `${draft.progress}%` }}
@@ -307,14 +307,14 @@ export function SequenceEditor({
               value={draft.caption}
               onChange={(e) => setField({ caption: e.target.value })}
               placeholder={`Legenda (opcional) — pode usar variáveis (ex: {nome_empresa})`}
-              className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+              className="w-full bg-field border border-line-2 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
             />
           </div>
         )}
 
         <div className="space-y-2">
             <div>
-              <div className="text-[11px] text-slate-500 mb-1">Inserir variável</div>
+              <div className="text-[11px] text-faint mb-1">Inserir variável</div>
               <div className="flex flex-wrap gap-1.5">
                 {SUPPORTED_VARIABLES.map((v) => (
                   <button
@@ -322,7 +322,7 @@ export function SequenceEditor({
                     type="button"
                     onClick={() => insertVariable(v.token)}
                     title={v.description}
-                    className="text-[11px] px-2 py-1 rounded-md border border-white/10 bg-white/5 text-slate-300 hover:border-indigo-500 hover:text-white transition"
+                    className="text-[11px] px-2 py-1 rounded-md border border-line-2 bg-subtle text-secondary hover:border-indigo-500 hover:text-fg transition"
                   >
                     {'{' + v.token + '}'}
                   </button>
@@ -330,10 +330,10 @@ export function SequenceEditor({
               </div>
             </div>
             <div>
-              <div className="text-[11px] text-slate-500 mb-1">
+              <div className="text-[11px] text-faint mb-1">
                 Preview (com dados de exemplo)
               </div>
-              <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-300 whitespace-pre-wrap break-words">
+              <div className="rounded-lg border border-line-2 bg-subtle-2 px-3 py-2 text-sm text-secondary whitespace-pre-wrap break-words">
                 {preview || <span className="text-slate-600">—</span>}
               </div>
               {unresolved.length > 0 && (
@@ -346,14 +346,14 @@ export function SequenceEditor({
           </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs text-slate-400">
+          <label className="text-xs text-muted">
             Intervalo até a próxima etapa (s):
             <input
               type="number"
               min={0}
               value={draft.delay_seconds}
               onChange={(e) => setField({ delay_seconds: Number(e.target.value) })}
-              className="ml-2 w-24 bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-sm outline-none focus:border-indigo-500"
+              className="ml-2 w-24 bg-field border border-line-2 rounded-lg px-2 py-1 text-sm outline-none focus:border-indigo-500"
             />
           </label>
           <button

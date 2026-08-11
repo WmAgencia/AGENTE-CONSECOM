@@ -26,13 +26,13 @@ function StatusCard({ status, testing }: { status: AiStatus | null; testing: boo
   const badge = testing
     ? { icon: <Loader2 className="w-4 h-4 animate-spin" />, label: 'Testando conexão...', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' }
     : !status
-      ? { icon: <CircleOff className="w-4 h-4" />, label: 'IA não configurada', cls: 'text-slate-400 bg-white/5 border-white/10' }
+      ? { icon: <CircleOff className="w-4 h-4" />, label: 'IA não configurada', cls: 'text-muted bg-subtle border-line-2' }
       : status.configured
         ? { icon: <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />, label: 'IA online', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' }
         : { icon: <TriangleAlert className="w-4 h-4" />, label: 'IA com problema', cls: 'text-rose-300 bg-rose-500/10 border-rose-500/30' }
 
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
+    <div className="rounded-xl border border-line bg-subtle p-5 space-y-4">
       <div className="flex items-center gap-3">
         <div className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-full border ${badge.cls}`}>
           <span className="[&>svg]:w-4 [&>svg]:h-4">{badge.icon}</span>
@@ -42,24 +42,24 @@ function StatusCard({ status, testing }: { status: AiStatus | null; testing: boo
 
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Modelo</div>
-          <div className="font-mono text-xs text-slate-200">{status?.model ?? '—'}</div>
+          <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Modelo</div>
+          <div className="font-mono text-xs text-fg">{status?.model ?? '—'}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Provedor</div>
-          <div className="font-mono text-xs text-slate-200">{status?.provider ?? '—'}</div>
+          <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Provedor</div>
+          <div className="font-mono text-xs text-fg">{status?.provider ?? '—'}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Última atividade</div>
-          <div className="text-xs text-slate-300">{status ? timeAgo(status.lastActivityAt) : '—'}</div>
+          <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Última atividade</div>
+          <div className="text-xs text-secondary">{status ? timeAgo(status.lastActivityAt) : '—'}</div>
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">WhatsApp</div>
-          <div className="text-xs text-slate-300">{status?.evolutionConfigured ? 'Conectado' : 'Não conectado'}</div>
+          <div className="text-[11px] uppercase tracking-wide text-faint mb-1">WhatsApp</div>
+          <div className="text-xs text-secondary">{status?.evolutionConfigured ? 'Conectado' : 'Não conectado'}</div>
         </div>
       </div>
 
-      <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+      <p className="text-[11px] text-faint flex items-center gap-1.5">
         <Activity className="w-3.5 h-3.5" />
         Dados reais do backend <span className="font-mono">/api/ai/status</span> — estado verdadeiro da integração.
       </p>
@@ -115,29 +115,29 @@ function TrainingChat() {
     }
   }
 
-  const inputCls = 'w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
-  const labelCls = 'block text-xs text-slate-400 mb-1'
+  const inputCls = 'w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const labelCls = 'block text-xs text-muted mb-1'
 
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] flex flex-col">
-      <div className="px-5 py-3 border-b border-white/5 flex items-center gap-2">
+    <div className="rounded-xl border border-line bg-subtle flex flex-col">
+      <div className="px-5 py-3 border-b border-line flex items-center gap-2">
         <GraduationCap className="w-4 h-4 text-teal-300" />
         <span className="text-sm font-semibold">Chat de treinamento</span>
-        <span className="text-[11px] text-slate-500 ml-auto">Você = vendedor · IA = cliente</span>
+        <span className="text-[11px] text-faint ml-auto">Você = vendedor · IA = cliente</span>
       </div>
 
-      <div className="px-4 py-2 border-b border-white/5 flex items-center gap-2 bg-teal-500/5">
+      <div className="px-4 py-2 border-b border-line flex items-center gap-2 bg-teal-500/5">
         <ShieldCheck className="w-3.5 h-3.5 text-teal-300" />
         <span className="text-[11px] text-teal-200">
           Sandbox isolado: nada é enviado ao WhatsApp, nenhuma campanha, lead, Kanban ou reunião real.
         </span>
       </div>
 
-      <div className="px-4 py-2 border-b border-white/5 flex items-center gap-2">
-        <span className="text-[11px] text-slate-400">
-          Cliente: <b className="text-slate-200">{persona.name}</b>
-          {persona.company ? <> · <span className="text-slate-400">{persona.company}</span></> : null}
-          <span className="text-slate-500"> · {persona.profile}</span>
+      <div className="px-4 py-2 border-b border-line flex items-center gap-2">
+        <span className="text-[11px] text-muted">
+          Cliente: <b className="text-fg">{persona.name}</b>
+          {persona.company ? <> · <span className="text-muted">{persona.company}</span></> : null}
+          <span className="text-faint"> · {persona.profile}</span>
         </span>
         <button
           onClick={() => setPersonaOpen((v) => !v)}
@@ -148,7 +148,7 @@ function TrainingChat() {
       </div>
 
       {personaOpen && (
-        <div className="px-4 py-3 border-b border-white/5 bg-black/20 space-y-2">
+        <div className="px-4 py-3 border-b border-line bg-subtle-2 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>Nome do cliente</label>
@@ -167,7 +167,7 @@ function TrainingChat() {
             <label className={labelCls}>Perfil / atitude do cliente</label>
             <input value={persona.profile} onChange={(e) => setPersona({ ...persona, profile: e.target.value })} className={inputCls} />
           </div>
-          <p className="text-[11px] text-slate-500">Dica: descreva o perfil para treinar resistências, orçamento, mandante, etc.</p>
+          <p className="text-[11px] text-faint">Dica: descreva o perfil para treinar resistências, orçamento, mandante, etc.</p>
         </div>
       )}
 
@@ -178,7 +178,7 @@ function TrainingChat() {
               className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap ${
                 m.role === 'user'
                   ? 'bg-teal-700 text-white rounded-br-sm'
-                  : 'bg-white/5 text-slate-200 rounded-bl-sm'
+                  : 'bg-subtle text-fg rounded-bl-sm'
               }`}
             >
               {m.content}
@@ -192,12 +192,12 @@ function TrainingChat() {
         )}
       </div>
 
-      <form onSubmit={(e) => void submit(e)} className="p-3 border-t border-white/5 flex gap-2">
+      <form onSubmit={(e) => void submit(e)} className="p-3 border-t border-line flex gap-2">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Fale como vendedor para o cliente (ex: Olá, como posso ajudar seu negócio?)..."
-          className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-500"
+          className="flex-1 bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-500"
         />
         <button type="submit" disabled={busy || !input.trim()} className="px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-600 disabled:opacity-40 transition">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -237,17 +237,17 @@ function FlowTest() {
     }
   }
 
-  const inputCls = 'w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
-  const labelCls = 'block text-xs text-slate-400 mb-1'
+  const inputCls = 'w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const labelCls = 'block text-xs text-muted mb-1'
 
   return (
     <>
-      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-5">
+      <div className="rounded-xl border border-line bg-subtle p-5">
         <div className="flex items-center gap-2 mb-2">
           <Play className="w-4 h-4 text-amber-300" />
           <span className="text-sm font-semibold">Fluxo de teste</span>
         </div>
-        <p className="text-xs text-slate-400 mb-4">
+        <p className="text-xs text-muted mb-4">
           Simula o comportamento comercial do agente com a configuração real. Nenhuma mensagem é enviada.
         </p>
         <button onClick={() => setOpen(true)} className="px-4 py-2 text-sm bg-amber-600/80 hover:bg-amber-500 rounded-lg font-medium transition">
@@ -257,13 +257,13 @@ function FlowTest() {
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl">
+          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <div className="font-semibold">Testar fluxo de mensagem</div>
                 <div className="text-xs text-amber-300 mt-0.5">Modo de teste — nenhuma mensagem será enviada.</div>
               </div>
-              <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+              <button onClick={() => setOpen(false)} className="text-muted hover:text-fg"><X className="w-5 h-5" /></button>
             </div>
 
             <form onSubmit={(e) => void run(e)} className="space-y-3 mb-4">
@@ -296,32 +296,32 @@ function FlowTest() {
             </form>
 
             {result && (
-              <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+              <div className="rounded-xl border border-line-2 bg-subtle-2 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">FLUXO DE TESTE</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">FLUXO DE TESTE</span>
                   <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">✓ Fluxo executado</span>
                 </div>
-                <div className="text-xs text-slate-300">
-                  Lead: <b className="text-white">{result.lead.name}</b>
-                  {result.lead.company ? <> — <span className="text-slate-400">{result.lead.company}</span></> : null}
+                <div className="text-xs text-secondary">
+                  Lead: <b className="text-fg">{result.lead.name}</b>
+                  {result.lead.company ? <> — <span className="text-muted">{result.lead.company}</span></> : null}
                 </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Etapa</div>
+                    <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Etapa</div>
                     <div className="text-sm text-indigo-300">{result.etapa}</div>
                   </div>
                   <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Próxima etapa</div>
-                    <div className="text-sm text-slate-200">{result.proximaEtapa}</div>
+                    <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Próxima etapa</div>
+                    <div className="text-sm text-fg">{result.proximaEtapa}</div>
                   </div>
                 </div>
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Mensagem gerada</div>
-                  <div className="text-sm text-slate-200 whitespace-pre-wrap bg-black/30 border border-white/5 rounded-lg p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Mensagem gerada</div>
+                  <div className="text-sm text-fg whitespace-pre-wrap bg-field border border-line rounded-lg p-3">
                     {result.signed || result.mensagem}
                   </div>
                 </div>
-                <div className="text-[10px] text-slate-500 font-mono">
+                <div className="text-[10px] text-faint font-mono">
                   {result.model} · {result.provider} · {result.latencyMs}ms · simulação
                 </div>
               </div>
@@ -362,7 +362,7 @@ export function AICenter() {
     <div className="h-full overflow-auto px-6 py-5 max-w-4xl space-y-5">
       <div>
         <h1 className="text-lg font-semibold mb-1">Central de IA</h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-muted">
           Status em tempo real da integração do agente, com chat de treinamento (atenda um cliente simulado) e teste de fluxo.
         </p>
       </div>
@@ -390,7 +390,7 @@ export function AICenter() {
         </div>
         <div>
           <div className="font-semibold">Memória Comercial da IA</div>
-          <div className="text-xs text-slate-400 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             Importe conversas reais do WhatsApp, veja os aprendizados extraídos e controle o que entra no contexto comercial da IA.
           </div>
         </div>

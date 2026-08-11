@@ -16,6 +16,7 @@ import { AICenter } from './components/AICenter'
 import { ContactsView } from './components/ContactsView'
 import { CommercialMemory } from './components/CommercialMemory'
 import { AgendaView } from './components/AgendaView'
+import { ThemeToggle } from './components/ThemeToggle'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
 import { NAV_ITEMS, resolveTabFromPath, type Tab } from './lib/routes'
 
@@ -43,10 +44,10 @@ function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellP
 
   return (
     <div className="flex h-full">
-      <div className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center gap-3 h-14 px-4 bg-[#0d0d14]/95 backdrop-blur border-b border-white/5">
+      <div className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center gap-3 h-14 px-4 bg-sidebar/95 backdrop-blur border-b border-line">
         <button
           onClick={() => setSidebarOpen(true)}
-          className="p-2 -ml-2 rounded-lg text-slate-300 hover:bg-white/5 hover:text-white transition"
+          className="p-2 -ml-2 rounded-lg text-secondary hover:bg-subtle hover:text-fg transition"
           aria-label="Abrir menu"
         >
           <Menu className="w-5 h-5" />
@@ -59,6 +60,9 @@ function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellP
           />
           <div className="font-semibold text-sm leading-none">Vyntra</div>
         </div>
+        <div className="ml-auto">
+          <ThemeToggle />
+        </div>
       </div>
 
       {sidebarOpen && (
@@ -70,11 +74,11 @@ function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellP
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-[#0d0d14] border-r border-white/5 flex flex-col transition-transform duration-200 ease-out md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-sidebar border-r border-line flex flex-col transition-transform duration-200 ease-out md:static md:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="px-5 py-5 border-b border-white/5">
+        <div className="px-5 py-5 border-b border-line">
           <div className="flex items-center gap-2.5">
             <img
               src="/vyntra-logo.png"
@@ -83,7 +87,7 @@ function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellP
             />
             <div>
               <div className="font-semibold leading-none">Vyntra</div>
-              <div className="text-[11px] text-slate-500 mt-1">Alex · Prospecção</div>
+              <div className="text-[11px] text-faint mt-1">Alex · Prospecção</div>
             </div>
           </div>
         </div>
@@ -99,8 +103,8 @@ function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellP
                 aria-current={active ? 'page' : undefined}
                 className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${
                   active
-                    ? 'bg-indigo-500/15 text-white'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                    ? 'bg-indigo-500/15 text-fg'
+                    : 'text-muted hover:bg-subtle hover:text-fg'
                 }`}
               >
                 {active && (
@@ -108,7 +112,7 @@ function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellP
                 )}
                 <Icon
                   className={`w-[18px] h-[18px] shrink-0 ${
-                    active ? 'text-indigo-300' : 'text-slate-500 group-hover:text-slate-300'
+                    active ? 'text-indigo-300' : 'text-faint group-hover:text-secondary'
                   }`}
                 />
                 <span className="truncate">{item.label}</span>
@@ -117,9 +121,9 @@ function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellP
           })}
         </nav>
 
-        <div className="px-5 py-4 border-t border-white/5 space-y-2">
-          <div className="text-[11px] text-slate-500">{leads.length} leads no total</div>
-          <div className="text-[11px] text-slate-500">v{APP_VERSION}</div>
+        <div className="px-5 py-4 border-t border-line space-y-2">
+          <div className="text-[11px] text-faint">{leads.length} leads no total</div>
+          <div className="text-[11px] text-faint">v{APP_VERSION}</div>
 
           {/* Atalho rápido — download da extensão (fonte estática versionada no repo) */}
           <a
@@ -137,10 +141,12 @@ function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellP
               setSidebarOpen(false)
               void supabase.auth.signOut()
             }}
-            className="text-xs text-slate-400 hover:text-white transition"
+            className="text-xs text-muted hover:text-fg transition"
           >
             Sair
           </button>
+
+          <ThemeToggle className="-ml-2" />
         </div>
       </aside>
 
@@ -283,7 +289,7 @@ export default function App() {
   if (session === null) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="text-slate-400">Carregando…</div>
+        <div className="text-muted">Carregando…</div>
       </div>
     )
   }

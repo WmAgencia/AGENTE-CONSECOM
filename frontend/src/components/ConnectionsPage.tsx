@@ -293,7 +293,7 @@ export function ConnectionsPage() {
     st === 'connected' ? 'text-emerald-400'
     : st === 'connecting' || st === 'pending' ? 'text-amber-400'
     : st === 'error' ? 'text-red-400'
-    : 'text-slate-400'
+    : 'text-muted'
 
   const statusDot = (st: ConnStatus) =>
     st === 'connected' ? '#34d399'
@@ -311,11 +311,11 @@ export function ConnectionsPage() {
 
   const filteredGroups = groups.filter((g) => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
 
-  const input = 'w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
-  const label = 'block text-xs text-slate-400 mb-1'
+  const input = 'w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const label = 'block text-xs text-muted mb-1'
   const btn = 'px-3 py-2 text-sm rounded-lg font-medium transition'
   const btnPrimary = `${btn} bg-indigo-600 hover:bg-indigo-500 text-white`
-  const btnGhost = `${btn} bg-white/5 hover:bg-white/10 text-slate-300`
+  const btnGhost = `${btn} bg-subtle hover:bg-subtle-2 text-secondary`
   const btnDanger = `${btn} bg-red-600/20 hover:bg-red-600/40 text-red-300`
 
   const hasConnected = conns.some((c) => c.status === 'connected')
@@ -323,14 +323,14 @@ export function ConnectionsPage() {
   return (
     <div className="h-full overflow-auto px-6 py-5 max-w-3xl">
       <h1 className="text-lg font-semibold mb-1">Conexões</h1>
-      <p className="text-sm text-slate-400 mb-6">Gerencie suas integrações externas.</p>
+      <p className="text-sm text-muted mb-6">Gerencie suas integrações externas.</p>
 
       <div className="space-y-6">
         {/* === CARD 1: WhatsApp (multi-conexão) === */}
-        <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
+        <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-300">WhatsApp</h2>
-            <span className="text-sm font-medium text-slate-400">
+            <h2 className="text-sm font-semibold text-secondary">WhatsApp</h2>
+            <span className="text-sm font-medium text-muted">
               {conns.length} conexão{conns.length !== 1 ? 'ões' : ''}
             </span>
           </div>
@@ -347,9 +347,9 @@ export function ConnectionsPage() {
               const qr = qrByConn[c.id]
               const connecting = c.status === 'connecting' || c.status === 'pending'
               return (
-                <div key={c.id} className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+                <div key={c.id} className="rounded-xl border border-line-2 bg-subtle-2 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-300">
+                    <span className="text-sm font-semibold text-secondary">
                       WhatsApp {idx + 1}
                     </span>
                     <span className={`text-sm font-medium ${statusColor(c.status)}`}>
@@ -365,21 +365,21 @@ export function ConnectionsPage() {
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
                         <span className={label}>Número conectado</span>
-                        <span className="text-slate-200">{c.phone_number ? formatPhone(c.phone_number) : '—'}</span>
+                        <span className="text-fg">{c.phone_number ? formatPhone(c.phone_number) : '—'}</span>
                       </div>
                       <div>
                         <span className={label}>Nome do WhatsApp</span>
-                        <span className="text-slate-200">{c.whatsapp_name ?? '—'}</span>
+                        <span className="text-fg">{c.whatsapp_name ?? '—'}</span>
                       </div>
                       {c.last_sync_at && (
                         <div>
                           <span className={label}>Última sincronização</span>
-                          <span className="text-slate-200">{new Date(c.last_sync_at).toLocaleString('pt-BR')}</span>
+                          <span className="text-fg">{new Date(c.last_sync_at).toLocaleString('pt-BR')}</span>
                         </div>
                       )}
                       <div>
                         <span className={label}>Instância</span>
-                        <span className="text-slate-200 text-xs font-mono break-all">{c.instance_name}</span>
+                        <span className="text-fg text-xs font-mono break-all">{c.instance_name}</span>
                       </div>
                     </div>
                   )}
@@ -390,7 +390,7 @@ export function ConnectionsPage() {
                       <div className="bg-white rounded-lg p-3 mb-3">
                         <img src={qr} alt={`QR Code ${idx + 1}`} className="w-48 h-48" />
                       </div>
-                      <p className="text-sm text-slate-400 text-center max-w-xs">
+                      <p className="text-sm text-muted text-center max-w-xs">
                         Escaneie o QR Code pelo WhatsApp → Dispositivos conectados → Conectar dispositivo.
                       </p>
                     </div>
@@ -398,7 +398,7 @@ export function ConnectionsPage() {
                   {connecting && !qr && (
                     <div className="flex items-center justify-center py-4">
                       <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full" />
-                      <span className="ml-3 text-sm text-slate-400">Gerando QR Code…</span>
+                      <span className="ml-3 text-sm text-muted">Gerando QR Code…</span>
                     </div>
                   )}
 
@@ -440,11 +440,11 @@ export function ConnectionsPage() {
         </section>
 
         {/* === CARD 2: Grupo de Notificações === */}
-        <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-300">Grupo de Notificações</h2>
+        <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-secondary">Grupo de Notificações</h2>
 
           {!hasConnected ? (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-faint">
               Conecte o WhatsApp primeiro para selecionar um grupo de notificações.
             </p>
           ) : notifGroup ? (
@@ -452,11 +452,11 @@ export function ConnectionsPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <span className={label}>Grupo selecionado</span>
-                  <span className="text-slate-200">{notifGroup.group_name}</span>
+                  <span className="text-fg">{notifGroup.group_name}</span>
                 </div>
                 <div>
                   <span className={label}>ID do grupo</span>
-                  <span className="text-slate-200 text-xs font-mono break-all">{notifGroup.group_id}</span>
+                  <span className="text-fg text-xs font-mono break-all">{notifGroup.group_id}</span>
                 </div>
                 <div>
                   <span className={label}>Status</span>
@@ -488,13 +488,13 @@ export function ConnectionsPage() {
                 {groupError ? (
                   <p className="text-sm text-red-300 py-4 text-center">{groupError}</p>
                 ) : filteredGroups.length === 0 ? (
-                  <p className="text-sm text-slate-500 py-4 text-center">Nenhum grupo encontrado.</p>
+                  <p className="text-sm text-faint py-4 text-center">Nenhum grupo encontrado.</p>
                 ) : (
                   filteredGroups.map((g) => (
                     <button
                       key={g.id}
                       onClick={() => selectGroup(g)}
-                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-slate-200 transition"
+                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-subtle text-sm text-fg transition"
                     >
                       {g.name}
                     </button>
@@ -510,8 +510,8 @@ export function ConnectionsPage() {
         </section>
 
         {/* === CARD 3: Preferências de Notificação === */}
-        <section className="rounded-xl border border-white/5 bg-white/[0.02] p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-300">Preferências de Notificação</h2>
+        <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-secondary">Preferências de Notificação</h2>
           <div className="space-y-3">
             {([
               ['notify_meetings', 'Notificar novas reuniões'],
@@ -521,11 +521,11 @@ export function ConnectionsPage() {
               ['notify_campaigns', 'Notificar campanhas finalizadas'],
               ['daily_summary', 'Enviar resumo diário'],
             ] as const).map(([key, labelText]) => (
-              <label key={key} className="flex items-center gap-3 text-sm text-slate-300 cursor-pointer">
+              <label key={key} className="flex items-center gap-3 text-sm text-secondary cursor-pointer">
                 <button
                   type="button"
                   onClick={() => toggleSetting(key, !settings[key])}
-                  className={`relative w-11 h-6 rounded-full transition ${settings[key] ? 'bg-indigo-500' : 'bg-white/10'}`}
+                  className={`relative w-11 h-6 rounded-full transition ${settings[key] ? 'bg-indigo-500' : 'bg-subtle-2'}`}
                 >
                   <span
                     className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${settings[key] ? 'left-5' : 'left-0.5'}`}
