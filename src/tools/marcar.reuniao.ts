@@ -19,6 +19,10 @@ import {
 import { sendGroupText } from '../services/evolution.service.js';
 import { resolveNotificationGroupJid } from '../services/evolution.connections.js';
 import { captureLearning } from '../services/agent.learning.js';
+import {
+  resolveMeetingTime,
+  reserveMeeting,
+} from '../services/agenda.service.js';
 
 export function createMarcarReuniaoTool(): ToolBase {
   return {
@@ -26,10 +30,11 @@ export function createMarcarReuniaoTool(): ToolBase {
       name: 'marcar_reuniao',
       description:
         'Registra que o lead aceitou/reuniu com você (prospecção Consecom). ' +
-        'Quando o lead tem um ID no sistema, marcamos a reunião no Supabase e, se o ' +
-        'grupo admin estiver configurado, notifica a equipe. Use SOMENTE quando o ' +
-        'prospect realmente agendou/aceitou a reunião e você tem data/hora concretas. ' +
-        'Informe leadId quando conhecer.',
+        'Quando o lead tem um ID no sistema, marcamos a reunião no Supabase, validando ' +
+        'que o horário está LIVRE na agenda (use consultar_disponibilidade antes para ' +
+        'oferecer opções reais) e, se o grupo admin estiver configurado, notifica a equipe. ' +
+        'Use SOMENTE quando o prospect realmente agendou/aceitou a reunião com data e hora ' +
+        'concretas. Informe leadId quando conhecer.',
       parameters: {
         type: 'object',
         properties: {
@@ -98,39 +103,69 @@ export function createMarcarReuniaoTool(): ToolBase {
         if (!cfg.url || !cfg.serviceRoleKey) {
           supabaseError = 'Supabase não configurado';
         } else {
-          try {
-            // p_meeting_at é TIMESTAMPTZ no banco: só envia quando o texto
-            // for uma data ISO parseável; caso contrário a data livre vai
-            // para p_notes para não derrubar o RPC (evita erro 22007).
-            let meetingAtIso: string | null = null;
-            if (meetingAt) {
-              const parsed = Date.parse(meetingAt);
-              if (!Number.isNaN(parsed)) meetingAtIso = new Date(parsed).toISOString();
-            }
-            const combinedNotes = [notes, meetingAt && !meetingAtIso ? `Data sugerida: ${meetingAt}` : null]
-              .filter(Boolean)
-              .join(' | ');
-            const res = await fetch(`${cfg.url}/rest/v1/rpc/${cfg.rpc}`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                apikey: cfg.serviceRoleKey,
-                Authorization: `Bearer ${cfg.serviceRoleKey}`,
-              },
-              body: JSON.stringify({
-                p_lead_id: leadId,
-                p_meeting_at: meetingAtIso,
-                p_notes: combinedNotes || null,
-              }),
+          // Agenda: resolve data/hora concreta (fuso São Paulo) e valida
+          // disponibilidade antes de gravar (evita horário duplo ou alucinado).
+          const resolved = resolveMeetingTime(meetingAt);
+          if (resolved) {
+            const result = await reserveMeeting({
+              leadId,
+              startIso: resolved.toISOString(),
+              notes,
+              instance: ctx.instance,
             });
-            if (res.ok) {
+            if (result.ok) {
               recorded = true;
+            } else if (
+              result.reason === 'indisponivel' ||
+              result.reason === 'fora_do_horario' ||
+              result.reason === 'agenda_nao_configurada'
+            ) {
+              const suggestions = (result.suggestions ?? []).join(', ');
+              return {
+                ok: false,
+                output:
+                  `Reunião NÃO registrada: ${result.message}` +
+                  (suggestions ? ` Horários alternativos: ${suggestions}.` : '') +
+                  ' Consulte consultar_disponibilidade para oferecer horários livres ao lead.',
+                error: 'invalid_args',
+              };
             } else {
-              supabaseError = `Supabase retornou status ${res.status}`;
+              supabaseError = result.message;
             }
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : 'network error';
-            supabaseError = `Falha ao chamar Supabase: ${msg}`;
+          } else {
+            // Sem data/hora concreta: fluxo legado (p_meeting_at null + data
+            // livre em p_notes), para não inventar um horário nem derrubar o RPC.
+            try {
+              let meetingAtIso: string | null = null;
+              if (meetingAt) {
+                const parsed = Date.parse(meetingAt);
+                if (!Number.isNaN(parsed)) meetingAtIso = new Date(parsed).toISOString();
+              }
+              const combinedNotes = [notes, meetingAt && !meetingAtIso ? `Data sugerida: ${meetingAt}` : null]
+                .filter(Boolean)
+                .join(' | ');
+              const res = await fetch(`${cfg.url}/rest/v1/rpc/${cfg.rpc}`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  apikey: cfg.serviceRoleKey,
+                  Authorization: `Bearer ${cfg.serviceRoleKey}`,
+                },
+                body: JSON.stringify({
+                  p_lead_id: leadId,
+                  p_meeting_at: meetingAtIso,
+                  p_notes: combinedNotes || null,
+                }),
+              });
+              if (res.ok) {
+                recorded = true;
+              } else {
+                supabaseError = `Supabase retornou status ${res.status}`;
+              }
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'network error';
+              supabaseError = `Falha ao chamar Supabase: ${msg}`;
+            }
           }
         }
       }

@@ -15,6 +15,7 @@ import { VoiceSettings } from './components/VoiceSettings'
 import { AICenter } from './components/AICenter'
 import { ContactsView } from './components/ContactsView'
 import { CommercialMemory } from './components/CommercialMemory'
+import { AgendaView } from './components/AgendaView'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
 import { NAV_ITEMS, resolveTabFromPath, type Tab } from './lib/routes'
 
@@ -148,6 +149,7 @@ function Shell({ leads, campaigns, onMeeting, onCloseLead }: ShellProps) {
           <Route path="/kanban" element={<KanbanBoard leads={leads} campaigns={campaigns} onMeeting={onMeeting} onClose={onCloseLead} />} />
           <Route path="/leads" element={<LeadsView leads={leads} />} />
           <Route path="/campanhas" element={<CampaignsView leads={leads} />} />
+          <Route path="/agenda" element={<AgendaView />} />
           <Route path="/dashboard" element={<DashboardView leads={leads} />} />
           <Route path="/agente" element={<AgentConfig />} />
           <Route path="/voz" element={<VoiceSettings />} />

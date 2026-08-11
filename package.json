@@ -12,7 +12,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/test/chat.integration.test.ts src/test/tools.unit.test.ts src/test/phone.unit.test.ts src/test/send.worker.unit.test.ts src/test/memory.test.ts",
+    "test": "tsx --test src/test/chat.integration.test.ts src/test/tools.unit.test.ts src/test/phone.unit.test.ts src/test/send.worker.unit.test.ts src/test/memory.test.ts src/test/agenda.unit.test.ts src/test/template.unit.test.ts",
     "clean": "rimraf dist",
     "db:apply": "node apply_sql.cjs supabase-CONSOLIDADO.sql",
     "db:check": "node verify_migrations.cjs"

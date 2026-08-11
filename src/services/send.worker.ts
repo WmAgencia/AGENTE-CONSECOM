@@ -19,6 +19,7 @@ import { getLogger } from '../utils/logger.js';
 import { sendText, sendMedia, type MediaKind } from './evolution.service.js';
 import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js';
 import { loadAgentName, formatAgentSignature } from './supabase.leads.js';
+import { renderTemplate } from './template.service.js';
 import { getConversationStore } from './conversation.store.js';
 import {
   loadCampaignStrategies,
@@ -61,27 +62,9 @@ interface LeadRow {
   rating: number | null;
   reviews: number | null;
   niche: string | null;
+  instagram?: string | null;
   status: string | null;
   strategy_id?: string | null;
-}
-
-/** Substitutes dynamic placeholders ({nome_empresa}, {telefone}, ...) in a string. */
-function applyPlaceholders(input: string, lead: LeadRow): string {
-  const values: Record<string, string> = {
-    nome_empresa: lead.name ?? '',
-    telefone: lead.phone ?? '',
-    cidade: lead.city ?? '',
-    estado: lead.state ?? '',
-    endereco: lead.address ?? '',
-    categoria: lead.category ?? '',
-    site: lead.website ?? '',
-    nicho: lead.niche ?? '',
-    avaliacao: lead.rating != null ? String(lead.rating) : '',
-    avaliacoes: lead.reviews != null ? String(lead.reviews) : '',
-  };
-  return input.replace(/\{(\w+)\}/g, (match, key: string) =>
-    values[key] !== undefined ? values[key] : match,
-  );
 }
 
 export class SendWorker {
@@ -358,23 +341,23 @@ export class SendWorker {
     let ok: boolean;
     let sentText = '';
     if (strategyKind === 'text' && strategyText) {
-      sentText = formatAgentSignature(applyPlaceholders(strategyText, lead), agentName);
+      sentText = formatAgentSignature(renderTemplate(strategyText, lead), agentName);
       ok = (await sendText({ to: sendPhone, text: sentText, instance: sendInstance })).ok;
     } else if (strategyMediaUrl) {
       const mediaUrl = strategyMediaUrl.startsWith('http')
         ? strategyMediaUrl
         : `${this.url}/storage/v1/object/public/${strategyMediaUrl.replace(/^\/+/, '')}`;
       const captionText = strategyCaption
-        ? formatAgentSignature(applyPlaceholders(strategyCaption, lead), agentName)
+        ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
         : `[${strategyKind}]`;
-      sentText = applyPlaceholders(strategyCaption ?? `[${strategyKind}]`, lead);
+      sentText = renderTemplate(strategyCaption ?? `[${strategyKind}]`, lead);
       ok = (
         await sendMedia({
           to: sendPhone,
           kind: strategyKind as MediaKind,
           media: mediaUrl,
           caption: strategyCaption
-            ? formatAgentSignature(applyPlaceholders(strategyCaption, lead), agentName)
+            ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
             : undefined,
           mimetype: guessMimetype(mediaUrl, strategyKind),
           filename: basename(mediaUrl),
@@ -467,7 +450,7 @@ export class SendWorker {
         log.warn({ leadId: lead.id, phone: lead.phone }, 'send-worker: remarketing numero invalido, pulando');
         continue;
       }
-      const body = applyPlaceholders(message, lead);
+      const body = renderTemplate(message, lead);
       const agentName = await loadAgentName();
       const finalText = formatAgentSignature(body, agentName);
       const ok = (await sendText({ to: sendPhone, text: finalText })).ok;

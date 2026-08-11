@@ -11,12 +11,14 @@ import {
   BellRing,
   Bot,
   ContactRound,
+  CalendarDays,
 } from 'lucide-react'
 
 export type Tab =
   | 'dashboard'
   | 'kanban'
   | 'campanhas'
+  | 'agenda'
   | 'leads'
   | 'contatos'
   | 'ia'
@@ -38,6 +40,7 @@ export const TAB_PATHS: Record<Tab, string> = {
   dashboard: '/dashboard',
   kanban: '/kanban',
   campanhas: '/campanhas',
+  agenda: '/agenda',
   leads: '/leads',
   contatos: '/contatos',
   ia: '/central-ia',
@@ -52,6 +55,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: TAB_PATHS.dashboard },
   { key: 'kanban', label: 'Kanban', icon: SquareKanban, path: TAB_PATHS.kanban },
   { key: 'campanhas', label: 'Campanhas', icon: Megaphone, path: TAB_PATHS.campanhas },
+  { key: 'agenda', label: 'Agenda', icon: CalendarDays, path: TAB_PATHS.agenda },
   { key: 'leads', label: 'Leads', icon: Users, path: TAB_PATHS.leads },
   { key: 'contatos', label: 'Contatos', icon: ContactRound, path: TAB_PATHS.contatos },
   { key: 'ia', label: 'Central da IA', icon: Bot, path: TAB_PATHS.ia },

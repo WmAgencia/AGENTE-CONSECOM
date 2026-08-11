@@ -22,6 +22,7 @@ import { createFileReadTool } from './file.read.js';
 import { createFileWriteTool } from './file.write.js';
 import { createListDirTool } from './list.dir.js';
 import { createMarcarReuniaoTool } from './marcar.reuniao.js';
+import { createConsultarDisponibilidadeTool } from './consultar.disponibilidade.js';
 import { createNotifyAdminGroupTool } from './notify.admin.js';
 import { createFinalizeProspectingTool } from './finalizar.sem.interesse.js';
 import { createRegistrarInsightTool } from './registrar.insight.js';
@@ -64,6 +65,7 @@ export function buildDefaultRegistry(): ToolRegistry {
   const fileWrite = createFileWriteTool(allowedDir);
   const listDir = createListDirTool(allowedDir);
   const marcarReuniao = createMarcarReuniaoTool();
+  const consultarDisponibilidade = createConsultarDisponibilidadeTool();
   const notifyAdminGroup = createNotifyAdminGroupTool();
   const finalizeProspecting = createFinalizeProspectingTool();
   const registrarInsight = createRegistrarInsightTool();
@@ -73,6 +75,7 @@ export function buildDefaultRegistry(): ToolRegistry {
     { name: fileWrite.definition.name, tool: fileWrite },
     { name: listDir.definition.name, tool: listDir },
     { name: marcarReuniao.definition.name, tool: marcarReuniao },
+    { name: consultarDisponibilidade.definition.name, tool: consultarDisponibilidade },
     { name: notifyAdminGroup.definition.name, tool: notifyAdminGroup },
     { name: finalizeProspecting.definition.name, tool: finalizeProspecting },
     { name: registrarInsight.definition.name, tool: registrarInsight },

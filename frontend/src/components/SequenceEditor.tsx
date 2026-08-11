@@ -1,6 +1,11 @@
 import { useCallback, useState } from 'react'
 import { supabase, type Campaign, type QueueMessage } from '../lib/supabase'
 import { uploadMedia } from '../lib/storage'
+import {
+  SUPPORTED_VARIABLES,
+  renderTemplate,
+  unresolvedVariables,
+} from '../lib/template'
 
 type Kind = QueueMessage['kind']
 
@@ -125,6 +130,23 @@ export function SequenceEditor({
     }
     setError('')
     onSaved()
+  }
+
+  const unresolved =
+    draft.kind === 'text'
+      ? unresolvedVariables(draft.text)
+      : unresolvedVariables(draft.caption)
+  const preview =
+    draft.kind === 'text'
+      ? renderTemplate(draft.text)
+      : renderTemplate(draft.caption)
+
+  function insertVariable(token: string) {
+    const target = draft.kind === 'text' ? 'text' : 'caption'
+    const current = draft[target] || ''
+    const value = `{${token}}`
+    if (current.includes(value)) return
+    setField({ [target]: current ? `${current} ${value}` : value } as Partial<Draft>)
   }
 
   async function reorder(id: string, dir: -1 | 1) {
@@ -284,6 +306,39 @@ export function SequenceEditor({
             />
           </div>
         )}
+
+        <div className="space-y-2">
+            <div>
+              <div className="text-[11px] text-slate-500 mb-1">Inserir variável</div>
+              <div className="flex flex-wrap gap-1.5">
+                {SUPPORTED_VARIABLES.map((v) => (
+                  <button
+                    key={v.token}
+                    type="button"
+                    onClick={() => insertVariable(v.token)}
+                    title={v.description}
+                    className="text-[11px] px-2 py-1 rounded-md border border-white/10 bg-white/5 text-slate-300 hover:border-indigo-500 hover:text-white transition"
+                  >
+                    {'{' + v.token + '}'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500 mb-1">
+                Preview (com dados de exemplo)
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-300 whitespace-pre-wrap break-words">
+                {preview || <span className="text-slate-600">—</span>}
+              </div>
+              {unresolved.length > 0 && (
+                <p className="text-[11px] text-amber-400 mt-1">
+                  Variáveis não reconhecidas (ficam literais no envio):{' '}
+                  {unresolved.map((u) => `{${u}}`).join(', ')}
+                </p>
+              )}
+            </div>
+          </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-xs text-slate-400">
