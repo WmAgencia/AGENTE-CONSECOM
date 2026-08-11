@@ -138,9 +138,25 @@ async function loadRuns() {
     if (!error) await load()
   }
 
-  async function finishCampaign(c: Campaign) {
-    const { error } = await supabase.from('campaigns').update({ status: 'finalizada', finished_at: new Date().toISOString() }).eq('id', c.id)
-    if (!error) await load()
+  /** PAUSAR: grava status 'pausada' no banco — o worker para de disparar esta
+   *  campanha imediatamente e continua do ponto exato ao retomar. Nada é
+   *  apagado nem resetado (current_position/next_send_at ficam intactos). */
+  async function pauseCampaign(c: Campaign) {
+    if (!window.confirm(
+      `Pausar campanha "${c.name}"?\n\nOs disparos serão interrompidos e continuarão do ponto atual quando você retomar.`,
+    )) return
+    const { error } = await supabase.from('campaigns').update({ status: 'pausada' }).eq('id', c.id)
+    if (error) window.alert(`Não foi possível pausar: ${error.message}`)
+    else await load()
+  }
+
+  /** RETOMAR: devolve a campanha para 'em_progresso'. O worker (instância
+   *  única) volta a processá-la exatamente da etapa salva — idempotente, sem
+   *  criar fila paralela nem reenviar mensagens já confirmadas. */
+  async function resumeCampaign(c: Campaign) {
+    const { error } = await supabase.from('campaigns').update({ status: 'em_progresso' }).eq('id', c.id)
+    if (error) window.alert(`Não foi possível retomar: ${error.message}`)
+    else await load()
   }
 
   async function deleteCampaign(c: Campaign) {
@@ -186,7 +202,8 @@ async function loadRuns() {
                 onEnqueue={() => setEnqueueOpen(c)}
                 onAutoEnqueue={() => void autoEnqueue(c)}
                 onFire={() => void fireCampaign(c)}
-                onFinish={() => void finishCampaign(c)}
+                onPause={() => void pauseCampaign(c)}
+                onResume={() => void resumeCampaign(c)}
                 onDelete={() => void deleteCampaign(c)}
               />
             ))}
@@ -201,7 +218,7 @@ async function loadRuns() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Fila de envio ({runs.filter((r) => r.status !== 'done').length} ativos)
+              Fila de envio ({runs.filter((r) => r.status === 'pending' || r.status === 'running').length} ativos)
             </h2>
           </div>
           <RunsTable runs={runs} onRemove={removeRun} />
@@ -283,7 +300,8 @@ function CampaignCard({
   onEnqueue,
   onAutoEnqueue,
   onFire,
-  onFinish,
+  onPause,
+  onResume,
   onDelete,
 }: {
   campaign: Campaign
@@ -294,7 +312,8 @@ function CampaignCard({
   onEnqueue: () => void
   onAutoEnqueue: () => void
   onFire: () => void
-  onFinish: () => void
+  onPause: () => void
+  onResume: () => void
   onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -369,14 +388,21 @@ function CampaignCard({
         )}
       </div>
 
+      <CampaignStatusBanner status={campaign.status} />
+
       {campaign.status === 'pronta' && (
         <button onClick={onFire} className="w-full mb-3 text-sm py-2 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg font-medium">
-          ▶ Disparar campanha
+          ▶ Iniciar campanha
         </button>
       )}
       {campaign.status === 'em_progresso' && (
-        <button onClick={onFinish} className="w-full mb-3 text-xs py-2 bg-amber-600/70 hover:bg-amber-500 rounded-lg font-medium">
-          Encerrar manualmente
+        <button onClick={onPause} className="w-full mb-3 text-sm py-2 bg-amber-600/70 hover:bg-amber-500 rounded-lg font-medium">
+          ⏸ Pausar campanha
+        </button>
+      )}
+      {campaign.status === 'pausada' && (
+        <button onClick={onResume} className="w-full mb-3 text-sm py-2 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg font-medium">
+          ▶ Retomar campanha
         </button>
       )}
 
@@ -516,8 +542,9 @@ function EnqueueModal({
 
 const CAMPAIGN_STATUS: Record<Campaign['status'], { label: string; cls: string }> = {
   pronta: { label: 'Pronta', cls: 'bg-white/5 text-slate-300' },
-  em_progresso: { label: 'Em progresso', cls: 'bg-amber-500/15 text-amber-300' },
-  finalizada: { label: 'Finalizada', cls: 'bg-emerald-500/15 text-emerald-300' },
+  em_progresso: { label: 'Em andamento', cls: 'bg-emerald-500/15 text-emerald-300' },
+  pausada: { label: 'Pausada', cls: 'bg-amber-500/15 text-amber-300' },
+  finalizada: { label: 'Concluída', cls: 'bg-sky-500/15 text-sky-300' },
   cancelada: { label: 'Cancelada', cls: 'bg-rose-500/15 text-rose-300' },
 }
 
@@ -528,6 +555,34 @@ function CampaignStatusBadge({ status }: { status: Campaign['status'] }) {
       {meta.label}
     </span>
   )
+}
+
+/** Banner de status da campanha (Reflete o estado real vindo do banco). */
+function CampaignStatusBanner({ status }: { status: Campaign['status'] }) {
+  if (status === 'em_progresso') {
+    return (
+      <div className="mb-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-sm text-emerald-300 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        🟢 Campanha em andamento
+      </div>
+    )
+  }
+  if (status === 'pausada') {
+    return (
+      <div className="mb-3 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-sm text-amber-300 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-amber-400" />
+        🟡 Campanha pausada
+      </div>
+    )
+  }
+  if (status === 'finalizada') {
+    return (
+      <div className="mb-3 rounded-lg bg-sky-500/10 border border-sky-500/20 px-3 py-2 text-sm text-sky-300 flex items-center gap-2">
+        ✓ Campanha concluída
+      </div>
+    )
+  }
+  return null
 }
 
 const RUN_STATUS: Record<SendRun['status'], { label: string; cls: string }> = {
@@ -541,6 +596,8 @@ const FAIL_REASON_LABEL: Record<string, string> = {
   telefone_fixo: 'Número fixo → Nº p/ ligação',
   numero_invalido: 'Número inválido → Nº p/ ligação',
   sem_telefone: 'Lead sem telefone',
+  send_failed: 'Falha de envio (retries esgotados)',
+  lead_nao_encontrado: 'Lead não encontrado',
 }
 
 function RunsTable({ runs, onRemove }: { runs: SendRun[]; onRemove: (r: SendRun) => void }) {

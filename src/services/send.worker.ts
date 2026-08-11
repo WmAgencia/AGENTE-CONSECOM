@@ -19,13 +19,24 @@
  *   L1 M1 -> (6s) L1 M2 -> (3s) L1 M3 -> (3s) L1 M4 ... -> L2 M1 -> ...
  * Os demais leads ('pending') aguardam a vez e não disparam em paralelo.
  *
- * FAILURE (Regra B): quando um envio falha, a sequência NÃO é considerada
- * concluída. O run permanece ATIVO ('running') com um retry agendado
- * (backoff x tentativa), mantendo a IA do lead bloqueada. Ao esgotar
- * CONSECOM_SEND_MAX_RETRIES o run é marcado 'failed' (sequência interrompida).
+ * FAILURE (Regra B): erro temporário (transiente/5xx) não é falha definitiva —
+ * o run permanece ATIVO ('running') com um retry agendado (backoff x tentativa),
+ * mantendo a IA do lead bloqueada. QUALQUER falha definitiva (retries esgotados,
+ * número inválido/fixo, lead sem telefone, lead não encontrado) ABORTA a
+ * sequência inteira daquele lead: as próximas mensagens NÃO são enviadas, o run
+ * é marcado 'failed' com a etapa que falhou (failed_step) e o motivo
+ * registrados no histórico, e o próximo lead da fila passa a ser processado.
+ * Um lead 'failed' nunca é retomado.
  *
- * CONCURRENCY: `busy` + um set de runs em processamento garantem execução
- * única dentro do processo (sem M2 duplicada), inclusive com ticks sobrepostos.
+ * PAUSE: o worker só processa campanhas `em_progresso`. Ao pausar, o frontend
+ * grava `status = pausada` e o worker simplesmente ignora a campanha (nenhum
+ * novo disparo, mesmo com next_send_at vencido). Ao retomar (`em_progresso`),
+ * a campanha volta ao polling e continua EXATAMENTE de onde parou
+ * (current_position + next_send_at por lead são preservados — nada é reenviado).
+ *
+ * CONCURRENCY: instância única por processo (`started` guard) + `busy` + um set
+ * de runs em processamento garantem execução única (sem M2 duplicada), inclusive
+ * com ticks sobrepostos e cliques repetidos em retomar.
  *
  * Uses the Supabase REST API with the service role key (bypasses RLS).
  * Does not store secrets; reads them from env via the config module.
@@ -199,6 +210,44 @@ export class SendWorker {
     });
   }
 
+  /**
+   * ABORTA a sequência do lead (Regra de Falha).
+   *
+   * Uma falha definitiva interrompe TODO o restante da sequência daquele lead:
+   * as próximas mensagens NÃO são enviadas e o próximo lead da fila passa a
+   * ser processado. Registra a etapa que falhou (failed_step = position + 1) e
+   * o motivo no histórico do lead, além de marcar o run 'failed'.
+   */
+  private async abortRun(run: SendRunRow, position: number, reason: string): Promise<void> {
+    const log = getLogger();
+    await this.patchSendRun(run.id, {
+      status: 'failed',
+      current_position: position,
+      fail_reason: reason,
+    });
+    await this.bumpCampaign(run.campaign_id, 'fail_count');
+    try {
+      await fetch(`${this.url}/rest/v1/lead_status_history`, {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify({
+          lead_id: run.lead_id,
+          status: 'failed',
+          notes: `failed_step: ${position + 1}; reason: ${reason}`,
+        }),
+      });
+    } catch (err) {
+      log.warn(
+        { runId: run.id, errMessage: err instanceof Error ? err.message : 'unknown' },
+        'send-worker: falha ao registrar aborto no lead_status_history',
+      );
+    }
+    log.info(
+      { runId: run.id, leadId: run.lead_id, failedStep: position + 1, reason },
+      '[CAMPAIGN] lead abortado — sequência interrompida (próximas mensagens não enviadas)',
+    );
+  }
+
   private async updateLeadStatus(leadId: string, status: string): Promise<void> {
     await fetch(`${this.url}/rest/v1/leads?id=eq.${leadId}`, {
       method: 'PATCH',
@@ -305,14 +354,14 @@ export class SendWorker {
 
     const lead = await this.getLead(run.lead_id);
     if (!lead) {
-      log.warn({ runId: run.id, leadId: run.lead_id }, 'send-worker: lead not found, failing');
-      await this.patchSendRun(run.id, { status: 'failed', current_position: position });
+      log.warn({ runId: run.id, leadId: run.lead_id }, 'send-worker: lead not found, aborting');
+      await this.abortRun(run, position, 'lead_nao_encontrado');
       return;
     }
     const phone = lead.phone;
     if (!phone) {
-      log.warn({ runId: run.id, leadId: run.lead_id }, 'send-worker: no phone, failing');
-      await this.patchSendRun(run.id, { status: 'failed', current_position: position, fail_reason: 'sem_telefone' });
+      log.warn({ runId: run.id, leadId: run.lead_id }, 'send-worker: no phone, aborting');
+      await this.abortRun(run, position, 'sem_telefone');
       return;
     }
 
@@ -328,11 +377,7 @@ export class SendWorker {
         'send-worker: numero fora do padrao WhatsApp, movendo para lista de ligacao',
       );
       await this.moveLeadToCall(run.lead_id, callReason);
-      await this.patchSendRun(run.id, {
-        status: 'failed',
-        current_position: position,
-        fail_reason: callReason,
-      });
+      await this.abortRun(run, position, callReason);
       return;
     }
     const sendPhone = pinfo.e164!;
@@ -431,17 +476,12 @@ export class SendWorker {
       if (attempt >= maxRetries) {
         log.warn(
           { runId: run.id, position, kind: next.kind, attempt },
-          'send-worker: send failed; retries exhausted',
+          'send-worker: send failed; retries exhausted, aborting lead',
         );
-        await this.patchSendRun(run.id, {
-          status: 'failed',
-          current_position: position,
-          fail_reason: 'send_failed',
-        });
-        await this.bumpCampaign(run.campaign_id, 'fail_count');
+        await this.abortRun(run, position, 'send_failed');
         log.info(
           { runId: run.id, leadId: run.lead_id, position, attempt },
-          '[CAMPAIGN] sequência interrompida — falha de envio (retries esgotados)',
+          '[CAMPAIGN] lead abortado — falha de envio definitiva (retries esgotados)',
         );
       } else {
         const retryAt = new Date(Date.now() + backoffMs * attempt).toISOString();

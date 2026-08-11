@@ -71,6 +71,7 @@ const store = {
   sent: [] as Array<{ to: string; text: string }>,
   finalizeSeq: [] as number[],
   failSend: new Set<string>(),
+  leadHistory: [] as Array<{ lead_id: string; status: string; notes: string | null }>,
 }
 let sendSeq = 0
 
@@ -146,7 +147,10 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
     }
   }
 
-  if (url.includes('/rest/v1/lead_status_history')) return jsonRes([])
+  if (url.includes('/rest/v1/lead_status_history')) {
+    store.leadHistory.push(body as never)
+    return jsonRes([])
+  }
   if (url.includes('/rest/v1/campaign_strategies')) return jsonRes([])
   if (url.includes('/rest/v1/agent_settings')) return jsonRes([])
   if (url.includes('/rest/v1/consecom_conversations')) return jsonRes([])
@@ -245,6 +249,7 @@ function resetBoard(
   store.sent.length = 0
   store.finalizeSeq.length = 0
   store.failSend.clear()
+  store.leadHistory.length = 0
   sendSeq = 0
   const specs: MsgSpec[] =
     typeof msgs === 'number'
@@ -532,6 +537,144 @@ test('F) concorrência: ticks simultâneos não duplicam mensagem (execução ú
   await Promise.all([w.tick(), w.tick(), w.tick()])
 
   assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
+
+  await runTicks(w, 10)
+
+  const unique = new Map<string, number>()
+  for (const s of store.sent) {
+    const k = `${s.to}|${s.text}`
+    unique.set(k, (unique.get(k) ?? 0) + 1)
+  }
+  for (const [k, count] of unique) {
+    assert.equal(count, 1, `mensagem duplicada: ${k}`)
+  }
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado')
+  assert.equal(store.leads.get(l2.id)!.status, 'enviado')
+  assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
+  assert.equal(store.finalizeSeq.length, 1)
+})
+
+test('G) falha definitiva na M1: lead abortado, M2/M3 não enviadas e próximo lead inicia', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  resetBoard(3, 0, l1, l2)
+  store.failSend.add('5511999990001|M1')
+
+  const w = await newWorker()
+
+  // L1 M1 falha (tentativa 1): run segue ativo em retry, nada de M2.
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990001'), [])
+  assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'running')
+
+  // Esgota retries da M1 => lead ABORTADO (failed_step=1).
+  makeDue(l1.id)
+  await w.tick() // tentativa 2
+  makeDue(l1.id)
+  await w.tick() // tentativa 3 => aborta
+  const run1 = store.runs.get(`run-${l1.id}`)!
+  assert.equal(run1.status, 'failed')
+  assert.equal(run1.current_position, 0, 'falhou exatamente na M1')
+
+  // M2/M3 do L1 NUNCA são enviadas.
+  assert.equal(
+    store.sent.filter((s) => s.to === '5511999990001' && (s.text === 'M2' || s.text === 'M3')).length,
+    0,
+    'restante da sequência do lead abortado não é enviado',
+  )
+  assert.equal(store.leads.get(l1.id)!.status, 'novo')
+
+  // failed_step + motivo registrados no histórico do lead.
+  const hist = store.leadHistory.find((h) => h.lead_id === l1.id && h.status === 'failed')
+  assert.ok(hist, 'aborto registrado no lead_status_history')
+  assert.match(hist!.notes ?? '', /failed_step: 1/)
+  assert.match(hist!.notes ?? '', /send_failed/)
+
+  // O próximo lead começa normalmente (erro do L1 não trava a campanha).
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990002').map((s) => s.text), ['M1'])
+  makeDue(l2.id)
+  await w.tick()
+  makeDue(l2.id)
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990002').map((s) => s.text), ['M1', 'M2', 'M3'])
+  assert.equal(store.leads.get(l2.id)!.status, 'enviado')
+
+  await w.tick() // finaliza
+  assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
+  assert.equal(store.finalizeSeq.length, 1)
+})
+
+test('P1) pausar ENTRE leads: nenhum novo disparo; retomar continua do lead seguinte', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  resetBoard(2, 0, l1, l2)
+
+  const w = await newWorker()
+  // L1 conclui a sequência (M1, M2).
+  await w.tick()
+  await w.tick()
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado')
+
+  // PAUSA antes de o L2 começar: status no banco vira 'pausada' (idêntico ao
+  // clique no frontend).
+  store.campaigns.get('c1')!.status = 'pausada'
+  await runTicks(w, 5)
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990002'), [], 'L2 não inicia enquanto pausada')
+  assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'pending', 'L2 permanece na fila')
+
+  // RETOMA: volta a 'em_progresso' => L2 dispara do início da própria sequência.
+  store.campaigns.get('c1')!.status = 'em_progresso'
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990002').map((s) => s.text), ['M1'])
+  await w.tick()
+  assert.equal(store.leads.get(l2.id)!.status, 'enviado')
+  await w.tick() // finaliza
+  assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
+  assert.equal(store.finalizeSeq.length, 1)
+})
+
+test('P2) pausar DURANTE um lead: preserva o ponto exato e retomar não reenvia M1/M2', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  resetBoard([{ text: 'M1' }, { text: 'M2' }, { text: 'M3' }], 0, l1)
+
+  const w = await newWorker()
+  await w.tick() // L1 M1
+  await w.tick() // L1 M2
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990001').map((s) => s.text), ['M1', 'M2'])
+
+  // PAUSA antes do M3 (aguardando o intervalo do M2).
+  store.campaigns.get('c1')!.status = 'pausada'
+  await runTicks(w, 5)
+  assert.deepEqual(
+    store.sent.filter((s) => s.to === '5511999990001').map((s) => s.text),
+    ['M1', 'M2'],
+    'nenhuma mensagem nova durante a pausa',
+  )
+  assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 2, 'ponto salvo = M3')
+
+  // RETOMA: M3 é enviado — M1/M2 NUNCA são reenviados.
+  store.campaigns.get('c1')!.status = 'em_progresso'
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990001').map((s) => s.text), ['M1', 'M2', 'M3'])
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado')
+  await w.tick() // finaliza
+  assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
+  assert.equal(store.finalizeSeq.length, 1)
+})
+
+test('P3) cliques repetidos de retomar NÃO duplicam (estado idempotente + worker único)', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  resetBoard(2, 0, l1, l2)
+
+  const w = await newWorker()
+  await runTicks(w, 2) // L1 M1
+  // "Retomar" três vezes: só regrava o mesmo status (em_progresso).
+  store.campaigns.get('c1')!.status = 'pausada'
+  store.campaigns.get('c1')!.status = 'em_progresso'
+  store.campaigns.get('c1')!.status = 'em_progresso'
+  store.campaigns.get('c1')!.status = 'em_progresso'
 
   await runTicks(w, 10)
 
