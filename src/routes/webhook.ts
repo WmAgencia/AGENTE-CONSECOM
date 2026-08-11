@@ -70,6 +70,7 @@ import {
   planInbound,
 } from '../services/intent.classifier.js';
 import { computeLeadScore } from '../services/scoring.js';
+import { blockIfSequenceActive } from '../services/campaign.gate.js';
 
 const IDEMPOTENCY_MAX_ENTRIES = 1000;
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -466,6 +467,14 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         );
       })
       .catch(() => {});
+
+    // --- Regra B: bloqueio da IA durante sequência de campanha ativa --------
+    // Enquanto o lead tiver um run 'pending'/'running', a mensagem é salva mas
+    // a IA NÃO é chamada nem envia resposta. Ao terminar a sequência (run
+    // 'done') ou ela ser interrompida ('failed'), o portão libera.
+    if (await blockIfSequenceActive({ leadId: lead.id, conversationId, text: msg.text })) {
+      return;
+    }
 
     await semaphore.acquire();
     try {

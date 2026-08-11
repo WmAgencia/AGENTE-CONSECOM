@@ -236,6 +236,30 @@ const envSchema = z.object({
       message: 'CONSECOM_WORKER_TICK_MS must be a positive integer',
     }),
 
+  // Número máximo de tentativas do worker para uma mesma mensagem da campanha
+  // (além das retries internas do sendText). Enquanto não esgota as tentativas,
+  // a sequência do lead permanece ATIVA (sequence_active = true) e a IA fica
+  // bloqueada. Ao esgotar, o run é marcado como 'failed' e a IA é liberada.
+  CONSECOM_SEND_MAX_RETRIES: z
+    .string()
+    .optional()
+    .default('3')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isInteger(v) && v >= 1 && v <= 10, {
+      message: 'CONSECOM_SEND_MAX_RETRIES must be an integer 1..10',
+    }),
+
+  // Backoff base (ms) entre tentativas do worker para a mesma mensagem.
+  // O atraso real é backoff x número da tentativa (ex.: 60s, 120s, 180s).
+  CONSECOM_SEND_RETRY_BACKOFF_MS: z
+    .string()
+    .optional()
+    .default('60000')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isInteger(v) && v > 0, {
+      message: 'CONSECOM_SEND_RETRY_BACKOFF_MS must be a positive integer',
+    }),
+
   // === Rate limiting (Etapa 2C) ===
   RATE_LIMIT_MAX: z
     .string()

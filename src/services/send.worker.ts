@@ -11,6 +11,21 @@
  *     `next_send_at`.
  *   - On completion marks the run `done` and the lead status `enviado`.
  *
+ * ORDERING (intercalado por rodadas — Regra A): a cada tick, TODOS os runs
+ * elegíveis avançam UMA mensagem, na ordem `current_position` (menor primeiro),
+ * `next_send_at`, `created_at`. Assim nunca enviamos 2 mensagens do mesmo lead
+ * no mesmo tick e a sequência avança em rodadas:
+ *   L1 M1, L2 M1, L3 M1 -> L1 M2, L2 M2, L3 M2 -> L1 M3, L2 M3, L3 M3
+ * (e não "todas as mensagens de um lead antes do próximo").
+ *
+ * FAILURE (Regra B): quando um envio falha, a sequência NÃO é considerada
+ * concluída. O run permanece ATIVO ('running') com um retry agendado
+ * (backoff x tentativa), mantendo a IA do lead bloqueada. Ao esgotar
+ * CONSECOM_SEND_MAX_RETRIES o run é marcado 'failed' (sequência interrompida).
+ *
+ * CONCURRENCY: `busy` + um set de runs em processamento garantem execução
+ * única dentro do processo (sem M2 duplicada), inclusive com ticks sobrepostos.
+ *
  * Uses the Supabase REST API with the service role key (bypasses RLS).
  * Does not store secrets; reads them from env via the config module.
  */
@@ -74,6 +89,15 @@ export class SendWorker {
   private busy = false;
   private started = false;
 
+  // Guard de concorrência: runs em processamento neste momento (evita
+  // processar o mesmo run duas vezes em ticks sobrepostos).
+  private readonly processingRuns = new Set<string>();
+
+  // Contagem de tentativas por envio (worker-scoped). Garante que uma mensagem
+  // com falha permanente não fique em retry infinito: após
+  // CONSECOM_SEND_MAX_RETRIES o run é marcado 'failed'.
+  private readonly retryCounts = new Map<string, number>();
+
   constructor() {
     const c = getSupabaseProspeccaoConfig();
     this.url = c.url;
@@ -97,7 +121,7 @@ export class SendWorker {
 
   private async getActiveCampaigns(): Promise<Array<{ id: string }>> {
     // Campanhas em andamento. O worker finaliza cada uma quando não há mais
-    // nenhum run pendente/ativo (execução sequencial por lead).
+    // nenhum run pendente/ativo (intercalado por rodadas dentro da campanha).
     const r = await fetch(
       `${this.url}/rest/v1/campaigns?select=id&status=eq.em_progresso`,
       { headers: this.headers() },
@@ -107,8 +131,11 @@ export class SendWorker {
   }
 
   private async getCampaignRuns(campaignId: string): Promise<SendRunRow[]> {
+    // Ordenação da rodada (Regra A): menor current_position primeiro, depois
+    // horário e criação. Assim cada tick processa a próxima mensagem de cada
+    // lead (um step por run) antes de qualquer run avançar para o step seguinte.
     const r = await fetch(
-      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at&campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.("pending","running")&order=created_at.asc`,
+      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at&campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.("pending","running")&order=current_position.asc,next_send_at.asc,created_at.asc`,
       { headers: this.headers() },
     );
     if (!r.ok) return [];
@@ -267,7 +294,10 @@ export class SendWorker {
     if (!next) {
       await this.patchSendRun(run.id, { status: 'done', current_position: position });
       await this.updateLeadStatus(run.lead_id, 'enviado');
-      log.info({ runId: run.id, leadId: run.lead_id }, 'send-worker: run done');
+      log.info(
+        { runId: run.id, leadId: run.lead_id },
+        '[CAMPAIGN] run done — todas as mensagens da sequência enviadas',
+      );
       return;
     }
 
@@ -336,45 +366,103 @@ export class SendWorker {
       );
     }
 
-    log.info({ runId: run.id, position, kind: next.kind, phone: sendPhone }, 'send-worker: sending');
+    log.info({ runId: run.id, position, kind: next.kind, phone: sendPhone }, '[CAMPAIGN] disparando mensagem da campanha');
     const agentName = await loadAgentName();
-    let ok: boolean;
+    let ok = false;
     let sentText = '';
-    if (strategyKind === 'text' && strategyText) {
-      sentText = formatAgentSignature(renderTemplate(strategyText, lead), agentName);
-      ok = (await sendText({ to: sendPhone, text: sentText, instance: sendInstance })).ok;
-    } else if (strategyMediaUrl) {
-      const mediaUrl = strategyMediaUrl.startsWith('http')
-        ? strategyMediaUrl
-        : `${this.url}/storage/v1/object/public/${strategyMediaUrl.replace(/^\/+/, '')}`;
-      const captionText = strategyCaption
-        ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
-        : `[${strategyKind}]`;
-      sentText = renderTemplate(strategyCaption ?? `[${strategyKind}]`, lead);
-      ok = (
-        await sendMedia({
-          to: sendPhone,
-          kind: strategyKind as MediaKind,
-          media: mediaUrl,
-          caption: strategyCaption
-            ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
-            : undefined,
-          mimetype: guessMimetype(mediaUrl, strategyKind),
-          filename: basename(mediaUrl),
-          instance: sendInstance,
-        })
-      ).ok;
-      if (!strategyCaption) sentText = `${captionText} ${mediaUrl}`;
-    } else {
+    try {
+      if (strategyKind === 'text' && strategyText) {
+        sentText = formatAgentSignature(renderTemplate(strategyText, lead), agentName);
+        ok = (await sendText({ to: sendPhone, text: sentText, instance: sendInstance })).ok;
+      } else if (strategyMediaUrl) {
+        const mediaUrl = strategyMediaUrl.startsWith('http')
+          ? strategyMediaUrl
+          : `${this.url}/storage/v1/object/public/${strategyMediaUrl.replace(/^\/+/, '')}`;
+        const captionText = strategyCaption
+          ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
+          : `[${strategyKind}]`;
+        sentText = renderTemplate(strategyCaption ?? `[${strategyKind}]`, lead);
+        ok = (
+          await sendMedia({
+            to: sendPhone,
+            kind: strategyKind as MediaKind,
+            media: mediaUrl,
+            caption: strategyCaption
+              ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
+              : undefined,
+            mimetype: guessMimetype(mediaUrl, strategyKind),
+            filename: basename(mediaUrl),
+            instance: sendInstance,
+          })
+        ).ok;
+        if (!strategyCaption) sentText = `${captionText} ${mediaUrl}`;
+      }
+    } catch (err) {
+      log.warn(
+        { runId: run.id, position, err: err instanceof Error ? err.message : 'unknown' },
+        'send-worker: send threw; treating as failure',
+      );
       ok = false;
     }
 
     if (!ok) {
-      log.warn({ runId: run.id, position, kind: next.kind }, 'send-worker: send failed');
-      await this.patchSendRun(run.id, { status: 'failed', current_position: position });
-      await this.bumpCampaign(run.campaign_id, 'fail_count');
+      // Falha de envio (Regra B): a sequência NÃO é considerada concluída.
+      // O run permanece ativo com um retry agendado (backoff x tentativa),
+      // mantendo sequence_active = true e a IA bloqueada. Ao esgotar as
+      // tentativas o run é marcado 'failed' (sequência interrompida).
+      const maxRetries = (() => {
+        try {
+          return getEnv().CONSECOM_SEND_MAX_RETRIES;
+        } catch {
+          return 3;
+        }
+      })();
+      const backoffMs = (() => {
+        try {
+          return getEnv().CONSECOM_SEND_RETRY_BACKOFF_MS;
+        } catch {
+          return 60_000;
+        }
+      })();
+      const attempt = (this.retryCounts.get(run.id) ?? 0) + 1;
+      this.retryCounts.set(run.id, attempt);
+      if (attempt >= maxRetries) {
+        log.warn(
+          { runId: run.id, position, kind: next.kind, attempt },
+          'send-worker: send failed; retries exhausted',
+        );
+        await this.patchSendRun(run.id, {
+          status: 'failed',
+          current_position: position,
+          fail_reason: 'send_failed',
+        });
+        await this.bumpCampaign(run.campaign_id, 'fail_count');
+        log.info(
+          { runId: run.id, leadId: run.lead_id, position, attempt },
+          '[CAMPAIGN] sequência interrompida — falha de envio (retries esgotados)',
+        );
+      } else {
+        const retryAt = new Date(Date.now() + backoffMs * attempt).toISOString();
+        log.warn(
+          { runId: run.id, position, kind: next.kind, attempt, nextRetryAt: retryAt },
+          'send-worker: send failed; retry scheduled (sequência continua ativa)',
+        );
+        await this.patchSendRun(run.id, {
+          status: 'running',
+          current_position: position,
+          next_send_at: retryAt,
+          fail_reason: 'send_failed',
+        });
+        log.info(
+          { runId: run.id, leadId: run.lead_id, position, attempt },
+          '[CAMPAIGN] sequência segue ativa — retry da mensagem agendado',
+        );
+      }
       return;
     }
+
+    // Envio confirmado: zera o contador de tentativas deste run.
+    this.retryCounts.delete(run.id);
 
     // Contexto da campanha no histórico do agente (assistant turn real).
     const recordedText = sentText || `[${next.kind}]`;
@@ -393,7 +481,10 @@ export class SendWorker {
     if (done) {
       await this.updateLeadStatus(run.lead_id, 'enviado');
       await this.bumpCampaign(run.campaign_id, 'success_count');
-      log.info({ runId: run.id, leadId: run.lead_id }, 'send-worker: sequence done');
+      log.info(
+        { runId: run.id, leadId: run.lead_id },
+        '[CAMPAIGN] sequência concluída — lead liberado para resposta da IA',
+      );
     }
   }
 
@@ -492,19 +583,25 @@ export class SendWorker {
           log.info({ campaignId: camp.id }, 'send-worker: campaign finalized / no active runs');
           continue;
         }
-        // EXECUÇÃO SEQUENCIAL POR LEAD: apenas o run mais antigo da campanha
-        // avança. Os demais permanecem 'pending' até este concluir a sequência
-        // inteira (done/failed). Isso garante o formato:
-        //   Lead A: M1 -> espera -> M2 -> espera -> M3 -> (conclui)
-        //   Lead B: M1 -> ...
-        // e NUNCA M1 para todos, depois M2 para todos, etc.
-        const run = runs[0];
-        if (run.next_send_at && new Date(run.next_send_at).getTime() > now) continue;
-        try {
-          await this.processRun(run);
-        } catch (e) {
-          log.error({ runId: run.id, err: e instanceof Error ? e.message : e }, 'send-worker: run crashed');
-          await this.patchSendRun(run.id, { status: 'failed', fail_reason: 'crashed' });
+        // EXECUÇÃO INTERCALADA POR RODADAS (Regra A): em cada tick, TODO run
+        // elegível (next_send_at <= now) avança UMA mensagem, na ordem da fila
+        // (current_position menor primeiro). Assim a sequência avança como:
+        //   L1 M1, L2 M1, L3 M1 -> L1 M2, L2 M2, L3 M2 -> L1 M3, L2 M3, L3 M3
+        // e NUNCA "todas as mensagens de um lead antes do próximo".
+        const due = runs.filter(
+          (r) => !r.next_send_at || new Date(r.next_send_at).getTime() <= now,
+        );
+        for (const run of due) {
+          if (this.processingRuns.has(run.id)) continue;
+          this.processingRuns.add(run.id);
+          try {
+            await this.processRun(run);
+          } catch (e) {
+            log.error({ runId: run.id, err: e instanceof Error ? e.message : e }, 'send-worker: run crashed');
+            await this.patchSendRun(run.id, { status: 'failed', fail_reason: 'crashed' });
+          } finally {
+            this.processingRuns.delete(run.id);
+          }
         }
       }
       await this.processRemarketing();
