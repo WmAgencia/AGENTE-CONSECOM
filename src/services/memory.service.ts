@@ -314,6 +314,64 @@ export async function getConversationsByImport(
 // Aprendizados
 // ===========================================================================
 
+export type LearningOrigin = 'ai' | 'manual';
+
+/**
+ * Normaliza QUALQUER formato de evidência vindo do banco para um array de
+ * strings (o contrato canônico da aplicação):
+ *  - array            -> mapeado/limpo
+ *  - JSON string      -> parse seguro (array/objeto/scalar)
+ *  - objeto           -> extrai quote/context/texto relevante
+ *  - string simples   -> vira um item de evidência
+ *  - null/undefined   -> []
+ *
+ * O crash `evidence.slice(...).map is not a function` acontecia porque o
+ * frontend assumia array, mas o valor podia chegar como string/objeto. Nunca
+ * mais um formato inesperado deve derrubar a UI.
+ */
+export function normalizeEvidenceValue(raw: unknown, limit = 3): string[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) {
+    return raw
+      .map((e) => {
+        if (e == null) return '';
+        if (typeof e === 'string') return e.trim();
+        if (typeof e === 'object') return extractEvidenceString(e);
+        return String(e);
+      })
+      .filter((s) => s.length > 0)
+      .slice(0, limit);
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (!t) return [];
+    try {
+      const parsed = JSON.parse(t) as unknown;
+      if (Array.isArray(parsed)) return normalizeEvidenceValue(parsed, limit);
+      if (parsed && typeof parsed === 'object') return normalizeEvidenceValue(parsed, limit);
+      if (typeof parsed === 'string' && parsed.trim()) return [parsed.trim().slice(0, 220)];
+      return [];
+    } catch {
+      return [t.slice(0, 220)];
+    }
+  }
+  if (typeof raw === 'object') {
+    const item = extractEvidenceString(raw as Record<string, unknown>);
+    return item ? [item] : [];
+  }
+  return [];
+}
+
+function extractEvidenceString(o: Record<string, unknown>): string {
+  for (const k of ['quote', 'context', 'relevance', 'content', 'text', 'message']) {
+    const v = o[k];
+    if (typeof v === 'string' && v.trim()) return v.trim().slice(0, 220);
+    if (Array.isArray(v) && v.length > 0) return String(v[0]).slice(0, 220);
+  }
+  const s = JSON.stringify(o);
+  return s && s !== '{}' ? s.slice(0, 220) : '';
+}
+
 export interface LearningRow {
   id: string;
   user_id: string;
@@ -322,6 +380,7 @@ export interface LearningRow {
   category: LearningCategory;
   content: string;
   evidence: string[];
+  origin: LearningOrigin;
   confidence: 'alta' | 'media' | 'baixa';
   occurrences: number;
   performance: 'positivo' | 'negativo' | 'neutro';
@@ -356,7 +415,9 @@ export async function bulkCreateLearnings(
       conversation_id: conversationId,
       category: learning.category,
       content: learning.content,
-      evidence: JSON.stringify(learning.evidence),
+      // Coluna JSONB: enviamos o ARRAY (não uma string JSON) para que o
+      // banco grave como array e o contrato de evidence fique estável.
+      evidence: normalizeEvidenceValue(learning.evidence),
       confidence: learning.confidence,
       occurrences: 1,
       performance: learning.performance,
@@ -403,7 +464,69 @@ export async function listLearnings(
       { headers: hdr(s.key) },
     );
     if (!res.ok) return [];
-    return (await res.json()) as LearningRow[];
+    const rows = (await res.json()) as Array<
+      Omit<LearningRow, 'evidence' | 'origin'> & { evidence?: unknown }
+    >;
+    // Contrato estável: evidence SEMPRE array de strings + origin derivada.
+    return rows
+      .filter((r) => !!r && !!r.id)
+      .map((r) => ({
+        ...r,
+        evidence: normalizeEvidenceValue(r.evidence),
+        origin: r.import_id || r.conversation_id ? ('ai' as const) : ('manual' as const),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/** Cria um aprendizado manual (origin = 'manual', sem import/conversa). */
+export async function createLearningRow(
+  userId: string,
+  input: {
+    category: LearningCategory;
+    content: string;
+    confidence: 'alta' | 'media' | 'baixa';
+    performance: 'positivo' | 'negativo' | 'neutro';
+    status: 'identificado' | 'validado' | 'ativo' | 'inativo';
+    important: boolean;
+    evidence?: string[];
+  },
+): Promise<string | null> {
+  const s = sup();
+  if (!s) return null;
+  try {
+    const rows = await postRows<{ id: string }>('ai_memory_learnings', [
+      {
+        user_id: userId,
+        category: input.category,
+        content: input.content.slice(0, 400),
+        evidence: normalizeEvidenceValue(input.evidence ?? [], 10),
+        confidence: input.confidence,
+        performance: input.performance,
+        status: input.status,
+        important: input.important,
+        occurrences: 1,
+      },
+    ]);
+    return rows[0]?.id ?? null;
+  } catch (err) {
+    getLogger().warn({ errMessage: err instanceof Error ? err.message : 'unknown' }, 'memory: create learning failed');
+    return null;
+  }
+}
+
+/** Lotes em processamento (cross-user) para retomada após restart. */
+export async function listProcessingImports(limit = 50): Promise<Array<{ id: string; user_id: string }>> {
+  const s = sup();
+  if (!s) return [];
+  try {
+    const res = await fetch(
+      `${s.url}/rest/v1/ai_memory_imports?select=id,user_id&status=eq.processing&limit=${limit}`,
+      { headers: hdr(s.key) },
+    );
+    if (!res.ok) return [];
+    return (await res.json()) as Array<{ id: string; user_id: string }>;
   } catch {
     return [];
   }
@@ -482,6 +605,10 @@ export async function getDashboard(userId: string): Promise<MemoryDashboard> {
     objections,
     meetingStrategies,
     totalImports,
+    statusIdentificado,
+    statusValidado,
+    statusAtivo,
+    statusInativo,
   ] = await Promise.all([
     count('ai_memory_conversations'),
     count('ai_memory_conversations', '&status=eq.processed'),
@@ -490,13 +617,20 @@ export async function getDashboard(userId: string): Promise<MemoryDashboard> {
     count('ai_memory_learnings', '&category=in.(common_objections,objection_handling)'),
     count('ai_memory_learnings', '&category=eq.meeting_transition'),
     count('ai_memory_imports'),
+    count('ai_memory_learnings', '&status=eq.identificado'),
+    count('ai_memory_learnings', '&status=eq.validado'),
+    count('ai_memory_learnings', '&status=eq.ativo'),
+    count('ai_memory_learnings', '&status=eq.inativo'),
   ]);
 
   const recent = await listLearnings(userId, { limit: 12 });
-  const statusCounts: Record<string, number> = {};
-  for (const l of recent) {
-    statusCounts[l.status] = (statusCounts[l.status] ?? 0) + 1;
-  }
+  // statusCounts = contagens REAIS por status (não só dos recentes).
+  const statusCounts: Record<string, number> = {
+    identificado: statusIdentificado,
+    validado: statusValidado,
+    ativo: statusAtivo,
+    inativo: statusInativo,
+  };
 
   return {
     conversationsImported,

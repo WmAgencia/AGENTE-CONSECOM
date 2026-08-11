@@ -9,7 +9,8 @@
  *  - POST   /api/ai/memory/conversations/:id/reprocess -> reprocessa uma conversa
  *  - DELETE /api/ai/memory/conversations/:id     -> exclui conversa (apaga aprendizados ligados)
  *  - GET    /api/ai/memory/learnings             -> lista aprendizados
- *  - PATCH  /api/ai/memory/learnings/:id         -> controle manual (status/importante/conteúdo)
+ *  - POST   /api/ai/memory/learnings             -> cria aprendizado manual
+ *  - PATCH  /api/ai/memory/learnings/:id         -> controle manual (status/importante/conteúdo/categoria/confiança/performance/evidence)
  *  - DELETE /api/ai/memory/learnings/:id         -> remove aprendizado
  *
  * Auth: `Authorization: Bearer <SUPABASE_ACCESS_TOKEN>` (mesmo padrão das
@@ -40,9 +41,12 @@ import {
   listLearnings,
   updateLearningRow,
   deleteLearningRow,
+  createLearningRow,
+  normalizeEvidenceValue,
   getDashboard,
   type MemoryConversationRow,
 } from '../services/memory.service.js';
+import { LEARNING_CATEGORIES } from '../services/memory.analyze.js';
 import {
   startImportBackground,
   isImportPending,
@@ -65,8 +69,20 @@ const learningPatchSchema = z.object({
   status: z.enum(['identificado', 'validado', 'ativo', 'inativo']).optional(),
   important: z.boolean().optional(),
   content: z.string().min(1).max(400).optional(),
-  category: z.string().min(1).max(60).optional(),
+  category: z.enum(LEARNING_CATEGORIES).optional(),
   confidence: z.enum(['alta', 'media', 'baixa']).optional(),
+  performance: z.enum(['positivo', 'negativo', 'neutro']).optional(),
+  evidence: z.array(z.string().min(1).max(220)).max(10).optional(),
+});
+
+const learningCreateSchema = z.object({
+  category: z.enum(LEARNING_CATEGORIES),
+  content: z.string().min(1).max(400),
+  confidence: z.enum(['alta', 'media', 'baixa']).default('media'),
+  performance: z.enum(['positivo', 'negativo', 'neutro']).default('neutro'),
+  status: z.enum(['identificado', 'validado', 'ativo', 'inativo']).default('identificado'),
+  important: z.boolean().default(false),
+  evidence: z.array(z.string().min(1).max(220)).max(10).optional(),
 });
 
 async function resolveSupabaseUser(
@@ -396,6 +412,29 @@ export function registerMemoryRoutes(app: FastifyInstance): void {
     }
   });
 
+  // Criação MANUAL de aprendizado (origin = 'manual'): o usuário controla a
+  // memória da IA sem depender da extração automática.
+  app.post('/api/ai/memory/learnings', async (req, reply) => {
+    const user = await resolveSupabaseUser(bearer(req));
+    if (!user) return reply.status(401).send({ error: 'unauthorized', statusCode: 401 });
+    const parsed = learningCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'validation_error',
+        message: parsed.error.issues.map((i) => i.message).join('; '),
+        statusCode: 400,
+      });
+    }
+    try {
+      const id = await createLearningRow(user.id, parsed.data);
+      if (!id) return reply.status(502).send({ error: 'store_failed', statusCode: 502 });
+      return reply.status(201).send({ ok: true, id });
+    } catch (err) {
+      const em = err instanceof Error ? err.message : 'unknown';
+      return reply.status(502).send({ error: 'create_failed', message: em, statusCode: 502 });
+    }
+  });
+
   app.patch('/api/ai/memory/learnings/:id', async (req, reply) => {
     const user = await resolveSupabaseUser(bearer(req));
     if (!user) return reply.status(401).send({ error: 'unauthorized', statusCode: 401 });
@@ -416,6 +455,8 @@ export function registerMemoryRoutes(app: FastifyInstance): void {
     if (parsed.data.content !== undefined) patch.content = parsed.data.content;
     if (parsed.data.category !== undefined) patch.category = parsed.data.category;
     if (parsed.data.confidence !== undefined) patch.confidence = parsed.data.confidence;
+    if (parsed.data.performance !== undefined) patch.performance = parsed.data.performance;
+    if (parsed.data.evidence !== undefined) patch.evidence = normalizeEvidenceValue(parsed.data.evidence, 10);
     if (Object.keys(patch).length === 0) {
       return reply.status(400).send({ error: 'nothing_to_update', statusCode: 400 });
     }

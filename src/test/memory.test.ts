@@ -22,7 +22,7 @@ import {
   parseText,
 } from '../services/memory.parse.js';
 import { inferConversationOutcome } from '../services/memory.processor.js';
-import { parseTranscript } from '../services/memory.service.js';
+import { parseTranscript, normalizeEvidenceValue } from '../services/memory.service.js';
 
 describe('memory.parse: format detection', () => {
   test('detecta TXT padrão do WhatsApp', () => {
@@ -434,6 +434,48 @@ describe('memory.service: parseTranscript', () => {
   });
 });
 
+describe('memory.service: normalizeEvidenceValue (contrato de evidence)', () => {
+  test('array é normalizado e limpo', () => {
+    assert.deepEqual(normalizeEvidenceValue([' a ', 'b', '']), ['a', 'b']);
+    assert.deepEqual(normalizeEvidenceValue(null), []);
+    assert.deepEqual(normalizeEvidenceValue(undefined), []);
+  });
+
+  test('JSON string de array vira array', () => {
+    assert.deepEqual(normalizeEvidenceValue('["trecho 1","trecho 2"]'), ['trecho 1', 'trecho 2']);
+  });
+
+  test('JSON string de objeto vira um item com quote/context', () => {
+    assert.deepEqual(
+      normalizeEvidenceValue('{"quote":"olá","context":"início"}'),
+      ['olá'],
+    );
+  });
+
+  test('objeto direto vira item de evidência', () => {
+    assert.deepEqual(normalizeEvidenceValue({ quote: 'bom dia', relevance: 'alta' }), ['bom dia']);
+  });
+
+  test('string simples vira um único item', () => {
+    assert.deepEqual(normalizeEvidenceValue('trecho solto'), ['trecho solto']);
+  });
+
+  test('JSON string inválida vira item com o texto cru', () => {
+    assert.deepEqual(normalizeEvidenceValue('não é json'), ['não é json']);
+  });
+
+  test('limite de itens é respeitado', () => {
+    const ev = normalizeEvidenceValue(['a', 'b', 'c', 'd'], 2);
+    assert.equal(ev.length, 2);
+  });
+
+  test('evidência vazia/ausente nunca lança e vira []', () => {
+    assert.deepEqual(normalizeEvidenceValue([]), []);
+    assert.deepEqual(normalizeEvidenceValue(''), []);
+    assert.deepEqual(normalizeEvidenceValue('[]'), []);
+  });
+});
+
 describe('memory.processor: desfecho', () => {
   test('detecta interesse em reunião', () => {
     const out = inferConversationOutcome([
@@ -467,9 +509,20 @@ describe('memory routes: auth', () => {
       { method: 'GET', url: '/api/ai/memory/imports' },
       { method: 'GET', url: '/api/ai/memory/conversations' },
       { method: 'GET', url: '/api/ai/memory/learnings' },
+      { method: 'POST', url: '/api/ai/memory/learnings' },
       { method: 'DELETE', url: '/api/ai/memory/learnings/123e4567-e89b-12d3-a456-426614174000' },
       { method: 'PATCH', url: '/api/ai/memory/learnings/123e4567-e89b-12d3-a456-426614174000' },
     ] as const;
+
+    for (const c of cases) {
+      const res = await app.inject({
+        method: c.method,
+        url: c.url,
+        headers: { 'Content-Type': 'application/json' },
+        payload: c.method === 'POST' ? { fileName: 'a.txt', content: 'x' } : {},
+      });
+      assert.equal(res.statusCode, 401, `${c.method} ${c.url} deve ser 401`);
+    }
 
     for (const c of cases) {
       const res = await app.inject({

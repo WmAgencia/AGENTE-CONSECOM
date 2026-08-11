@@ -1,4 +1,7 @@
 import { supabase } from './supabase'
+import { normalizeEvidence } from './evidence'
+
+export { normalizeEvidence }
 
 /** URL pública do backend (Railway). Sobrescreva com VITE_BACKEND_URL no build. */
 export const API_BASE = (import.meta.env.VITE_BACKEND_URL as string | undefined) ?? 'https://consecom-backend-production.up.railway.app'
@@ -388,12 +391,16 @@ export type LearningCategory =
   | 'conversation_patterns'
 
 export type LearningStatus = 'identificado' | 'validado' | 'ativo' | 'inativo'
+export type LearningOrigin = 'ai' | 'manual'
 
 export interface MemoryLearning {
   id: string
   category: LearningCategory
   content: string
+  /** Sempre normalizado para string[] (ver normalizeEvidence). */
   evidence: string[]
+  /** 'ai' = extraído da conversa · 'manual' = criado pelo usuário. */
+  origin: LearningOrigin
   confidence: 'alta' | 'media' | 'baixa'
   occurrences: number
   performance: 'positivo' | 'negativo' | 'neutro'
@@ -401,6 +408,16 @@ export interface MemoryLearning {
   important: boolean
   discovered_at: string
   created_at: string
+}
+
+export interface MemoryLearningInput {
+  category: LearningCategory
+  content: string
+  confidence: 'alta' | 'media' | 'baixa'
+  performance?: 'positivo' | 'negativo' | 'neutro'
+  status?: LearningStatus
+  important?: boolean
+  evidence?: string[]
 }
 
 export interface MemoryDashboard {
@@ -487,9 +504,22 @@ export const memoryApi = {
     const r = await api.get<{ learnings: MemoryLearning[] }>(
       `/api/ai/memory/learnings${qs({ category: opts?.category, status: opts?.status, limit: opts?.limit })}`,
     )
-    return r.learnings
+    // Contrato defensivo: garante array + evidence normalizada (evita crash).
+    return (r.learnings ?? []).map((l) => ({
+      ...l,
+      evidence: normalizeEvidence(l.evidence),
+      origin: l.origin === 'manual' ? 'manual' : 'ai',
+    }))
   },
-  async updateLearning(id: string, patch: Partial<Pick<MemoryLearning, 'status' | 'important' | 'content' | 'category' | 'confidence'>>): Promise<void> {
+  async createLearning(input: MemoryLearningInput): Promise<{ ok: boolean; id: string }> {
+    return api.post<{ ok: boolean; id: string }>('/api/ai/memory/learnings', input)
+  },
+  async updateLearning(
+    id: string,
+    patch: Partial<
+      Pick<MemoryLearning, 'status' | 'important' | 'content' | 'category' | 'confidence' | 'performance' | 'evidence'>
+    >,
+  ): Promise<void> {
     await api.patch(`/api/ai/memory/learnings/${encodeURIComponent(id)}`, patch)
   },
   async deleteLearning(id: string): Promise<void> {

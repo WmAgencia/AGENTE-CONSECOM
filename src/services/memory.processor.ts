@@ -10,6 +10,7 @@ import { getLogger } from '../utils/logger.js';
 import { analyzeTranscript } from './memory.analyze.js';
 import {
   getConversationsByImport,
+  listProcessingImports,
   updateImportRow,
   updateConversationRow,
   bulkCreateLearnings,
@@ -78,7 +79,13 @@ export async function processImportInBackground(importId: string, userId: string
         .join('\n')
         .slice(0, 60_000);
 
-      const extracted = await analyzeTranscript(transcriptLines);
+      let extracted = await analyzeTranscript(transcriptLines);
+      // Não-determinismo do modelo: transcript não-vazio que retorna zero
+      // aprendizados é reanalisado UMA vez antes de marcar como processado.
+      if (transcriptLines.trim().length > 0 && extracted.length === 0) {
+        log.info({ conversationId: conv.id }, 'memory: empty analysis, retrying once');
+        extracted = await analyzeTranscript(transcriptLines);
+      }
 
       if (extracted.length > 0) {
         const n = await bulkCreateLearnings(
@@ -141,4 +148,27 @@ export function startImportBackground(importId: string, userId: string): void {
     .finally(() => {
       activeImports.delete(importId);
     });
+}
+
+/**
+ * Retoma lotes que ficaram presos como 'processing' após um restart do
+ * serviço (a fila em memória é perdida no redeploy). Rodado no bootstrap.
+ */
+export async function resumeStuckImports(): Promise<void> {
+  const log = getLogger();
+  let pending: Array<{ id: string; user_id: string }> = [];
+  try {
+    pending = await listProcessingImports(50);
+  } catch {
+    return;
+  }
+  let started = 0;
+  for (const imp of pending) {
+    if (activeImports.has(imp.id)) continue;
+    startImportBackground(imp.id, imp.user_id);
+    started++;
+  }
+  if (started > 0) {
+    log.info({ pending: pending.length, started }, 'memory: resumed stuck imports after restart');
+  }
 }

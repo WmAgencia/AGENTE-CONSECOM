@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Brain,
   RefreshCw,
@@ -16,18 +17,27 @@ import {
   Clock,
   ArrowRight,
   FileUp,
+  Plus,
+  Pencil,
+  Search,
+  Eye,
 } from 'lucide-react'
 import {
   memoryApi,
   categoryLabel,
+  normalizeEvidence,
   type MemoryDashboard,
   type MemoryImport,
   type MemoryConversation,
   type MemoryLearning,
+  type LearningCategory,
   type LearningStatus,
 } from '../lib/api'
+import { MEMORY_PATHS, resolveMemoryTabFromPath } from '../lib/routes'
 
-type Tab = 'imports' | 'conversas' | 'aprendizados'
+type Tab = 'lotes' | 'conversas' | 'aprendizados'
+
+type LearningFilter = 'all' | 'ativo' | 'inativo' | 'ai' | 'manual' | 'pendente'
 
 interface FileState {
   name: string
@@ -40,13 +50,6 @@ const STATUS_BADGE: Record<LearningStatus, { label: string; cls: string }> = {
   validado: { label: 'Validado', cls: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/30' },
   ativo: { label: 'Ativo', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
   inativo: { label: 'Inativo', cls: 'text-slate-400 bg-white/5 border-white/10' },
-}
-
-const NEXT_STATUS: Record<LearningStatus, LearningStatus> = {
-  identificado: 'validado',
-  validado: 'ativo',
-  ativo: 'inativo',
-  inativo: 'identificado',
 }
 
 const CATEGORY_CHIP: Record<string, string> = {
@@ -89,6 +92,29 @@ const DIRECTION_LABEL: Record<string, string> = {
   misto: 'misto',
 }
 
+const CATEGORY_OPTIONS: LearningCategory[] = [
+  'communication_style',
+  'opening_patterns',
+  'discovery_questions',
+  'value_proposition',
+  'objection_handling',
+  'meeting_transition',
+  'follow_up_patterns',
+  'successful_patterns',
+  'unsuccessful_patterns',
+  'common_objections',
+  'conversation_patterns',
+]
+
+const FILTER_OPTIONS: { key: LearningFilter; label: string }[] = [
+  { key: 'all', label: 'Todos' },
+  { key: 'ativo', label: 'Ativos' },
+  { key: 'inativo', label: 'Inativos' },
+  { key: 'ai', label: 'Gerados pela IA' },
+  { key: 'manual', label: 'Manuais' },
+  { key: 'pendente', label: 'Pendentes' },
+]
+
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 const MAX_UPLOAD_MB = 100
 
@@ -110,12 +136,35 @@ function fileToBase64(file: File): Promise<string> {
   })
 }
 
+interface LearningForm {
+  category: LearningCategory
+  content: string
+  confidence: 'alta' | 'media' | 'baixa'
+  performance: 'positivo' | 'negativo' | 'neutro'
+  status: LearningStatus
+  important: boolean
+  evidenceText: string
+}
+
+const EMPTY_FORM: LearningForm = {
+  category: 'communication_style',
+  content: '',
+  confidence: 'media',
+  performance: 'neutro',
+  status: 'identificado',
+  important: false,
+  evidenceText: '',
+}
+
 export function CommercialMemory() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const tab: Tab = resolveMemoryTabFromPath(location.pathname)
+
   const [dash, setDash] = useState<MemoryDashboard | null>(null)
   const [imports, setImports] = useState<MemoryImport[]>([])
   const [convs, setConvs] = useState<MemoryConversation[]>([])
   const [learnings, setLearnings] = useState<MemoryLearning[]>([])
-  const [tab, setTab] = useState<Tab>('imports')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [importOpen, setImportOpen] = useState(false)
@@ -124,6 +173,14 @@ export function CommercialMemory() {
   const [fileStates, setFileStates] = useState<Record<string, FileState>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
   const processingActive = imports.some((i) => i.status === 'processing')
+
+  const [modal, setModal] = useState<null | { mode: 'create' } | { mode: 'edit'; learning: MemoryLearning }>(null)
+  const [form, setForm] = useState<LearningForm>(EMPTY_FORM)
+  const [modalError, setModalError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [filter, setFilter] = useState<LearningFilter>('all')
+  const [query, setQuery] = useState('')
+  const [expandedEvidence, setExpandedEvidence] = useState<Set<string>>(new Set())
 
   const refresh = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -136,12 +193,10 @@ export function CommercialMemory() {
         ])
         setDash(d)
         setImports(imb)
-        if (!opts?.silent) {
-          if (tab === 'conversas') {
-            setConvs(await memoryApi.conversations())
-          } else if (tab === 'aprendizados') {
-            setLearnings(await memoryApi.learnings())
-          }
+        if (tab === 'conversas') {
+          setConvs(await memoryApi.conversations())
+        } else if (tab === 'aprendizados') {
+          setLearnings(await memoryApi.learnings())
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Falha ao carregar memória comercial')
@@ -162,7 +217,11 @@ export function CommercialMemory() {
   useEffect(() => {
     void refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [tab])
+
+  function switchTab(t: Tab) {
+    navigate(t === 'conversas' ? MEMORY_PATHS.conversas : t === 'aprendizados' ? MEMORY_PATHS.aprendizados : MEMORY_PATHS.lotes)
+  }
 
   function openImport() {
     setImportOpen(true)
@@ -248,9 +307,69 @@ export function CommercialMemory() {
     }
   }
 
-  async function onToggleStatus(l: MemoryLearning) {
+  function openCreate() {
+    setForm(EMPTY_FORM)
+    setModalError('')
+    setModal({ mode: 'create' })
+  }
+
+  function openEdit(l: MemoryLearning) {
+    setForm({
+      category: l.category,
+      content: l.content,
+      confidence: l.confidence,
+      performance: l.performance,
+      status: l.status,
+      important: l.important,
+      evidenceText: normalizeEvidence(l.evidence).join('\n'),
+    })
+    setModalError('')
+    setModal({ mode: 'edit', learning: l })
+  }
+
+  async function saveLearning() {
+    const content = form.content.trim()
+    if (!content) {
+      setModalError('Escreva o aprendizado (ex.: "Sempre entender o problema antes de apresentar preço").')
+      return
+    }
+    setSaving(true)
+    setModalError('')
     try {
-      await memoryApi.updateLearning(l.id, { status: NEXT_STATUS[l.status] })
+      const evidence = form.evidenceText.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 10)
+      if (modal?.mode === 'create') {
+        await memoryApi.createLearning({
+          category: form.category,
+          content,
+          confidence: form.confidence,
+          performance: form.performance,
+          status: form.status,
+          important: form.important,
+          ...(evidence.length ? { evidence } : {}),
+        })
+      } else if (modal?.mode === 'edit' && modal.learning) {
+        await memoryApi.updateLearning(modal.learning.id, {
+          category: form.category,
+          content,
+          confidence: form.confidence,
+          performance: form.performance,
+          status: form.status,
+          important: form.important,
+          ...(evidence.length ? { evidence } : {}),
+        })
+      }
+      setModal(null)
+      await refresh()
+    } catch (err) {
+      setModalError(err instanceof Error ? err.message : 'Falha ao salvar aprendizado')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function onToggleActive(l: MemoryLearning) {
+    try {
+      await memoryApi.updateLearning(l.id, { status: l.status === 'ativo' ? 'inativo' : 'ativo' })
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao atualizar aprendizado')
@@ -278,8 +397,37 @@ export function CommercialMemory() {
 
   const fileList = Object.values(fileStates)
 
+  const filteredLearnings = learnings
+    .filter((l) => {
+      switch (filter) {
+        case 'ativo':
+          return l.status === 'ativo'
+        case 'inativo':
+          return l.status === 'inativo'
+        case 'pendente':
+          return l.status === 'identificado'
+        case 'ai':
+          return l.origin === 'ai'
+        case 'manual':
+          return l.origin === 'manual'
+        default:
+          return true
+      }
+    })
+    .filter((l) => {
+      const q = query.trim().toLowerCase()
+      if (!q) return true
+      return (
+        l.content.toLowerCase().includes(q) ||
+        categoryLabel(l.category).toLowerCase().includes(q) ||
+        l.category.toLowerCase().includes(q)
+      )
+    })
+
+  const inProcessing = Math.max(0, (dash?.conversationsImported ?? 0) - (dash?.conversationsProcessed ?? 0))
+
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02]">
+    <div className="h-full overflow-auto rounded-xl border border-white/5 bg-white/[0.02]">
       {/* ===== Header ===== */}
       <div className="px-5 py-4 border-b border-white/5 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2.5">
@@ -306,6 +454,13 @@ export function CommercialMemory() {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <button
+            onClick={openCreate}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Adicionar aprendizado
+          </button>
+          <button
             onClick={openImport}
             disabled={uploading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white disabled:opacity-50 transition"
@@ -324,16 +479,18 @@ export function CommercialMemory() {
       )}
 
       <div className="p-5 space-y-5">
-        {/* ===== Stats ===== */}
+        {/* ===== Stats (números reais do dashboard) ===== */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { label: 'Conversas importadas', value: dash?.conversationsImported ?? 0, accent: 'text-slate-200' },
             { label: 'Processadas', value: dash?.conversationsProcessed ?? 0, accent: 'text-emerald-300' },
+            { label: 'Em processamento', value: inProcessing, accent: 'text-amber-300' },
             { label: 'Aprendizados', value: dash?.learnings ?? 0, accent: 'text-indigo-300' },
-            { label: 'Padrões extraídos', value: dash?.patterns ?? 0, accent: 'text-sky-300' },
-            { label: 'Objeções mapeadas', value: dash?.objections ?? 0, accent: 'text-amber-300' },
-            { label: 'Estratégias de reunião', value: dash?.meetingStrategies ?? 0, accent: 'text-fuchsia-300' },
             { label: 'Ativos/validados', value: (dash?.statusCounts.ativo ?? 0) + (dash?.statusCounts.validado ?? 0), accent: 'text-emerald-300' },
+            { label: 'Pendentes', value: dash?.statusCounts.identificado ?? 0, accent: 'text-amber-300' },
+            { label: 'Padrões extraídos', value: dash?.patterns ?? 0, accent: 'text-sky-300' },
+            { label: 'Objeções mapeadas', value: dash?.objections ?? 0, accent: 'text-orange-300' },
+            { label: 'Estratégias de reunião', value: dash?.meetingStrategies ?? 0, accent: 'text-fuchsia-300' },
             { label: 'Lotes de importação', value: dash?.totalImports ?? 0, accent: 'text-slate-200' },
           ].map((s) => (
             <div key={s.label} className="rounded-lg border border-white/5 bg-black/20 px-3 py-2.5">
@@ -344,7 +501,7 @@ export function CommercialMemory() {
         </div>
 
         {/* ===== O que a IA aprendeu ===== */}
-        {learnings.length > 0 && (
+        {tab === 'aprendizados' && learnings.length > 0 && (
           <div className="rounded-lg border border-white/5 bg-black/10 p-4">
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-4 h-4 text-emerald-300" />
@@ -371,10 +528,10 @@ export function CommercialMemory() {
           </div>
         )}
 
-        {/* ===== Tabs ===== */}
+        {/* ===== Tabs (rotas reais) ===== */}
         <div className="flex items-center gap-1 border-b border-white/5 pb-1">
           {([
-            { key: 'imports', label: 'Lotes', icon: Database },
+            { key: 'lotes', label: 'Lotes', icon: Database },
             { key: 'conversas', label: 'Conversas', icon: MessageSquareText },
             { key: 'aprendizados', label: 'Aprendizados', icon: Sparkles },
           ] as const).map((t) => {
@@ -383,10 +540,7 @@ export function CommercialMemory() {
             return (
               <button
                 key={t.key}
-                onClick={() => {
-                  setTab(t.key)
-                  void refresh()
-                }}
+                onClick={() => switchTab(t.key)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs font-medium transition ${
                   active ? 'text-white bg-white/5 border border-b-0 border-white/10' : 'text-slate-400 hover:text-white'
                 }`}
@@ -402,7 +556,7 @@ export function CommercialMemory() {
         </div>
 
         {/* ===== Lotes ===== */}
-        {tab === 'imports' && (
+        {tab === 'lotes' && (
           <div className="space-y-2">
             {imports.length === 0 && (
               <div className="text-xs text-slate-500 py-6 text-center">Nenhum lote importado ainda. Clique em “Importar conversas”.</div>
@@ -477,14 +631,13 @@ export function CommercialMemory() {
                       <div className="text-[10px] text-rose-300 mt-0.5">{c.error_message ?? 'falha na análise'}</div>
                     )}
                   </div>
-                  {c.status === 'failed' && (
-                    <button
-                      onClick={() => void onReprocess(c.id)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" /> Reprocessar
-                    </button>
-                  )}
+                  <button
+                    onClick={() => void onReprocess(c.id)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition"
+                    title="Reanalisar conversa (gera ou atualiza aprendizados, sem duplicar)"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Reanalisar
+                  </button>
                   <button
                     onClick={() => void onDeleteConversation(c.id)}
                     className="p-2 rounded-lg text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition"
@@ -500,21 +653,64 @@ export function CommercialMemory() {
 
         {/* ===== Aprendizados ===== */}
         {tab === 'aprendizados' && (
-          <div className="space-y-2">
+          <div className="space-y-3">
+            {/* Filtros + busca */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/20 border border-white/5 text-slate-400">
+                <Search className="w-3.5 h-3.5 shrink-0" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Buscar por título, conteúdo ou categoria…"
+                  className="bg-transparent outline-none text-xs text-slate-200 placeholder-slate-500 w-52"
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {FILTER_OPTIONS.map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => setFilter(f.key)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
+                      filter === f.key
+                        ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
+                        : 'text-slate-400 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <span className="ml-auto text-[11px] text-slate-500">{filteredLearnings.length} de {learnings.length}</span>
+            </div>
+
             {learnings.length === 0 && (
               <div className="text-xs text-slate-500 py-6 text-center">
-                Nenhum aprendizado ainda. Importe conversas para a IA extrair padrões.
+                Nenhum aprendizado ainda. Importe conversas para a IA extrair padrões ou use “+ Adicionar aprendizado”.
               </div>
             )}
-            {learnings.map((l) => {
+            {filteredLearnings.length === 0 && learnings.length > 0 && (
+              <div className="text-xs text-slate-500 py-6 text-center">Nenhum aprendizado corresponde ao filtro/busca.</div>
+            )}
+            {filteredLearnings.map((l) => {
               const badge = STATUS_BADGE[l.status]
               const chip = CATEGORY_CHIP[l.category] ?? CATEGORY_CHIP.conversation_patterns
+              const evidence = normalizeEvidence(l.evidence)
+              const expanded = expandedEvidence.has(l.id)
               return (
                 <div key={l.id} className="rounded-lg border border-white/5 bg-black/20 px-4 py-3 flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${chip}`}>{categoryLabel(l.category)}</span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${badge.cls}`}>{badge.label}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                          l.origin === 'manual'
+                            ? 'text-sky-300 bg-sky-500/10 border-sky-500/30'
+                            : 'text-violet-300 bg-violet-500/10 border-violet-500/30'
+                        }`}
+                      >
+                        {l.origin === 'manual' ? 'Manual' : 'Gerado pela IA'}
+                      </span>
                       {l.important && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full border text-fuchsia-300 bg-fuchsia-500/10 border-fuchsia-500/30">
                           importante
@@ -544,15 +740,34 @@ export function CommercialMemory() {
                       </span>
                     </div>
                     <p className="mt-1.5 text-sm text-slate-200 leading-snug">{l.content}</p>
-                    {l.evidence.length > 0 && (
-                      <div className="mt-1.5 space-y-1">
-                        <span className="text-[10px] uppercase tracking-wide text-slate-500">Evidências</span>
-                        {l.evidence.slice(0, 2).map((e, i) => (
-                          <div key={i} className="text-[11px] text-slate-400 bg-white/[0.03] border border-white/5 rounded-md px-2 py-1">
-                            “{e}”
+                    {evidence.length > 0 ? (
+                      <div className="mt-1.5">
+                        <button
+                          onClick={() =>
+                            setExpandedEvidence((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(l.id)) next.delete(l.id)
+                              else next.add(l.id)
+                              return next
+                            })
+                          }
+                          className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500 hover:text-indigo-300 transition"
+                        >
+                          <Eye className="w-3 h-3" />
+                          {evidence.length === 1 ? '1 evidência' : `${evidence.length} evidências`}
+                        </button>
+                        {(expanded || evidence.length <= 2) && (
+                          <div className="mt-1 space-y-1">
+                            {(expanded ? evidence : evidence.slice(0, 2)).map((e, i) => (
+                              <div key={i} className="text-[11px] text-slate-400 bg-white/[0.03] border border-white/5 rounded-md px-2 py-1">
+                                “{e}”
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
+                    ) : (
+                      <div className="mt-1.5 text-[10px] text-slate-600">Evidência não disponível</div>
                     )}
                   </div>
                   <div className="flex flex-col gap-1.5 shrink-0">
@@ -564,11 +779,22 @@ export function CommercialMemory() {
                       <Star className="w-4 h-4" fill={l.important ? 'currentColor' : 'none'} />
                     </button>
                     <button
-                      onClick={() => void onToggleStatus(l)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/10 transition"
-                      title="Avançar status (identificado → validado → ativo → inativo)"
+                      onClick={() => openEdit(l)}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition"
+                      title="Editar aprendizado"
                     >
-                      <Clock className="w-3 h-3" /> {l.status}
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => void onToggleActive(l)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition ${
+                        l.status === 'ativo'
+                          ? 'text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10'
+                          : 'text-slate-400 border-white/10 hover:text-white hover:bg-white/5'
+                      }`}
+                      title={l.status === 'ativo' ? 'Desativar (não entra na memória)' : 'Ativar (entra na memória comercial)'}
+                    >
+                      <Clock className="w-3 h-3" /> {l.status === 'ativo' ? 'Desativar' : 'Ativar'}
                     </button>
                     <button
                       onClick={() => void onDeleteLearning(l.id)}
@@ -665,7 +891,7 @@ export function CommercialMemory() {
 
             <div className="mt-4 flex items-center justify-between">
               <p className="text-[10px] text-slate-500">
-                Os aprendizados são extraídos em background e ficam como “Identificados” — você decide o que ativar.
+                As conversas são analisadas em background automaticamente. Os aprendizados ficam como “Identificados” — você decide o que ativar.
               </p>
               <button
                 onClick={() => !uploading && setImportOpen(false)}
@@ -674,6 +900,148 @@ export function CommercialMemory() {
               >
                 {uploading ? 'Importando…' : 'Concluir'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Modal de aprendizado (criar/editar) ===== */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !saving && setModal(null)}>
+          <div
+            className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#16161f] p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-semibold flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-300" />
+                  {modal.mode === 'create' ? 'Adicionar aprendizado' : 'Editar aprendizado'}
+                </div>
+                <div className="text-xs text-slate-400 mt-0.5">
+                  {modal.mode === 'edit' && modal.learning
+                    ? `Origem: ${modal.learning.origin === 'manual' ? 'Manual' : 'Gerado pela IA'}`
+                    : 'Conhecimento manual que orientará a IA.'}
+                </div>
+              </div>
+              <button onClick={() => !saving && setModal(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Aprendizado *</label>
+                <textarea
+                  value={form.content}
+                  onChange={(e) => setForm({ ...form, content: e.target.value })}
+                  rows={3}
+                  placeholder="Ex.: Sempre entender o problema antes de apresentar preço"
+                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Categoria</label>
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value as LearningCategory })}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                  >
+                    {CATEGORY_OPTIONS.map((c) => (
+                      <option key={c} value={c}>{categoryLabel(c)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Confiança</label>
+                  <select
+                    value={form.confidence}
+                    onChange={(e) => setForm({ ...form, confidence: e.target.value as LearningForm['confidence'] })}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                  >
+                    <option value="alta">Alta</option>
+                    <option value="media">Média</option>
+                    <option value="baixa">Baixa</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Status</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm({ ...form, status: e.target.value as LearningStatus })}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                  >
+                    <option value="identificado">Identificado (pendente)</option>
+                    <option value="validado">Validado</option>
+                    <option value="ativo">Ativo (na memória)</option>
+                    <option value="inativo">Inativo</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Performance</label>
+                  <select
+                    value={form.performance}
+                    onChange={(e) => setForm({ ...form, performance: e.target.value as LearningForm['performance'] })}
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                  >
+                    <option value="neutro">Neutro</option>
+                    <option value="positivo">Funcionou</option>
+                    <option value="negativo">Recusa</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Evidências (opcional — uma por linha)</label>
+                <textarea
+                  value={form.evidenceText}
+                  onChange={(e) => setForm({ ...form, evidenceText: e.target.value })}
+                  rows={3}
+                  placeholder={'Trecho 1\nTrecho 2'}
+                  className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-slate-200"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.important}
+                  onChange={(e) => setForm({ ...form, important: e.target.checked })}
+                  className="accent-emerald-500"
+                />
+                Marcar como importante
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.status === 'ativo'}
+                  onChange={(e) => setForm({ ...form, status: e.target.checked ? 'ativo' : 'inativo' })}
+                  className="accent-emerald-500"
+                />
+                Usar na memória comercial
+              </label>
+
+              {modalError && (
+                <div className="text-xs text-rose-300 bg-rose-500/10 rounded-lg px-3 py-2">{modalError}</div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  onClick={() => !saving && setModal(null)}
+                  disabled={saving}
+                  className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-white transition disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => void saveLearning()}
+                  disabled={saving}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-sm font-medium text-white transition"
+                >
+                  {saving ? <span className="inline-flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando…</span> : 'Salvar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,0 +1,91 @@
+import { type LucideIcon } from 'lucide-react'
+import {
+  LayoutDashboard,
+  SquareKanban,
+  Megaphone,
+  Users,
+  Plug,
+  Settings,
+  Smartphone,
+  Puzzle,
+  BellRing,
+  Bot,
+  ContactRound,
+} from 'lucide-react'
+
+export type Tab =
+  | 'dashboard'
+  | 'kanban'
+  | 'campanhas'
+  | 'leads'
+  | 'contatos'
+  | 'ia'
+  | 'conexoes'
+  | 'agente'
+  | 'voz'
+  | 'extensao'
+  | 'app-mobile'
+
+export interface NavItem {
+  key: Tab
+  label: string
+  icon: LucideIcon
+  path: string
+}
+
+/** Cada tela relevante tem uma rota REAL (refrescar/voltar/links diretos funcionam). */
+export const TAB_PATHS: Record<Tab, string> = {
+  dashboard: '/dashboard',
+  kanban: '/kanban',
+  campanhas: '/campanhas',
+  leads: '/leads',
+  contatos: '/contatos',
+  ia: '/central-ia',
+  conexoes: '/conexoes',
+  agente: '/agente',
+  voz: '/voz',
+  extensao: '/extensao',
+  'app-mobile': '/app-mobile',
+}
+
+export const NAV_ITEMS: NavItem[] = [
+  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: TAB_PATHS.dashboard },
+  { key: 'kanban', label: 'Kanban', icon: SquareKanban, path: TAB_PATHS.kanban },
+  { key: 'campanhas', label: 'Campanhas', icon: Megaphone, path: TAB_PATHS.campanhas },
+  { key: 'leads', label: 'Leads', icon: Users, path: TAB_PATHS.leads },
+  { key: 'contatos', label: 'Contatos', icon: ContactRound, path: TAB_PATHS.contatos },
+  { key: 'ia', label: 'Central da IA', icon: Bot, path: TAB_PATHS.ia },
+  { key: 'conexoes', label: 'Conexões', icon: Plug, path: TAB_PATHS.conexoes },
+  { key: 'agente', label: 'Config. do Agente', icon: Settings, path: TAB_PATHS.agente },
+  { key: 'voz', label: 'Voz', icon: BellRing, path: TAB_PATHS.voz },
+  { key: 'extensao', label: 'Extensão', icon: Puzzle, path: TAB_PATHS.extensao },
+  { key: 'app-mobile', label: 'App mobile', icon: Smartphone, path: TAB_PATHS['app-mobile'] },
+]
+
+export const DEFAULT_TAB: Tab = 'kanban'
+
+/** Rota da Memória Comercial da IA (dentro da Central de IA). */
+export const MEMORY_PATHS = {
+  root: '/central-ia/memoria',
+  lotes: '/central-ia/memoria/lotes',
+  conversas: '/central-ia/memoria/conversas',
+  aprendizados: '/central-ia/memoria/aprendizados',
+} as const
+
+/** Resolve a aba ativa a partir do pathname (subrotas herdam a aba do pai). */
+export function resolveTabFromPath(pathname: string): Tab | null {
+  if (pathname === '/') return DEFAULT_TAB
+  for (const item of NAV_ITEMS) {
+    if (pathname === item.path || pathname.startsWith(item.path + '/')) return item.key
+  }
+  return null
+}
+
+/** Resolve a sub-aba da Memória Comercial a partir do pathname. */
+export type MemoryTab = 'lotes' | 'conversas' | 'aprendizados'
+
+export function resolveMemoryTabFromPath(pathname: string): MemoryTab {
+  if (pathname.endsWith('/conversas')) return 'conversas'
+  if (pathname.endsWith('/aprendizados')) return 'aprendizados'
+  return 'lotes'
+}

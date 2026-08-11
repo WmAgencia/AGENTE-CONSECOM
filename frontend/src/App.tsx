@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { type LucideIcon, LayoutDashboard, SquareKanban, Megaphone, Users, Plug, Settings, Menu, Smartphone, Puzzle, BellRing, Download, Bot, ContactRound } from 'lucide-react'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { Menu, Download } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
 import { KanbanBoard } from './components/KanbanBoard'
@@ -13,30 +14,161 @@ import { ExtensionView } from './components/ExtensionView'
 import { VoiceSettings } from './components/VoiceSettings'
 import { AICenter } from './components/AICenter'
 import { ContactsView } from './components/ContactsView'
+import { CommercialMemory } from './components/CommercialMemory'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
-
-type Tab = 'dashboard' | 'kanban' | 'campanhas' | 'leads' | 'conexoes' | 'agente' | 'voz' | 'extensao' | 'app-mobile' | 'ia' | 'contatos'
-
-const NAV_ITEMS: { key: Tab; label: string; icon: LucideIcon }[] = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'kanban', label: 'Kanban', icon: SquareKanban },
-  { key: 'campanhas', label: 'Campanhas', icon: Megaphone },
-  { key: 'leads', label: 'Leads', icon: Users },
-  { key: 'contatos', label: 'Contatos', icon: ContactRound },
-  { key: 'ia', label: 'Central da IA', icon: Bot },
-  { key: 'conexoes', label: 'Conexões', icon: Plug },
-  { key: 'agente', label: 'Config. do Agente', icon: Settings },
-  { key: 'voz', label: 'Voz', icon: BellRing },
-  { key: 'extensao', label: 'Extensão', icon: Puzzle },
-  { key: 'app-mobile', label: 'App mobile', icon: Smartphone },
-]
+import { NAV_ITEMS, resolveTabFromPath, type Tab } from './lib/routes'
 
 const APP_VERSION = '2.1.0'
 
+interface ShellProps {
+  leads: Lead[]
+  campaigns: Campaign[]
+  onMeeting: (id: string, meeting_at: string, notes: string) => Promise<boolean>
+  onCloseLead: (id: string, closed: boolean, motivo: string, valor: number | null) => Promise<boolean>
+}
+
+function Shell({ leads, campaigns, onMeeting, onCloseLead }: ShellProps) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const activeTab: Tab | null = resolveTabFromPath(location.pathname)
+
+  function navigateTab(t: Tab) {
+    const item = NAV_ITEMS.find((i) => i.key === t)
+    if (item) navigate(item.path)
+    setSidebarOpen(false)
+  }
+
+  return (
+    <div className="flex h-full">
+      <div className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center gap-3 h-14 px-4 bg-[#0d0d14]/95 backdrop-blur border-b border-white/5">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="p-2 -ml-2 rounded-lg text-slate-300 hover:bg-white/5 hover:text-white transition"
+          aria-label="Abrir menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <div className="flex items-center gap-2.5">
+          <img
+            src="/vyntra-logo.png"
+            alt="Vyntra"
+            className="w-7 h-7 rounded-lg object-contain bg-white"
+          />
+          <div className="font-semibold text-sm leading-none">Vyntra</div>
+        </div>
+      </div>
+
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-[#0d0d14] border-r border-white/5 flex flex-col transition-transform duration-200 ease-out md:static md:translate-x-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="px-5 py-5 border-b border-white/5">
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/vyntra-logo.png"
+              alt="Vyntra"
+              className="w-8 h-8 rounded-lg object-contain bg-white"
+            />
+            <div>
+              <div className="font-semibold leading-none">Vyntra</div>
+              <div className="text-[11px] text-slate-500 mt-1">Alex · Prospecção</div>
+            </div>
+          </div>
+        </div>
+
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon
+            const active = activeTab === item.key
+            return (
+              <button
+                key={item.key}
+                onClick={() => navigateTab(item.key)}
+                aria-current={active ? 'page' : undefined}
+                className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${
+                  active
+                    ? 'bg-indigo-500/15 text-white'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                {active && (
+                  <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-indigo-400" />
+                )}
+                <Icon
+                  className={`w-[18px] h-[18px] shrink-0 ${
+                    active ? 'text-indigo-300' : 'text-slate-500 group-hover:text-slate-300'
+                  }`}
+                />
+                <span className="truncate">{item.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+
+        <div className="px-5 py-4 border-t border-white/5 space-y-2">
+          <div className="text-[11px] text-slate-500">{leads.length} leads no total</div>
+          <div className="text-[11px] text-slate-500">v{APP_VERSION}</div>
+
+          {/* Atalho rápido — download da extensão (fonte estática versionada no repo) */}
+          <a
+            href="/downloads/consecom-extension.zip"
+            download="consecom-extension.zip"
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+            title="Baixar extensão Chrome (.zip)"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Baixar extensão (.zip)
+          </a>
+
+          <button
+            onClick={() => {
+              setSidebarOpen(false)
+              void supabase.auth.signOut()
+            }}
+            className="text-xs text-slate-400 hover:text-white transition"
+          >
+            Sair
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 overflow-hidden pt-14 md:pt-0">
+        <Routes>
+          <Route path="/" element={<Navigate to="/kanban" replace />} />
+          <Route path="/kanban" element={<KanbanBoard leads={leads} campaigns={campaigns} onMeeting={onMeeting} onClose={onCloseLead} />} />
+          <Route path="/leads" element={<LeadsView leads={leads} />} />
+          <Route path="/campanhas" element={<CampaignsView leads={leads} />} />
+          <Route path="/dashboard" element={<DashboardView leads={leads} />} />
+          <Route path="/agente" element={<AgentConfig />} />
+          <Route path="/voz" element={<VoiceSettings />} />
+          <Route path="/conexoes" element={<ConnectionsPage />} />
+          <Route path="/extensao" element={<ExtensionView />} />
+          <Route path="/app-mobile" element={<MobileAppView />} />
+          <Route path="/contatos" element={<ContactsView />} />
+          <Route path="/central-ia" element={<AICenter />} />
+          <Route path="/central-ia/memoria" element={<CommercialMemory />} />
+          <Route path="/central-ia/memoria/lotes" element={<CommercialMemory />} />
+          <Route path="/central-ia/memoria/conversas" element={<CommercialMemory />} />
+          <Route path="/central-ia/memoria/aprendizados" element={<CommercialMemory />} />
+          <Route path="*" element={<Navigate to="/kanban" replace />} />
+        </Routes>
+      </main>
+    </div>
+  )
+}
+
 export default function App() {
   const [session, setSession] = useState<boolean | null>(null)
-  const [tab, setTab] = useState<Tab>('kanban')
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [leads, setLeads] = useState<Lead[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
 
@@ -141,11 +273,6 @@ export default function App() {
     return !error
   }
 
-  function navigate(t: Tab) {
-    setTab(t)
-    setSidebarOpen(false)
-  }
-
   if (session === null) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -158,131 +285,5 @@ export default function App() {
     return <LoginScreen />
   }
 
-  return (
-    <div className="flex h-full">
-      <div className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center gap-3 h-14 px-4 bg-[#0d0d14]/95 backdrop-blur border-b border-white/5">
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 -ml-2 rounded-lg text-slate-300 hover:bg-white/5 hover:text-white transition"
-          aria-label="Abrir menu"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-        <div className="flex items-center gap-2.5">
-          <img
-            src="/vyntra-logo.png"
-            alt="Vyntra"
-            className="w-7 h-7 rounded-lg object-contain bg-white"
-          />
-          <div className="font-semibold text-sm leading-none">Vyntra</div>
-        </div>
-      </div>
-
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-[#0d0d14] border-r border-white/5 flex flex-col transition-transform duration-200 ease-out md:static md:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <div className="px-5 py-5 border-b border-white/5">
-          <div className="flex items-center gap-2.5">
-            <img
-              src="/vyntra-logo.png"
-              alt="Vyntra"
-              className="w-8 h-8 rounded-lg object-contain bg-white"
-            />
-            <div>
-              <div className="font-semibold leading-none">Vyntra</div>
-              <div className="text-[11px] text-slate-500 mt-1">Alex · Prospecção</div>
-            </div>
-          </div>
-        </div>
-
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon
-            const active = tab === item.key
-            return (
-              <button
-                key={item.key}
-                onClick={() => navigate(item.key)}
-                aria-current={active ? 'page' : undefined}
-                className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${
-                  active
-                    ? 'bg-indigo-500/15 text-white'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                {active && (
-                  <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-indigo-400" />
-                )}
-                <Icon
-                  className={`w-[18px] h-[18px] shrink-0 ${
-                    active ? 'text-indigo-300' : 'text-slate-500 group-hover:text-slate-300'
-                  }`}
-                />
-                <span className="truncate">{item.label}</span>
-              </button>
-            )
-          })}
-        </nav>
-
-        <div className="px-5 py-4 border-t border-white/5 space-y-2">
-          <div className="text-[11px] text-slate-500">{leads.length} leads no total</div>
-          <div className="text-[11px] text-slate-500">v{APP_VERSION}</div>
-
-          {/* Atalho rápido — download da extensão (fonte estática versionada no repo) */}
-          <a
-            href="/downloads/consecom-extension.zip"
-            download="consecom-extension.zip"
-            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition focus:ring-2 focus:ring-indigo-400 focus:outline-none"
-            title="Baixar extensão Chrome (.zip)"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Baixar extensão (.zip)
-          </a>
-
-          <button
-            onClick={() => {
-              setSidebarOpen(false)
-              void supabase.auth.signOut()
-            }}
-            className="text-xs text-slate-400 hover:text-white transition"
-          >
-            Sair
-          </button>
-        </div>
-      </aside>
-
-      <main className="flex-1 overflow-hidden pt-14 md:pt-0">
-        {tab === 'kanban' && (
-          <KanbanBoard
-            leads={leads}
-            campaigns={campaigns}
-            onMeeting={markMeeting}
-            onClose={closeLead}
-          />
-        )}
-        {tab === 'leads' && (
-          <LeadsView leads={leads} />
-        )}
-        {tab === 'campanhas' && <CampaignsView leads={leads} />}
-        {tab === 'dashboard' && <DashboardView leads={leads} />}
-        {tab === 'agente' && <AgentConfig />}
-        {tab === 'voz' && <VoiceSettings />}
-        {tab === 'conexoes' && <ConnectionsPage />}
-        {tab === 'extensao' && <ExtensionView />}
-        {tab === 'app-mobile' && <MobileAppView />}
-        {tab === 'ia' && <AICenter />}
-        {tab === 'contatos' && <ContactsView />}
-      </main>
-    </div>
-  )
+  return <Shell leads={leads} campaigns={campaigns} onMeeting={markMeeting} onCloseLead={closeLead} />
 }

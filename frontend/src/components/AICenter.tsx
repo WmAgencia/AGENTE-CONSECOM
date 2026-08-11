@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, Activity, Loader2, TriangleAlert, CircleOff, Play, X, GraduationCap, ShieldCheck } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Send, Activity, Loader2, TriangleAlert, CircleOff, Play, X, GraduationCap, ShieldCheck, Brain } from 'lucide-react'
 import { api, type AiStatus, type AiFlowTestResult, type AiTrainingReply, type AiTrainingPersona } from '../lib/api'
-import { CommercialMemory } from './CommercialMemory'
+import { MEMORY_PATHS } from '../lib/routes'
 
 interface ChatMessage {
   id: string
@@ -379,7 +380,22 @@ export function AICenter() {
         <FlowTest />
       </div>
 
-      <CommercialMemory />
+      {/* Memória Comercial da IA — rota própria /central-ia/memoria */}
+      <Link
+        to={MEMORY_PATHS.root}
+        className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-5 flex items-center gap-4 hover:bg-indigo-500/10 transition"
+      >
+        <div className="p-3 rounded-xl bg-indigo-500/15 text-indigo-300 shrink-0">
+          <Brain className="w-6 h-6" />
+        </div>
+        <div>
+          <div className="font-semibold">Memória Comercial da IA</div>
+          <div className="text-xs text-slate-400 mt-0.5">
+            Importe conversas reais do WhatsApp, veja os aprendizados extraídos e controle o que entra no contexto comercial da IA.
+          </div>
+        </div>
+        <span className="ml-auto text-indigo-300 text-xs font-semibold shrink-0">Abrir →</span>
+      </Link>
     </div>
   )
 }

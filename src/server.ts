@@ -2,6 +2,7 @@ import { getLogger } from './utils/logger.js';
 import { buildApp } from './app.js';
 import { getEnv, hasSupabaseProspeccao } from './config/env.js';
 import { SendWorker } from './services/send.worker.js';
+import { resumeStuckImports } from './services/memory.processor.js';
 
 async function bootstrap(): Promise<void> {
   const log = getLogger();
@@ -49,6 +50,19 @@ async function bootstrap(): Promise<void> {
     const message = err instanceof Error ? err.message : 'listen error';
     log.fatal({ errMessage: message }, 'server: failed to listen');
     process.exit(1);
+  }
+
+  // Retoma lotes da Memória Comercial que ficaram 'processing' após um
+  // restart/redeploy (a fila em memória se perde). Fire-and-forget.
+  if (hasSupabaseProspeccao()) {
+    try {
+      void resumeStuckImports();
+    } catch (err) {
+      log.warn(
+        { errMessage: err instanceof Error ? err.message : 'unknown' },
+        'memory: resume stuck imports failed',
+      );
+    }
   }
 
   const shutdown = async (signal: string): Promise<void> => {
