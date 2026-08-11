@@ -50,7 +50,7 @@ import {
 
 const importBodySchema = z.object({
   fileName: z.string().min(1).max(180),
-  content: z.string().min(1).max(8_000_000),
+  content: z.string().min(1).max(120_000_000),
   kind: z.enum(['auto', 'txt', 'csv', 'zip']).default('auto'),
 });
 
@@ -111,8 +111,8 @@ export function registerMemoryRoutes(app: FastifyInstance): void {
 
   // ------------------------------------------------------------------ IMPORT
   app.post('/api/ai/memory/import', {
-    // Conversas exportadas podem ser grandes (múltiplos MB em base64).
-    bodyLimit: 25 * 1024 * 1024,
+    // Conversas exportadas podem ser grandes (múltiplos MB em base64 dentro de ZIP).
+    bodyLimit: 160 * 1024 * 1024,
   }, async (req, reply) => {
     const user = await resolveSupabaseUser(bearer(req));
     if (!user) {

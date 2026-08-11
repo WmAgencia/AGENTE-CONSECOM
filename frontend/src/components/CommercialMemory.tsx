@@ -89,6 +89,9 @@ const DIRECTION_LABEL: Record<string, string> = {
   misto: 'misto',
 }
 
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+const MAX_UPLOAD_MB = 100
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -182,6 +185,17 @@ export function CommercialMemory() {
     setUploading(true)
     try {
       for (const file of files) {
+        if (file.size > MAX_UPLOAD_BYTES) {
+          setFileStates((prev) => ({
+            ...prev,
+            [file.name]: {
+              name: file.name,
+              status: 'error',
+              detail: `Arquivo de ${(file.size / 1024 / 1024).toFixed(1)}MB excede o limite de ${MAX_UPLOAD_MB}MB. Separe em arquivos menores.`,
+            },
+          }))
+          continue
+        }
         setFileStates((prev) => ({ ...prev, [file.name]: { name: file.name, status: 'uploading' } }))
         try {
           const isZip = /\.zip$/i.test(file.name)
@@ -585,7 +599,7 @@ export function CommercialMemory() {
                   Importar conversas
                 </div>
                 <div className="text-xs text-slate-400 mt-0.5">
-                  Aceita .txt (exportação do WhatsApp), .csv e .zip com vários arquivos. Até 15MB por arquivo.
+                  Aceita .txt (exportação do WhatsApp), .csv e .zip com vários arquivos. Até 100MB por arquivo.
                 </div>
               </div>
               <button
