@@ -121,11 +121,14 @@ export function KanbanBoard({
       if (error || !data) return
       const map = new Map<string, Lead[]>()
       const ids = new Set<string>()
-      for (const r of data as Array<{ campaign_id: string; lead: Lead | null }>) {
-        if (!r.lead) continue
-        ids.add(r.lead.id)
+      const rows = data as unknown as Array<{ campaign_id: string; lead: unknown }>
+      for (const r of rows) {
+        const lead = Array.isArray(r.lead) ? r.lead[0] : r.lead
+        if (!lead || typeof lead !== 'object') continue
+        const l = lead as Lead
+        ids.add(l.id)
         const arr = map.get(r.campaign_id) ?? []
-        if (!arr.some((l) => l.id === r.lead.id)) arr.push(r.lead)
+        if (!arr.some((x) => x.id === l.id)) arr.push(l)
         map.set(r.campaign_id, arr)
       }
       if (active) {
