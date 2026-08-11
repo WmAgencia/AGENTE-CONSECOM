@@ -167,6 +167,73 @@ describe('memory.parse: classificação e conversas', () => {
   test('normalizeWord remove acentos', () => {
     assert.equal(normalizeWord('João VENDAS'), 'joao vendas');
   });
+
+  test('agentName sem match nenhum NÃO vira tudo lead (fallback volume)', () => {
+    const msgs = classifyRoles(
+      [
+        { sender: 'Wesley Tune - Consecom', text: 'Olá!' },
+        { sender: 'Samira', text: 'Bom dia' },
+        { sender: 'Wesley Tune - Consecom', text: 'Posso explicar?' },
+        { sender: 'Wesley Tune - Consecom', text: 'Sim?' },
+      ],
+      'Alex',
+    );
+    const agents = msgs.filter((m) => m.role === 'agente');
+    const leads = msgs.filter((m) => m.role === 'lead');
+    assert.equal(agents.length, 3, 'vendedor real deve virar agente pelo volume');
+    assert.equal(leads.length, 1);
+    assert.equal(leads[0].sender, 'Samira');
+  });
+
+  test('agentName sem match mas com contactHint do arquivo classifica lead', () => {
+    const msgs = classifyRoles(
+      [
+        { sender: 'Wesley Tune - Consecom', text: 'Olá Samira!' },
+        { sender: '+55 11 94317-7406', text: 'Oi' },
+        { sender: 'Wesley Tune - Consecom', text: 'Vamos conversar?' },
+      ],
+      'Alex',
+      '+55 11 94317-7406',
+    );
+    assert.equal(msgs[0].role, 'agente');
+    assert.equal(msgs[1].role, 'lead');
+    assert.equal(msgs[2].role, 'agente');
+  });
+
+  test('múltiplos seller names: qualquer alias vira agente', () => {
+    const msgs = classifyRoles(
+      [
+        { sender: 'Wesley', text: 'Oi' },
+        { sender: 'Wesley Tune - Consecom', text: 'Oi' },
+        { sender: 'Samira', text: 'Oi' },
+      ],
+      ['Alex', 'Wesley', 'Wesley Tune - Consecom'],
+    );
+    assert.equal(msgs[0].role, 'agente');
+    assert.equal(msgs[1].role, 'agente');
+    assert.equal(msgs[2].role, 'lead');
+  });
+
+  test('buildConversations com nome do arquivo identifica lead por telefone', () => {
+    const convs = buildConversations(
+      [
+        {
+          fileName: 'Conversa do WhatsApp com +55 11 94317-7406.txt',
+          kind: 'txt' as const,
+          content: [
+            '[05/01/2025, 14:30:22] Wesley Tune - Consecom: Olá, tudo bem?',
+            '[05/01/2025, 14:31:05] +55 11 94317-7406: Bom dia! Quem é?',
+            '[05/01/2025, 14:31:40] Wesley Tune - Consecom: Aqui é da empresa X.',
+          ].join('\n'),
+        },
+      ],
+      'Alex',
+    );
+    assert.equal(convs.length, 1);
+    assert.equal(convs[0].contactIdentifier, '5511943177406');
+    assert.equal(convs[0].messages[0].role, 'agente');
+    assert.equal(convs[0].messages[1].role, 'lead');
+  });
 });
 
 describe('memory.parse: formato real da exportação do WhatsApp (sem colchetes)', () => {

@@ -392,6 +392,39 @@ export async function loadAgentDirectives(): Promise<string | null> {
   }
 }
 
+/**
+ * Carrega os nomes/aliases do vendedor humano (para classificar papéis nas
+ * exportações). Prioriza a config `seller_names` (separados por vírgula);
+ * se vazia, cai no `agent_name` (nome que a IA usa para assinar).
+ */
+export async function loadSellerNames(): Promise<string[]> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!cfg.url || !cfg.serviceRoleKey) return [];
+  try {
+    const res = await fetch(
+      `${cfg.url}/rest/v1/agent_settings?select=key,value&limit=100`,
+      { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+    );
+    if (!res.ok) return [];
+    const rows = (await res.json()) as Array<{ key: string; value: unknown }>;
+    if (rows.length === 0) return [];
+    const map: Record<string, unknown> = {};
+    for (const r of rows) map[r.key] = r.value;
+
+    const sellers = typeof map.seller_names === 'string' ? map.seller_names : '';
+    const agentName = typeof map.agent_name === 'string' ? map.agent_name : '';
+
+    const names = sellers
+      .split(',')
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
+    if (names.length > 0) return names;
+    return agentName.trim() ? [agentName.trim()] : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Carrega o nome configurado do agente (para assinar as mensagens). */
 export async function loadAgentName(): Promise<string | null> {
   const cfg = getSupabaseProspeccaoConfig();

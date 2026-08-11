@@ -20,7 +20,7 @@ import { z } from 'zod';
 import { getLogger } from '../utils/logger.js';
 import { extractBearerToken } from '../utils/auth.js';
 import { getSupabaseProspeccaoConfig } from '../config/env.js';
-import { loadAgentName } from '../services/supabase.leads.js';
+import { loadSellerNames } from '../services/supabase.leads.js';
 import {
   buildConversations,
   detectContentKind,
@@ -153,8 +153,8 @@ export function registerMemoryRoutes(app: FastifyInstance): void {
       });
     }
 
-    const agentName = await loadAgentName();
-    const conversations = buildConversations(sources, agentName);
+    const sellerNames = await loadSellerNames();
+    const conversations = buildConversations(sources, sellerNames);
 
     const diagnostics = {
       detectedFormat: kind,

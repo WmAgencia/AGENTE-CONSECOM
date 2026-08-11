@@ -437,18 +437,50 @@ export function parseZipToText(base64: string): ZipParsedConversation[] {
 // ---------------------------------------------------------------------------
 
 /**
+ * Extrai o "contato" (lead) a partir do nome do arquivo de exportação do
+ * WhatsApp. Ex.: "Conversa do WhatsApp com +55 11 94317-7406.txt" → o contato
+ * é o telefone; "WhatsApp Chat with Samira.txt" → o contato é "Samira".
+ */
+export function contactHintFromFileName(fileName: string): string | null {
+  if (!fileName) return null;
+  const base = fileName.replace(/\.(txt|csv|tsv)$/i, '');
+  const match = /(?:conversa do whatsapp com|whatsapp chat with|conversa com|chat with)\s+(.+)$/i.exec(base);
+  return match?.[1]?.trim() || null;
+}
+
+/** Normaliza telefones (mantém só dígitos) para comparação de sender. */
+function digitsOf(s: string): string {
+  return s.replace(/[^\d]/g, '');
+}
+
+/** Indica se o sender é o contato (lead) informado como hint. */
+function matchesContact(sender: string, contactHint: string): boolean {
+  const s = sender.trim();
+  if (!s) return false;
+  const hintDigits = digitsOf(contactHint);
+  if (hintDigits.length >= 8) {
+    const senderDigits = digitsOf(s);
+    return senderDigits.length >= 8 && (senderDigits.endsWith(hintDigits) || senderDigits.includes(hintDigits));
+  }
+  const normSender = normalizeWord(s);
+  const normHint = normalizeWord(contactHint);
+  return normSender === normHint || normSender.includes(normHint) || normHint.includes(normSender);
+}
+
+/**
  * Monta conversas a partir de fontes (arquivos). Um arquivo = uma conversa,
  * com contato deduzido, papéis classificados (agente/lead) e estatísticas.
  */
 export function buildConversations(
   sources: Array<{ fileName: string; content: string; kind: ContentKind }>,
-  agentName?: string | null,
+  agentNames?: string | string[] | null,
 ): ParsedConversation[] {
   const out: ParsedConversation[] = [];
   for (const src of sources) {
     const parsed = parseText(src.content, src.kind);
     if (parsed.messages.length === 0) continue;
-    const classified = classifyRoles(parsed.messages, agentName);
+    const contactHint = contactHintFromFileName(src.fileName);
+    const classified = classifyRoles(parsed.messages, agentNames, contactHint);
     const contact = findContact(classified);
     out.push({ sourceFile: src.fileName, ...contact, messages: classified, stats: parsed.stats });
   }
@@ -475,22 +507,51 @@ function findContact(messages: Array<ParsedMessage & { role: 'agente' | 'lead' }
 }
 
 /**
- * Classifica cada mensagem como 'agente' ou 'lead':
- *  - Com agentName configurado: senders que casam (case-insensitive) = agente;
- *    rótulos de si mesmo (você/eu) = agente também.
- *  - Sem agentName: quem enviou MAIS mensagens é o agente (venda outbound);
- *    o resto é lead.
+ * Classifica cada mensagem como 'agente' ou 'lead'.
+ *
+ * Estratégia (em ordem):
+ *  1. Se algum nome de vendedor (agentNames) for fornecido e casar com pelo
+ *     menos uma mensagem, usa o nome (case/acento-insensível) = agente, e
+ *     rótulos de si mesmo (você/eu) = agente também.
+ *  2. Se o contato (lead) for conhecido (ex.: deduzido do nome do arquivo de
+ *     exportação), o sender que casa com ele = lead; todo o resto = agente.
+ *  3. Fallback por volume: quem enviou MAIS mensagens é o agente (venda
+ *     outbound); o resto é lead.
+ *
+ * Importante: quando o agentName configurado NÃO casa com nenhuma mensagem
+ * (ex.: a IA se chama "Alex", mas o vendedor real nas exportações é "Wesley"),
+ * NÃO marcamos tudo como lead — seguimos para as estratégias 2 e 3.
  */
 export function classifyRoles(
   messages: ParsedMessage[],
-  agentName?: string | null,
+  agentNames?: string | string[] | null,
+  contactHint?: string | null,
 ): Array<ParsedMessage & { role: 'agente' | 'lead' }> {
-  if (agentName && agentName.trim()) {
-    const needle = normalizeWord(agentName.trim());
-    return messages.map((m) => {
+  const needles = (Array.isArray(agentNames) ? agentNames : [agentNames])
+    .map((n) => n?.trim() ?? '')
+    .filter((n) => n.length > 0)
+    .map(normalizeWord);
+
+  if (needles.length > 0) {
+    const nameMatches = messages.map((m) => {
       const sender = normalizeWord(m.sender.trim());
-      const isAgent = sender.includes(needle) || needle.includes(sender) || SELF_LABELS.has(sender);
-      return { ...m, role: isAgent ? 'agente' : 'lead' };
+      return sender && needles.some((needle) => sender.includes(needle) || needle.includes(sender));
+    });
+    // Só usa os nomes se pelo menos uma mensagem casar; senão cai no hint/volume.
+    if (nameMatches.some(Boolean)) {
+      return messages.map((m, i) => {
+        const sender = normalizeWord(m.sender.trim());
+        const isAgent = nameMatches[i] || SELF_LABELS.has(sender);
+        return { ...m, role: isAgent ? 'agente' : 'lead' };
+      });
+    }
+  }
+
+  if (contactHint && contactHint.trim()) {
+    return messages.map((m) => {
+      const s = m.sender.trim();
+      const isLead = matchesContact(s, contactHint);
+      return { ...m, role: isLead ? 'lead' : 'agente' };
     });
   }
 
