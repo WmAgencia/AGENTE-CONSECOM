@@ -1,16 +1,20 @@
 /**
  * Parser de conversas importadas para a Memória Comercial da IA.
  *
- * Suporta os formatos mais comuns de exportação de conversas:
- *  - TXT do WhatsApp (Web/Desktop): linhas `[dd/mm/aaaa, hh:mm:ss] Nome: msg`
- *    e variantes simplificadas tipo `hh:mm - Nome: msg`.
+ * Reconhece as principais variações reais de exportação:
+ *  - WhatsApp Web/Desktop atual: `dd/mm/aaaa, hh:mm(:ss) - Nome: msg`
+ *  - WhatsApp com colchetes:      `[dd/mm/aaaa, hh:mm(:ss)] Nome: msg`
+ *  - Simplificado:                `hh:mm(:ss) - Nome: msg`
+ *  (dia/mês com 1 ou 2 dígitos, ano com 2 ou 4, AM/PM, com/sem segundos)
+ *
  *  - CSV (exportadores/outras ferramentas): inferência de colunas por cabeçalho
  *    (remetente / mensagem / data-hora), sem depender de nomes rígidos.
  *  - ZIP: descompacta e processa cada .txt/.csv interno como uma conversa.
  *
- * O parser é agnóstico de nomes: retorna senders crus e classifica quale lado
- * é o agente comercial (o que enviou mais mensagens, ou o que casa com o nome
- * configurado do agente — nunca usa um nome fixo).
+ * Mensagens multilinha, emojis, acentos, caracteres unicode, mídia omitida e
+ * mensagens de sistema são tratadas. O parser nunca rejeita a conversa inteira
+ * por causa de linhas isoladas — linhas não reconhecidas são contadas em
+ * `stats.unsupported` e o restante segue sendo processado.
  */
 import AdmZip from 'adm-zip';
 
@@ -21,11 +25,26 @@ export interface ParsedMessage {
   role?: 'agente' | 'lead';
 }
 
+export interface ParseStats {
+  /** Total de linhas não-vazias lidas. */
+  lines: number;
+  /** Mensagens reconhecidas. */
+  messages: number;
+  /** Linhas que não pertenceram a nenhuma mensagem. */
+  unsupported: number;
+}
+
+export interface ParsedText {
+  messages: ParsedMessage[];
+  stats: ParseStats;
+}
+
 export interface ParsedConversation {
   contactIdentifier?: string;
   contactName?: string;
   messages: ParsedMessage[];
   sourceFile?: string;
+  stats?: ParseStats;
 }
 
 export type ContentKind = 'txt' | 'csv' | 'zip';
@@ -35,33 +54,40 @@ const MEDIA_PLACEHOLDER = '[midia]';
 /** Rótulos de "si mesmo" nas exportações (o dono do aparelho). */
 const SELF_LABELS = new Set(['você', 'voce', 'eu', 'me', 'myself', 'you']);
 
+/** Caracteres invisíveis que podem anteceder linhas/nomes (BOM, LRM/RLM). */
+const INVISIBLE_PREFIX_RE = /^[\u200e\u200f\uFEFF]+/;
+
 // ---------------------------------------------------------------------------
 // Detecção de formato
 // ---------------------------------------------------------------------------
 
 export function detectContentKind(content: string): ContentKind {
   if (!content) return 'txt';
+  const c = content.replace(INVISIBLE_PREFIX_RE, '');
   // Base64 de um ZIP começa com "UEsDB" (PK\x03\x04), "UEsFB" ou "UEsFBw".
-  const head = content.trimStart().slice(0, 8);
+  const head = c.trimStart().slice(0, 8);
   if (/^UEsDB|^UEsFB|^UEsFBw/.test(head)) return 'zip';
-  const firstLine = content.split(/\r?\n/).find((l) => l.trim().length > 0) ?? '';
+  const firstLine = c.split(/\r?\n/).find((l) => l.trim().length > 0) ?? '';
   if (looksLikeCsvHeader(firstLine)) return 'csv';
   return 'txt';
 }
 
 const SENDER_HEADER_WORDS = [
-  'remetente', 'enviado por', 'enviadopor', 'autor', 'usuario', 'speaker',
-  'participante', 'quem', 'contato', 'vendedor', 'cliente', 'nome', 'de', 'do',
+  'remetente', 'enviado por', 'enviadopor', 'autor', 'author', 'sender',
+  'usuario', 'user', 'speaker', 'participante', 'quem', 'contato', 'from',
+  'vendedor', 'cliente', 'lead', 'agente', 'nome', 'name', 'phone',
+  'telefone', 'numero', 'de', 'do', 'por',
 ];
 
 const MESSAGE_HEADER_WORDS = [
-  'mensagem', 'texto', 'message', 'text', 'conteudo', 'content', 'msg', 'body',
-  'frase', 'conversa',
+  'mensagem', 'texto', 'message', 'text', 'conteudo', 'content', 'msg',
+  'body', 'frase', 'conversa', 'comentario', 'dialogo',
 ];
 
 const TIME_HEADER_WORDS = [
   'datahora', 'data hora', 'data/hora', 'datetime', 'timestamp', 'quando',
-  'enviado em', 'hora', 'data', 'time', 'date',
+  'enviado em', 'enviadoem', 'created', 'criado em', 'hora', 'data', 'time',
+  'date', 'createdat',
 ];
 
 export function normalizeWord(w: string): string {
@@ -79,7 +105,7 @@ export function looksLikeCsvHeader(line: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// CSV (parser leve, com aspas e delimitador automático)
+// CSV (parser leve, com aspas, delimitador automático e células multilinha)
 // ---------------------------------------------------------------------------
 
 function detectDelimiter(sample: string): string {
@@ -139,18 +165,36 @@ function inferCsvColumns(words: string[]): CsvColumns | null {
   return { sender: senderIdx, message: messageIdx, timeCols };
 }
 
-/** Converte o CSV (com ou sem cabeçalho) em ParsedMessage[]. */
-export function parseCsvExport(raw: string): ParsedMessage[] {
-  const lines = raw.split(/\r?\n/);
-  const nonEmpty = lines.filter((l) => l.trim().length > 0);
-  if (nonEmpty.length === 0) return [];
+/** Junta linhas físicas quando uma célula com aspas continua na linha seguinte. */
+function joinCsvPhysicalLines(raw: string): string[] {
+  const physical = raw.split(/\r?\n/);
+  const logical: string[] = [];
+  let buf = '';
+  for (const l of physical) {
+    buf = buf ? buf + '\n' + l : l;
+    const quotes = (buf.match(/"/g) ?? []).length;
+    if (quotes % 2 === 0) {
+      logical.push(buf);
+      buf = '';
+    }
+  }
+  if (buf) logical.push(buf);
+  return logical;
+}
 
-  const delimiter = detectDelimiter(raw);
+function parseCsvInternal(raw: string): ParsedText {
+  const lines = joinCsvPhysicalLines(raw);
+  const nonEmpty = lines.filter((l) => l.trim().length > 0);
+  if (nonEmpty.length === 0) {
+    return { messages: [], stats: { lines: 0, messages: 0, unsupported: 0 } };
+  }
+
+  const delimiter = detectDelimiter(nonEmpty.join('\n'));
   const rows = nonEmpty.map((l) => splitCsvLine(l, delimiter).map((c) => c.trim()));
 
   let start = 0;
   let cols: CsvColumns | null = null;
-  if (looksLikeCsvHeader(nonEmpty[0])) {
+  if (looksLikeCsvHeader(nonEmpty[0]!)) {
     const headerWords = rows[0]!.map((c) => normalizeWord(c));
     cols = inferCsvColumns(headerWords);
     if (cols) start = 1;
@@ -161,100 +205,190 @@ export function parseCsvExport(raw: string): ParsedMessage[] {
   }
 
   const out: ParsedMessage[] = [];
+  let unsupported = 0;
   for (let i = start; i < rows.length; i++) {
     const row = rows[i];
-    if (cols.message >= row.length) continue;
+    if (cols.message >= row.length) {
+      unsupported++;
+      continue;
+    }
     const sender = (row[cols.sender] ?? '').trim();
     const text = (row[cols.message] ?? '').trim();
-    if (!sender && !text) continue;
+    if (!sender && !text) {
+      unsupported++;
+      continue;
+    }
     const timeParts = cols.timeCols
       .map((idx) => (idx >= 0 && idx < row.length ? row[idx] : ''))
       .filter(Boolean);
-    const time = timeParts.length > 0 ? timeParts.join(' ') : undefined;
+    const time = timeParts.length > 0 ? timeParts.join(' ').trim() : undefined;
     out.push({ sender: sender || 'Desconhecido', text, time: time || undefined });
   }
-  return out;
+  return {
+    messages: out,
+    stats: { lines: rows.length - start, messages: out.length, unsupported },
+  };
+}
+
+/** Converte o CSV (com ou sem cabeçalho) em ParsedMessage[]. */
+export function parseCsvExport(raw: string): ParsedMessage[] {
+  return parseCsvInternal(raw).messages;
 }
 
 // ---------------------------------------------------------------------------
 // TXT (WhatsApp / exportadores)
 // ---------------------------------------------------------------------------
 
-// Cabeçalho do WhatsApp Web/Desktop: [dd/mm/aaaa, hh:mm(:ss)] (d/m ou m/d).
-const WA_HEADER =
-  /^\[(\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4},\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)\]\s*/i;
-// Cabeçalho simplificado: "10:03 - Nome: msg".
-const SIMPLE_HEADER =
-  /^(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)\s*-\s*/i;
+// DATA: dd/mm/aaaa (ou d/m/aa, ou com '.') — 1-2 dígitos, ano 2 ou 4.
+const DATE_PART = String.raw`\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4}`;
+// HORA: HH:mm(:ss) com AM/PM opcional.
+const TIME_PART = String.raw`\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?`;
 
-const MEDIA_LINE_RE =
-  /^\u200e?\s*<(.+?)>$/i;
+/**
+ * Tenta extrair (data hora, resto) do início de uma linha de exportação.
+ * Não depende de um único formato: aceita colchetes, travessão, sem travessão,
+ * com/sem segundos e AM/PM.
+ */
+function matchHeaderLine(line: string): { time: string; rest: string } | null {
+  const l = line.replace(INVISIBLE_PREFIX_RE, '');
+  const dateTime = `${DATE_PART}[ ,]\\s*${TIME_PART}`;
 
-function isIgnorableMetaLine(text: string): boolean {
-  const t = text.trim();
-  if (!t) return true;
-  if (MEDIA_LINE_RE.test(t)) return true;
-  return /^(Mensagem editada|Você alterou|Você mudou|Você adicionou|Você removeu|Você criou|Você entrou|Você saiu|O grupo|As mensagens|Esta mensagem|Chamada|Lig ação)/i.test(t);
+  // [dd/mm/aaaa, hh:mm(:ss)] (\u200e) Nome: msg
+  const bracket = new RegExp(
+    `^\\[(${dateTime})\\]\\s*\\u200e?\\s*(.*)$`,
+    'i',
+  ).exec(l);
+  if (bracket) return { time: bracket[1]!.trim(), rest: bracket[2]! };
+
+  // dd/mm/aaaa, hh:mm(:ss) - Nome: msg   (formato real das exportações atuais)
+  const dash = new RegExp(`^(${dateTime})\\s*-\\s*(.*)$`, 'i').exec(l);
+  if (dash) return { time: dash[1]!.trim(), rest: dash[2]! };
+
+  // dd/mm/aaaa, hh:mm(:ss) Nome: msg   (sem travessão)
+  const noDash = new RegExp(`^(${dateTime})\\s+(.*)$`, 'i').exec(l);
+  if (noDash) return { time: noDash[1]!.trim(), rest: noDash[2]! };
+
+  // hh:mm(:ss) - Nome: msg
+  const simple = new RegExp(`^(${TIME_PART})\\s*-\\s*(.*)$`, 'i').exec(l);
+  if (simple) return { time: simple[1]!.trim(), rest: simple[2]! };
+
+  // hh:mm(:ss) Nome: msg
+  const simpleNoDash = new RegExp(`^(${TIME_PART})\\s+(.*)$`, 'i').exec(l);
+  if (simpleNoDash) return { time: simpleNoDash[1]!.trim(), rest: simpleNoDash[2]! };
+
+  return null;
 }
 
-export function parseWhatsAppText(raw: string): ParsedMessage[] {
+/** Linha cujo conteúdo é apenas uma referência de mídia (`<mídia omitida>`). */
+function isMediaLine(text: string): boolean {
+  const t = text.trim();
+  return /^<.+>$/i.test(t);
+}
+
+/** Mensagens automáticas/sistema do WhatsApp que não devem virar aprendizados. */
+function isSystemLine(text: string): boolean {
+  const t = text.trim().replace(/^[\u200e\u200f]+/, '');
+  if (!t) return true;
+  const lower = t.toLowerCase();
+  return (
+    /^(mensagens? e chamadas são protegidas|as mensagens e as chamadas|messages? and calls? are end.to.end encrypt)/.test(lower) ||
+    /criptografia de ponta a ponta|end.to.end encrypted/.test(lower) ||
+    /\b(você|voce|user) (alterou|mudou|definiu|criou|adicionou|removeu|entrou|saiu|renomeou)\b/.test(lower) ||
+    /\b(criou o grupo|grupo foi criado|created the group|created group|joined the group|left the group|entrou no grupo|saiu do grupo|adicionou (o|a|você|voce|user)|\bremoveu (o|a|você|voce|user)|removeu .* do grupo|adicionou .* ao grupo|renomeou o grupo|alterou o nome do grupo|mudou o nome do grupo|mudou a foto do grupo|definiu a foto do grupo|changed the (group )?(subject|name|photo|icon))\b/.test(lower) ||
+    /^(chamada de (áudio|vídeo|voz)|chamada perdida|missed (voice|video) call|voice call|video call|chamada de voz|chamada de vídeo)/.test(lower) ||
+    /^(mensagem apagada|esta mensagem foi apagada|message deleted|this message was deleted)/.test(lower) ||
+    /^(o grupo|os administradores|apenas o administrador|somente administradores|para adicionar|você pode ver)/.test(lower)
+  );
+}
+
+function parseTxtInternal(raw: string): ParsedText {
   const lines = raw.split(/\r?\n/);
+  const nonEmptyTotal = lines.filter((l) => l.trim().length > 0).length;
   const out: ParsedMessage[] = [];
   let current: ParsedMessage | null = null;
+  let headerLines = 0;
+  let continuationLines = 0;
 
   for (const line of lines) {
-    let rest: string | null = null;
-    let time: string | undefined;
+    if (line.trim().length === 0) continue;
 
-    const wa = line.match(WA_HEADER);
-    if (wa) {
-      time = wa[1];
-      rest = line.slice(wa[0].length);
-    } else {
-      const simple = line.match(SIMPLE_HEADER);
-      if (simple) {
-        time = simple[1];
-        rest = line.slice(simple[0].length);
-      }
-    }
-
-    if (rest !== null) {
-      const parts = splitSender(rest);
+    const m = matchHeaderLine(line);
+    if (m) {
+      const parts = splitSender(m.rest);
       if (parts.sender || parts.text) {
-        pushMessage(out, parts, time);
-        current = out[out.length - 1] ?? null;
+        const added = pushMessage(out, parts, m.time);
+        if (added) {
+          headerLines++;
+          current = out[out.length - 1] ?? null;
+        } else {
+          // Linha de sistema descartada: não vira "atual" para continuações.
+          current = null;
+        }
       }
       continue;
     }
 
     // Linha sem cabeçalho → continuação da mensagem anterior.
     if (current) {
+      continuationLines++;
       current.text += '\n' + line;
     }
   }
 
-  return out.filter((m) => m.text.trim().length > 0);
+  const messages = out.filter((m) => m.text.trim().length > 0);
+  return {
+    messages,
+    stats: {
+      lines: nonEmptyTotal,
+      messages: messages.length,
+      unsupported: Math.max(0, nonEmptyTotal - headerLines - continuationLines),
+    },
+  };
+}
+
+export function parseWhatsAppText(raw: string): ParsedMessage[] {
+  return parseTxtInternal(raw).messages;
 }
 
 function splitSender(body: string): { sender: string; text: string } {
-  const idx = body.search(/:\s/);
+  const b = body.replace(/^[\u200e\u200f\s]+/, '');
+  const idx = b.search(/:\s/);
   if (idx > 0 && idx <= 120) {
-    return { sender: body.slice(0, idx).trim(), text: body.slice(idx + 2).trim() };
+    return { sender: b.slice(0, idx).trim(), text: b.slice(idx + 2).trim() };
   }
-  return { sender: '', text: body.trim() };
+  return { sender: '', text: b.trim() };
 }
 
-function pushMessage(out: ParsedMessage[], parts: { sender: string; text: string }, time: string | undefined): void {
-  if (!parts.sender && !parts.text) return;
+/**
+ * Adiciona (ou mescla) uma mensagem. Retorna false quando a linha é uma
+ * mensagem de sistema (não deve virar mensagem nem receber continuações).
+ */
+function pushMessage(
+  out: ParsedMessage[],
+  parts: { sender: string; text: string },
+  time: string | undefined,
+): boolean {
+  if (!parts.sender && !parts.text) return false;
+  const trimmed = parts.text.trim();
+  if (isSystemLine(trimmed)) return false;
+
+  const text = isMediaLine(trimmed) ? MEDIA_PLACEHOLDER : trimmed;
   const sender = parts.sender || 'Desconhecido';
-  const text = isIgnorableMetaLine(parts.text) ? MEDIA_PLACEHOLDER : parts.text.trim();
-  // Mesmo sender + mesmo minuto = continuação (ex.: resposta em múltiplas partes).
+
+  // Mesmo sender + mesmo instante = continuação (ex.: resposta em partes).
   const last = out[out.length - 1];
   if (last && last.sender === sender && last.time === time && text !== MEDIA_PLACEHOLDER) {
     last.text += '\n' + text;
-    return;
+    return true;
   }
   out.push({ sender, text, time });
+  return true;
+}
+
+/** Ponto de entrada unificado: devolve mensagens + estatísticas de diagnóstico. */
+export function parseText(content: string, kind: ContentKind): ParsedText {
+  if (kind === 'csv') return parseCsvInternal(content);
+  return parseTxtInternal(content);
 }
 
 // ---------------------------------------------------------------------------
@@ -284,11 +418,12 @@ export function parseZipToText(base64: string): ZipParsedConversation[] {
       let text = bytes.toString('utf8');
       if (text.includes('\uFFFD')) text = bytes.toString('latin1');
       if (text.trim().length === 0) continue;
+      // Determina o formato pelo conteúdo (não só pela extensão).
       out.push({
         entryName: entry.entryName,
         fileName: name,
         content: text,
-        kind: /\.csv$/i.test(name) ? 'csv' : 'txt',
+        kind: detectContentKind(text),
       });
     }
     return out;
@@ -303,7 +438,7 @@ export function parseZipToText(base64: string): ZipParsedConversation[] {
 
 /**
  * Monta conversas a partir de fontes (arquivos). Um arquivo = uma conversa,
- * com contato deduzido e papéis classificados (agente/lead).
+ * com contato deduzido, papéis classificados (agente/lead) e estatísticas.
  */
 export function buildConversations(
   sources: Array<{ fileName: string; content: string; kind: ContentKind }>,
@@ -311,14 +446,11 @@ export function buildConversations(
 ): ParsedConversation[] {
   const out: ParsedConversation[] = [];
   for (const src of sources) {
-    const messages =
-      src.kind === 'csv'
-        ? parseCsvExport(src.content)
-        : parseWhatsAppText(src.content);
-    if (messages.length === 0) continue;
-    const classified = classifyRoles(messages, agentName);
+    const parsed = parseText(src.content, src.kind);
+    if (parsed.messages.length === 0) continue;
+    const classified = classifyRoles(parsed.messages, agentName);
     const contact = findContact(classified);
-    out.push({ sourceFile: src.fileName, ...contact, messages: classified });
+    out.push({ sourceFile: src.fileName, ...contact, messages: classified, stats: parsed.stats });
   }
   return out;
 }

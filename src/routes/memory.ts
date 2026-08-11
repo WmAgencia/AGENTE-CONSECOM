@@ -149,17 +149,43 @@ export function registerMemoryRoutes(app: FastifyInstance): void {
         error: 'no_conversations',
         message: 'Nenhum arquivo de texto (.txt/.csv) encontrado dentro do ZIP.',
         statusCode: 422,
+        details: { detectedFormat: 'zip', sourceFiles: 0, linesRead: 0, messagesRecognized: 0, unsupportedLines: 0 },
       });
     }
 
     const agentName = await loadAgentName();
     const conversations = buildConversations(sources, agentName);
+
+    const diagnostics = {
+      detectedFormat: kind,
+      sourceFiles: sources.length,
+      linesRead: 0,
+      messagesRecognized: 0,
+      unsupportedLines: 0,
+    };
+    for (const c of conversations) {
+      if (!c.stats) continue;
+      diagnostics.linesRead += c.stats.lines;
+      diagnostics.messagesRecognized += c.stats.messages;
+      diagnostics.unsupportedLines += c.stats.unsupported;
+    }
+
     if (conversations.length === 0 || conversations.every((c) => c.messages.length < 2)) {
+      log.warn(
+        {
+          user: user.id.slice(0, 8),
+          kind,
+          fileName,
+          ...diagnostics,
+        },
+        'memory: import rejected (no conversations recognized)',
+      );
       return reply.status(422).send({
         error: 'no_conversations',
         message:
           'Nenhuma conversa reconhecida no arquivo. Verifique se é uma exportação de WhatsApp (.txt/.csv) ou um ZIP com arquivos de texto.',
         statusCode: 422,
+        details: diagnostics,
       });
     }
 
@@ -197,6 +223,9 @@ export function registerMemoryRoutes(app: FastifyInstance): void {
         fileName,
         sources: sources.length,
         conversations: conversations.length,
+        linesRead: diagnostics.linesRead,
+        messagesRecognized: diagnostics.messagesRecognized,
+        unsupportedLines: diagnostics.unsupportedLines,
       },
       'memory: import accepted',
     );
