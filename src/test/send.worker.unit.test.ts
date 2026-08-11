@@ -26,6 +26,9 @@ process.env.EVOLUTION_SENDTEXT_MAX_RETRIES = '1'
 process.env.CONSECOM_WORKER_TICK_MS = '5000'
 process.env.CONSECOM_SEND_MAX_RETRIES = '3'
 process.env.CONSECOM_SEND_RETRY_BACKOFF_MS = '60000'
+process.env.EVOLUTION_RATE_LIMIT_MAX_PER_MINUTE = '0'
+process.env.EVOLUTION_SEND_JITTER_MIN_MS = '0'
+process.env.EVOLUTION_SEND_JITTER_MAX_MS = '0'
 
 interface Run {
   id: string

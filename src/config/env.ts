@@ -329,6 +329,36 @@ const envSchema = z.object({
     .refine((v) => Number.isInteger(v) && v >= 1 && v <= 10, {
       message: 'EVOLUTION_SENDTEXT_MAX_RETRIES must be an integer 1..10',
     }),
+
+  // Anti-spam do disparo de campanhas (SpamProtection no send.worker).
+  // 0 desabilita o limite de mensagens por minuto.
+  EVOLUTION_RATE_LIMIT_MAX_PER_MINUTE: z
+    .string()
+    .optional()
+    .default('20')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isInteger(v) && v >= 0 && v <= 600, {
+      message: 'EVOLUTION_RATE_LIMIT_MAX_PER_MINUTE must be an integer 0..600 (0 = disabled)',
+    }),
+
+  // Jitter aleatório entre envios consecutivos. JITTER_MAX 0 desabilita.
+  EVOLUTION_SEND_JITTER_MIN_MS: z
+    .string()
+    .optional()
+    .default('800')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isInteger(v) && v >= 0 && v <= 60_000, {
+      message: 'EVOLUTION_SEND_JITTER_MIN_MS must be an integer 0..60000',
+    }),
+
+  EVOLUTION_SEND_JITTER_MAX_MS: z
+    .string()
+    .optional()
+    .default('4000')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isInteger(v) && v >= 0 && v <= 60_000, {
+      message: 'EVOLUTION_SEND_JITTER_MAX_MS must be an integer 0..60000',
+    }),
 });
 
 export type Env = z.infer<typeof envSchema>;

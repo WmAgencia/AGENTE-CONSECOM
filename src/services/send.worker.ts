@@ -38,12 +38,18 @@
  * de runs em processamento garantem execução única (sem M2 duplicada), inclusive
  * com ticks sobrepostos e cliques repetidos em retomar.
  *
+ * ANTI-SPAM: antes de cada envio o worker passa pelo SpamProtection — limite
+ * de mensagens por minuto (EVOLUTION_RATE_LIMIT_MAX_PER_MINUTE) e jitter
+ * aleatório (EVOLUTION_SEND_JITTER_MIN_MS/MAX_MS). Ao atingir o limite, o
+ * worker espera o fim da janela de 1 minuto (o run permanece 'running').
+ *
  * Uses the Supabase REST API with the service role key (bypasses RLS).
  * Does not store secrets; reads them from env via the config module.
  */
 import { getSupabaseProspeccaoConfig, getEnv } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { sendText, sendMedia, type MediaKind } from './evolution.service.js';
+import { SpamProtection } from './spam-protection.js';
 import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js';
 import { loadAgentName, formatAgentSignature } from './supabase.leads.js';
 import { renderTemplate } from './template.service.js';
@@ -109,6 +115,9 @@ export class SendWorker {
   // com falha permanente não fique em retry infinito: após
   // CONSECOM_SEND_MAX_RETRIES o run é marcado 'failed'.
   private readonly retryCounts = new Map<string, number>();
+
+  // Anti-spam da Evolution: rate limit por minuto + jitter entre envios.
+  private readonly spam = new SpamProtection();
 
   constructor() {
     const c = getSupabaseProspeccaoConfig();
@@ -414,11 +423,14 @@ export class SendWorker {
     }
 
     log.info({ runId: run.id, position, kind: next.kind, phone: sendPhone }, '[CAMPAIGN] disparando mensagem da campanha');
+    // Anti-spam: respeita o limite de msg/min da Evolution e aplica um delay
+    // aleatório antes do envio (pode bloquear o tick enquanto espera).
+    await this.spam.checkRateLimit();
+    await this.spam.jitter();
     const agentName = await loadAgentName();
     let ok = false;
     let sentText = '';
-    try {
-      if (strategyKind === 'text' && strategyText) {
+    try {      if (strategyKind === 'text' && strategyText) {
         sentText = formatAgentSignature(renderTemplate(strategyText, lead), agentName);
         ok = (await sendText({ to: sendPhone, text: sentText, instance: sendInstance })).ok;
       } else if (strategyMediaUrl) {
