@@ -50,6 +50,134 @@ export const api = {
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
+// ===== Inteligência Comercial (Metas + Faturamento) =====
+
+export interface CommercialGoal {
+  id: string
+  user_id: string
+  workspace_id: string | null
+  goal_amount: number
+  period_days: 30 | 60 | 90
+  avg_ticket: number
+  meeting_close_rate: number
+  leads_per_day: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GoalInput {
+  goal_amount: number
+  period_days: 30 | 60 | 90
+  avg_ticket: number
+  meeting_close_rate: number
+  leads_per_day: number | null
+}
+
+export interface ProjectionResult {
+  vendasNecessarias: number
+  reunioesNecessarias: number
+  reunioesPorDia: number
+  leadsNecessarios: number | null
+  leadsPorDia: number | null
+  conversaoLeadReuniaoNecessaria: number | null
+  conversaoLeadVendaNecessaria: number | null
+}
+
+export interface FunnelStage {
+  label: string
+  value: number
+}
+
+export interface RealResults {
+  faturamento: number
+  vendas: number
+  vendasComValor: number
+  leadsTrabalhados: number
+  conversando: number
+  reunioesMarcadas: number
+  reunioesRealizadas: number
+  conversaoLeadReuniao: number | null
+  conversaoReuniaoVenda: number | null
+  conversaoLeadVenda: number | null
+  funnel: FunnelStage[]
+  hoje: { faturamento: number; vendas: number; reunioes: number }
+  historico: Array<{ mes: string; faturamento: number }>
+  diasRestantes: number
+  rPorDiaNecessario: number | null
+  metaAtingida: number | null
+}
+
+export interface CommercialDashboard {
+  goal: CommercialGoal | null
+  projection: ProjectionResult | null
+  real: RealResults
+  generatedAt: string
+}
+
+async function userIdHeader(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getUser()
+  const uid = data?.user?.id
+  return uid ? { 'x-user-id': uid } : {}
+}
+
+export const commercialApi = {
+  async dashboard(): Promise<CommercialDashboard> {
+    return request<CommercialDashboard>('/api/commercial/dashboard', {
+      method: 'GET',
+      cache: 'no-store',
+      headers: await userIdHeader(),
+    })
+  },
+  async goal(): Promise<CommercialGoal | null> {
+    try {
+      const r = await request<{ goal: CommercialGoal }>('/api/commercial/goal', {
+        method: 'GET',
+        cache: 'no-store',
+        headers: await userIdHeader(),
+      })
+      return r.goal ?? null
+    } catch {
+      return null
+    }
+  },
+  async saveGoal(input: GoalInput): Promise<CommercialGoal | null> {
+    const r = await request<{ ok: boolean; goal: CommercialGoal }>('/api/commercial/goal', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+      headers: await userIdHeader(),
+    })
+    return r.goal ?? null
+  },
+  async simulate(input: GoalInput): Promise<ProjectionResult> {
+    const r = await request<{ projection: ProjectionResult }>('/api/commercial/simulate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      headers: await userIdHeader(),
+    })
+    return r.projection
+  },
+}
+
+// Formatação BR para valores monetários.
+export function formatBRL(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+export function formatNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(value)
+}
+
+export function formatMonth(mes: string): string {
+  const [y, m] = mes.split('-')
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('pt-BR', { month: 'short' })
+}
+
 // ===== Tipos da Central da IA =====
 
 export interface AiStatus {

@@ -21,6 +21,7 @@ import { registerWebhookRoutes } from './routes/webhook.js';
 import { registerEvolutionRoutes } from './routes/evolution.js';
 import { registerConnectionsRoutes } from './routes/connections.js';
 import { registerLeadsRoutes } from './routes/leads.js';
+import { registerCommercialRoutes } from './routes/commercial.js';
 import { registerUiRoutes } from './routes/ui.js';
 import { registerExtensionRoutes } from './routes/extension.js';
 import { registerAiRoutes } from './routes/ai.js';
@@ -200,6 +201,7 @@ export function buildApp(): BuiltApp {
   registerEvolutionRoutes(app);
   registerConnectionsRoutes(app);
   registerLeadsRoutes(app);
+  registerCommercialRoutes(app);
   registerUiRoutes(app);
   registerExtensionRoutes(app);
   registerAiRoutes(app);

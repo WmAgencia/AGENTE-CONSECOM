@@ -99,7 +99,7 @@ export function KanbanBoard({
   leads: Lead[]
   campaigns: Campaign[]
   onMeeting: (id: string, at: string, notes: string) => Promise<boolean>
-  onClose: (id: string, closed: boolean, motivo: string) => Promise<boolean>
+  onClose: (id: string, closed: boolean, motivo: string, valor: number | null) => Promise<boolean>
 }) {
   const [campaignFilter, setCampaignFilter] = useState<'all' | string>('all')
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
@@ -314,8 +314,8 @@ export function KanbanBoard({
         <CloseModal
           lead={selectedLead}
           onClose={() => { setModal(null); setSelectedLead(null) }}
-          onSave={async (closed, motivo) => {
-            const ok = await onClose(selectedLead.id, closed, motivo)
+          onSave={async (closed, motivo, valor) => {
+            const ok = await onClose(selectedLead.id, closed, motivo, valor)
             if (ok) { setModal(null); setSelectedLead(null) }
             return ok
           }}
@@ -394,7 +394,14 @@ export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClos
         </div>
       )}
       {(lead.status === 'fechado' || lead.status === 'nao_fechado') && (
-        <div className="mt-2 text-[11px] text-slate-400">{lead.closed_reason || '(sem motivo)'}</div>
+        <div className="mt-2 space-y-1 text-[11px] text-slate-400">
+          {lead.status === 'fechado' && lead.sale_value != null && lead.sale_value > 0 && (
+            <div className="text-emerald-300 bg-emerald-500/10 rounded-md px-2 py-1">
+              💰 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(lead.sale_value)}
+            </div>
+          )}
+          <div>{lead.closed_reason || '(sem motivo)'}</div>
+        </div>
       )}
       {lead.status === 'para_ligacao' && (lead.call_reason || lead.call_moved_at) && (
         <div className="mt-2 text-[11px] text-cyan-300 bg-cyan-400/10 rounded-md px-2 py-1">
@@ -484,17 +491,33 @@ function MeetingModal({ lead, onClose, onSave }: {
 function CloseModal({ lead, onClose, onSave }: {
   lead: Lead
   onClose: () => void
-  onSave: (closed: boolean, motivo: string) => Promise<boolean>
+  onSave: (closed: boolean, motivo: string, valor: number | null) => Promise<boolean>
 }) {
   const [closed, setClosed] = useState(true)
   const [motivo, setMotivo] = useState('')
+  const [valor, setValor] = useState(lead.sale_value ? String(lead.sale_value) : '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  function parseValor(): number | null {
+    if (!closed) return null
+    const raw = valor.trim().replace('.', '').replace(',', '.')
+    if (!raw) return null
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
   async function submit() {
+    if (closed && valor.trim()) {
+      const parsed = parseValor()
+      if (parsed == null) {
+        setError('Informe um valor de venda válido (ex.: 1500 ou 1.500).')
+        return
+      }
+    }
     setBusy(true)
     setError('')
-    const ok = await onSave(closed, motivo)
+    const ok = await onSave(closed, motivo, parseValor())
     setBusy(false)
     if (!ok) setError('Não foi possível salvar. Tente novamente.')
   }
@@ -519,6 +542,14 @@ function CloseModal({ lead, onClose, onSave }: {
             Não fechado
           </label>
         </div>
+        {closed && (
+          <label className="block text-xs text-slate-400 mb-3">
+            Valor da venda (R$)
+            <input value={valor} onChange={(e) => setValor(e.target.value)}
+              inputMode="decimal" placeholder="Ex.: 1500"
+              className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+          </label>
+        )}
         <label className="block text-xs text-slate-400 mb-3">
           Motivo
           <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: fora do orçamento, já tem fornecedor..."

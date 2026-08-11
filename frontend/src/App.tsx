@@ -116,17 +116,24 @@ export default function App() {
     return !error
   }
 
-  async function closeLead(id: string, closed: boolean, motivo: string) {
+  async function closeLead(id: string, closed: boolean, motivo: string, valor: number | null) {
     const { error } = await supabase.rpc('consecom_fechar_lead', {
       p_lead_id: id,
       p_fechado: closed,
       p_motivo: motivo || null,
+      p_valor: closed && valor != null && valor > 0 ? valor : null,
     })
     if (!error) {
       setLeads((l) =>
         l.map((x) =>
           x.id === id
-            ? { ...x, status: closed ? 'fechado' : 'nao_fechado', closed_reason: motivo || null, closed_at: new Date().toISOString() }
+            ? {
+                ...x,
+                status: closed ? 'fechado' : 'nao_fechado',
+                closed_reason: motivo || null,
+                closed_at: new Date().toISOString(),
+                sale_value: closed && valor != null && valor > 0 ? valor : null,
+              }
             : x,
         ),
       )

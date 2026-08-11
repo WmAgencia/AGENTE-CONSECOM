@@ -45,6 +45,9 @@ export interface Lead {
   no_interest_until: string | null
   closed_reason: string | null
   closed_at: string | null
+  sale_value?: number | null
+  meeting_outcome?: string | null
+  sale_status?: string | null
   remarket_at: string | null
   first_msg_sent_at: string | null
   call_reason?: string | null
