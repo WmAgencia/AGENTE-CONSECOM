@@ -265,6 +265,25 @@ export async function deleteConversationRow(id: string, userId: string): Promise
 }
 
 /** Todas as conversas de um lote (com transcript) para o processador. */
+/** Normaliza o transcript armazenado (JSON string ou array) para o formato interno. */
+export function parseTranscript(raw: unknown): Array<{ role: 'agente' | 'lead'; text: string }> {
+  let value: unknown = raw;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object')
+    .map((m) => ({
+      role: m.role === 'agente' || m.role === 'lead' ? m.role : 'lead',
+      text: String(m.text ?? ''),
+    }));
+}
+
 export async function getConversationsByImport(
   importId: string,
   userId: string,
@@ -284,9 +303,7 @@ export async function getConversationsByImport(
       .filter((r) => !!r && !!r.id)
       .map((r) => ({
         ...r,
-        transcript: Array.isArray(r.transcript)
-          ? (r.transcript as Array<{ role: 'agente' | 'lead'; text: string }>)
-          : [],
+        transcript: parseTranscript(r.transcript),
       }));
   } catch {
     return [];
@@ -320,31 +337,44 @@ export async function bulkCreateLearnings(
 ): Promise<number> {
   const s = sup();
   if (!s || items.length === 0) return 0;
-  const rows = items.map(({ importId, conversationId, learning }) => ({
-    user_id: userId,
-    import_id: importId,
-    conversation_id: conversationId,
-    category: learning.category,
-    content: learning.content,
-    evidence: JSON.stringify(learning.evidence),
-    confidence: learning.confidence,
-    occurrences: 1,
-    performance: learning.performance,
-    status: 'identificado',
-    important: false,
-  }));
+
+  // Dedup em código por (category, content) para evitar duplicatas, já que o
+  // banco pode não ter o índice único exigido pelo on_conflict.
+  const existing = await listLearnings(userId, { limit: 500 });
+  const seen = new Set(existing.map((l) => `${l.category}|${l.content.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`));
+
+  const rows = items
+    .filter(({ learning }) => {
+      const key = `${learning.category}|${learning.content.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(({ importId, conversationId, learning }) => ({
+      user_id: userId,
+      import_id: importId,
+      conversation_id: conversationId,
+      category: learning.category,
+      content: learning.content,
+      evidence: JSON.stringify(learning.evidence),
+      confidence: learning.confidence,
+      occurrences: 1,
+      performance: learning.performance,
+      status: 'identificado',
+      important: false,
+    }));
+
+  if (rows.length === 0) return 0;
+
   try {
-    // Unique index em (user_id, category, content) ignora duplicados; o
-    // upsert somaria ocorrências. Preferimos inserção com resolução de
-    // duplicados ignorados para manter o texto idêntico uma única vez.
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 50) {
       const batch = rows.slice(i, i + 50);
-      const res = await fetch(`${s.url}/rest/v1/ai_memory_learnings?on_conflict=user_id,category,content`, {
+      const res = await fetch(`${s.url}/rest/v1/ai_memory_learnings`, {
         method: 'POST',
         headers: {
           ...hdr(s.key, true),
-          Prefer: 'resolution=ignore-duplicates',
+          Prefer: 'return=minimal',
         },
         body: JSON.stringify(batch.length === 1 ? batch[0] : batch),
       });

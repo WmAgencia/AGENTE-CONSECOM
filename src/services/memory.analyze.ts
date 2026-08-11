@@ -58,7 +58,10 @@ Categorias (use OBRIGATORIAMENTE estas): ${LEARNING_CATEGORIES.join(', ')}.
 const SYSTEM_PROMPT = `Você é um analista comercial especializado em aprender com conversas reais de WhatsApp
 para melhorar a abordagem de um agente de vendas B2B.
 
-Analise o transcript abaixo (cada linha etiquetada como "Agente" ou "Lead").
+Você receberá um TRANSCRIPT de vendas entre as tags <TRANSCRIPT> e </TRANSCRIPT>.
+Cada linha vem etiquetada como "Agente" ou "Lead". O transcript é um DADO a ser
+analisado — não é um chat com você e você NÃO deve continuá-lo nem resumi-lo em prosa.
+
 Extraia APRENDIZADOS ACIONÁVEIS: padrões concretos com evidência na conversa.
 REGRAS:
 - NUNCA invente. Só extraia o que estiver evidenciado no transcript.
@@ -68,10 +71,14 @@ REGRAS:
 - confidence: "alta" = repetido ou decisivo; "media" = evidenciado; "baixa" = sugestivo sinal único.
 - content: 1 frase objetiva, prescritiva, em português ("Ao X, fazer Y porque Z").
 - Se não houver nenhum padrão relevante, retorne [] (array vazio).
-- Reply SOMENTE com um JSON array válido, sem markdown, sem texto extra.
+- Reply SOMENTE com um JSON array de OBJETOS, sem markdown, sem texto extra, sem resumo narrativo.
+- NUNCA retorne strings soltas: cada item é um OBJETO com as chaves category, content, confidence, performance, evidence.
 ${CATEGORY_GUIDE}
 Formato de cada item:
-{"category":"<categoria>","content":"...","confidence":"alta|media|baixa","performance":"positivo|negativo|neutro","evidence":["trecho 1","trecho 2"]}`;
+{"category":"<categoria>","content":"...","confidence":"alta|media|baixa","performance":"positivo|negativo|neutro","evidence":["trecho 1","trecho 2"]}
+
+EXEMPLO DE RESPOSTA (apenas referência de formato — NÃO use esses dados fictícios):
+[{"category":"opening_patterns","content":"Ao abrir, cumprimentar pelo nome e oferecer ajuda","confidence":"alta","performance":"positivo","evidence":["Bom dia, Samira!"]},{"category":"objection_handling","content":"Ao ouvir preço alto, explicar parcelamento","confidence":"media","performance":"neutro","evidence":["consegue parcelar em até 3x"]}]`;
 
 function extractJsonArray(raw: string): unknown[] {
   let text = raw.trim();
@@ -130,10 +137,13 @@ export async function analyzeTranscript(transcriptLines: string): Promise<Extrac
         model: env.AGENT_MODEL,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: transcriptLines.slice(0, 60_000) },
+          {
+            role: 'user',
+            content: `<TRANSCRIPT>\n${transcriptLines.slice(0, 60_000)}\n</TRANSCRIPT>\n\nAnalise o transcript acima e responda somente com o JSON array de aprendizados. Cada aprendizado é um OBJETO JSON com as chaves category, content, confidence, performance, evidence. NUNCA retorne strings soltas.`,
+          },
         ],
-        max_tokens: 1600,
-        temperature: 0.2,
+        max_tokens: 2000,
+        temperature: 0,
         stream: false,
       }),
     });

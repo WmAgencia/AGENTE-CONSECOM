@@ -22,6 +22,7 @@ import {
   parseText,
 } from '../services/memory.parse.js';
 import { inferConversationOutcome } from '../services/memory.processor.js';
+import { parseTranscript } from '../services/memory.service.js';
 
 describe('memory.parse: format detection', () => {
   test('detecta TXT padrão do WhatsApp', () => {
@@ -400,6 +401,36 @@ describe('memory.parse: CSV em inglês e colunas amplas', () => {
     const msgs = parseCsvExport(csv);
     assert.equal(msgs.length, 2);
     assert.ok(msgs[0].text.includes('segunda linha'));
+  });
+});
+
+describe('memory.service: parseTranscript', () => {
+  test('array direto é preservado', () => {
+    const t = parseTranscript([
+      { role: 'agente', text: 'Olá' },
+      { role: 'lead', text: 'Oi' },
+    ]);
+    assert.equal(t.length, 2);
+    assert.equal(t[0].role, 'agente');
+    assert.equal(t[1].text, 'Oi');
+  });
+
+  test('JSON string é parseado (formato real gravado no Supabase)', () => {
+    const t = parseTranscript('[{"role":"agente","text":"Olá"},{"role":"lead","text":"Oi"}]');
+    assert.equal(t.length, 2);
+    assert.equal(t[0].role, 'agente');
+    assert.equal(t[1].role, 'lead');
+  });
+
+  test('valor inválido vira []', () => {
+    assert.deepEqual(parseTranscript('não é json'), []);
+    assert.deepEqual(parseTranscript(null), []);
+    assert.deepEqual(parseTranscript({}), []);
+  });
+
+  test('role inválido é normalizado para lead', () => {
+    const t = parseTranscript([{ role: 'user', text: 'x' }]);
+    assert.equal(t[0].role, 'lead');
   });
 });
 
