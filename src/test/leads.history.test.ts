@@ -5,11 +5,15 @@
  * 2) clear-list: marca is_active_in_prospecting=false (PATCH), NÃO deleta, e
  *    grava auditoria (histórico preservado)
  * 3) permanent-delete sem senha => 400
- * 4) permanent-delete com senha errada => 403 (+ auditoria de negação)
- * 5) permanent-delete com senha correta => DELETE SOMENTE dos ids selecionados
- *    (+ auditoria) — nenhum outro lead é afetado
+ * 4) permanent-delete com senha de login errada => 403 (+ auditoria de negação)
+ * 5) permanent-delete com senha de login correta => DELETE SOMENTE dos ids
+ *    selecionados (+ auditoria) — nenhum outro lead é afetado
  * 6) permanent-delete sem autenticação => 401
- * 7) clear-list sem lead_ids => 400
+ * 7) permanent-delete sem email => 400
+ * 8) clear-list sem lead_ids => 400
+ *
+ * A senha é a do login da plataforma: o backend valida via Supabase Auth
+ * (POST /auth/v1/token?grant_type=password) com email + senha do usuário.
  */
 import { before, test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -26,7 +30,10 @@ process.env.EVOLUTION_INSTANCE_NAME = 'inst'
 process.env.EVOLUTION_AGENT_CONCURRENCY = '1'
 process.env.AGENT_API_KEY = 'test-key'
 process.env.AGENT_ALLOWED_TOOLS = ''
-process.env.CONSECOM_ADMIN_PASSWORD = 'super-secret'
+
+/** Senha de login "correta" usada no mock do Supabase Auth. */
+const LOGIN_PASSWORD = 'senha-do-login'
+const LOGIN_EMAIL = 'admin@consecom.com'
 
 interface LeadRow {
   id: string
@@ -103,6 +110,15 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
   if (url.includes('/rest/v1/agent_learning')) return jsonRes([])
   if (url.includes('/rest/v1/ai_memory')) return jsonRes([])
   if (url.includes('/rest/v1/whatsapp_connections')) return jsonRes([])
+
+  // Supabase Auth — validação da senha de login ("Excluir histórico")
+  if (url.includes('/auth/v1/token')) {
+    const creds = (body ?? {}) as { email?: string; password?: string }
+    if (creds.password === LOGIN_PASSWORD) {
+      return jsonRes({ access_token: 'mock-token', user: { email: creds.email } })
+    }
+    return jsonRes({ error: 'invalid_grant', error_description: 'Invalid login credentials' }, 400)
+  }
 
   return jsonRes([])
 }
@@ -184,14 +200,19 @@ test('2) clear-list marca is_active_in_prospecting=false, não deleta e audita',
 
 test('3) permanent-delete sem senha => 400', async () => {
   clearStore()
-  const r = await inject('POST', '/api/leads/permanent-delete', { lead_ids: ['id-1'] }, auth())
+  const r = await inject('POST', '/api/leads/permanent-delete', { lead_ids: ['id-1'], email: LOGIN_EMAIL }, auth())
   assert.equal(r.status, 400)
   assert.equal(r.body.error, 'password_required')
 })
 
-test('4) permanent-delete com senha errada => 403 e audita negação', async () => {
+test('4) permanent-delete com senha de login errada => 403 e audita negação', async () => {
   clearStore()
-  const r = await inject('POST', '/api/leads/permanent-delete', { lead_ids: ['id-1'], password: 'errada' }, auth())
+  const r = await inject(
+    'POST',
+    '/api/leads/permanent-delete',
+    { lead_ids: ['id-1'], password: 'senha-errada', email: LOGIN_EMAIL },
+    auth(),
+  )
   assert.equal(r.status, 403)
   assert.equal(r.body.error, 'invalid_password')
   assert.equal(store.deleteCalls.length, 0, 'nada é deletado com senha inválida')
@@ -199,7 +220,7 @@ test('4) permanent-delete com senha errada => 403 e audita negação', async () 
   assert.equal(store.auditLogs[0].action, 'leads.permanent_delete_denied')
 })
 
-test('5) permanent-delete com senha correta deleta SOMENTE os selecionados e audita', async () => {
+test('5) permanent-delete com senha de login correta deleta SOMENTE os selecionados e audita', async () => {
   clearStore()
   store.leads.push(
     { id: 'id-1', name: 'Empresa A', is_active_in_prospecting: true },
@@ -210,7 +231,7 @@ test('5) permanent-delete com senha correta deleta SOMENTE os selecionados e aud
   const r = await inject(
     'POST',
     '/api/leads/permanent-delete',
-    { lead_ids: ['id-1'], password: 'super-secret' },
+    { lead_ids: ['id-1'], password: LOGIN_PASSWORD, email: LOGIN_EMAIL },
     auth(),
   )
   assert.equal(r.status, 200)
@@ -235,12 +256,23 @@ test('5) permanent-delete com senha correta deleta SOMENTE os selecionados e aud
 
 test('6) permanent-delete sem autenticação => 401', async () => {
   clearStore()
-  const r = await inject('POST', '/api/leads/permanent-delete', { lead_ids: ['id-1'], password: 'super-secret' })
+  const r = await inject('POST', '/api/leads/permanent-delete', {
+    lead_ids: ['id-1'],
+    password: LOGIN_PASSWORD,
+    email: LOGIN_EMAIL,
+  })
   assert.equal(r.status, 401)
   assert.equal(r.body.error, 'unauthorized')
 })
 
-test('7) clear-list sem lead_ids => 400', async () => {
+test('7) permanent-delete sem email => 400', async () => {
+  clearStore()
+  const r = await inject('POST', '/api/leads/permanent-delete', { lead_ids: ['id-1'], password: LOGIN_PASSWORD }, auth())
+  assert.equal(r.status, 400)
+  assert.equal(r.body.error, 'email_required')
+})
+
+test('8) clear-list sem lead_ids => 400', async () => {
   clearStore()
   const r = await inject('POST', '/api/leads/clear-list', { lead_ids: [] }, auth())
   assert.equal(r.status, 400)

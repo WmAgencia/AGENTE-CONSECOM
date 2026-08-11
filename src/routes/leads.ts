@@ -10,13 +10,9 @@
  * reply (agent_model = 'HUMAN_REPLY') so the chat UI can distinguish it from
  * AI messages, and touches last_message_sent on the lead.
  */
-import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { getLogger } from '../utils/logger.js';
-import {
-  getConsecomAdminPassword,
-  getSupabaseProspeccaoConfig,
-} from '../config/env.js';
+import { getSupabaseProspeccaoConfig } from '../config/env.js';
 import { sendText } from '../services/evolution.service.js';
 import {
   getUserConnection,
@@ -40,12 +36,29 @@ function supHeaders(key: string, json = false): Record<string, string> {
     : { apikey: key, Authorization: `Bearer ${key}` };
 }
 
-/** Comparação de senha em tempo constante (evita timing attack). */
-function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
+type PasswordVerdict = 'ok' | 'invalid' | 'unavailable';
+
+/**
+ * Valida a senha contra o Supabase Auth — a MESMA senha usada no login da
+ * plataforma. Usa o endpoint de token do GoTrue: 200 = credenciais corretas,
+ * 400 = senha inválida, erro de rede = indisponível (502). A senha nunca é
+ * armazenada; só é encaminhada ao Supabase em HTTPS.
+ */
+async function verifyLoginPassword(
+  s: { url: string; serviceRoleKey: string },
+  email: string,
+  password: string,
+): Promise<PasswordVerdict> {
+  try {
+    const res = await fetch(`${s.url}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: supHeaders(s.serviceRoleKey, true),
+      body: JSON.stringify({ email, password }),
+    });
+    return res.ok ? 'ok' : 'invalid';
+  } catch {
+    return 'unavailable';
+  }
 }
 
 interface SupabaseCfg {
@@ -230,12 +243,12 @@ export function registerLeadsRoutes(app: FastifyInstance): void {
    * lead_status_history e participações em TODAS as campanhas).
    *
    * POST /api/leads/permanent-delete
-   *   Body: { lead_ids: string[], password: string }
-   *   Auth: x-user-id / x-workspace-id + CONSECOM_ADMIN_PASSWORD (env)
+   *   Body: { lead_ids: string[], password: string, email: string }
+   *   Auth: x-user-id / x-workspace-id + senha de login do Supabase
    *
-   * A senha é validada SOMENTE aqui (backend), em tempo constante, e nunca é
-   * enviada/validada no frontend. Toda tentativa (sucesso ou falha) é
-   * registrada em consecom_audit_log.
+   * A senha é validada SOMENTE aqui (backend), contra o Supabase Auth (a mesma
+   * do login da plataforma), e nunca é armazenada/validada no frontend. Toda
+   * tentativa (sucesso ou falha) é registrada em consecom_audit_log.
    */
   app.post('/api/leads/permanent-delete', async (req, reply) => {
     const { workspaceId, userId } = getWorkspaceAndUser(req);
@@ -249,30 +262,32 @@ export function registerLeadsRoutes(app: FastifyInstance): void {
       return reply.status(400).send({ error: 'lead_ids_required' });
     }
 
-    const body = req.body as { password?: unknown } | null;
+    const body = req.body as { password?: unknown; email?: unknown } | null;
     const password = typeof body?.password === 'string' ? body.password : '';
     if (!password) {
       return reply.status(400).send({ error: 'password_required' });
     }
-
-    const adminPassword = getConsecomAdminPassword();
-    if (!adminPassword) {
-      return reply.status(503).send({ error: 'admin_password_not_configured' });
-    }
-    if (!safeEqual(password, adminPassword)) {
-      log.warn({ identifier }, 'leads: exclusão definitiva rejeitada (senha inválida)');
-      const s = sup();
-      if (s) {
-        await writeAudit(s, identifier, 'leads.permanent_delete_denied', 'lead', leadIds, {
-          reason: 'invalid_password',
-        });
-      }
-      return reply.status(403).send({ error: 'invalid_password' });
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    if (!email) {
+      return reply.status(400).send({ error: 'email_required' });
     }
 
     const s = sup();
     if (!s) {
       return reply.status(503).send({ error: 'server_misconfigured' });
+    }
+
+    const verdict = await verifyLoginPassword(s, email, password);
+    if (verdict === 'unavailable') {
+      log.warn({ identifier, email }, 'leads: exclusão definitiva rejeitada (verificação de senha indisponível)');
+      return reply.status(502).send({ error: 'password_check_failed' });
+    }
+    if (verdict === 'invalid') {
+      log.warn({ identifier, email }, 'leads: exclusão definitiva rejeitada (senha de login inválida)');
+      await writeAudit(s, identifier, 'leads.permanent_delete_denied', 'lead', leadIds, {
+        reason: 'invalid_password',
+      });
+      return reply.status(403).send({ error: 'invalid_password' });
     }
 
     try {

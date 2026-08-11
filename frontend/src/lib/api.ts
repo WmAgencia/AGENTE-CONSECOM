@@ -557,13 +557,15 @@ export const leadsApi = {
   },
   /**
    * "Excluir histórico" — exclusão DEFINITIVA do lead + conversas, reuniões,
-   * histórico e participações em todas as campanhas. A senha é validada no
-   * backend (CONSECOM_ADMIN_PASSWORD). Nunca fica no frontend.
+   * histórico e participações em todas as campanhas. A senha é a do login da
+   * plataforma (validada no backend via Supabase Auth). Nunca fica no frontend.
    */
   async permanentDelete(leadIds: string[], password: string): Promise<LeadsDeleteResult> {
+    const { data } = await supabase.auth.getSession()
+    const email = data.session?.user.email ?? null
     return request<LeadsDeleteResult>('/api/leads/permanent-delete', {
       method: 'POST',
-      body: JSON.stringify({ lead_ids: leadIds, password }),
+      body: JSON.stringify({ lead_ids: leadIds, password, email }),
       headers: await leadsHeaders(),
     })
   },

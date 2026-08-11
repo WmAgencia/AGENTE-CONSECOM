@@ -353,7 +353,7 @@ function PasswordDeleteModal({ count, busy, onClose, onConfirm }: {
           a participação destes leads em <span className="text-slate-200">todas as campanhas</span>. Ação irreversível.
         </div>
         <label className="block text-xs text-slate-400 mb-3">
-          Senha (validada no servidor)
+          Senha da sua conta (a mesma do login)
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             autoFocus
             className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-rose-500" />
