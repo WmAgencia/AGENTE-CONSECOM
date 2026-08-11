@@ -67,22 +67,27 @@ export function SequenceEditor({
   async function handleFile(file: File) {
     if (!file) return
     setField({ uploading: true, progress: 0 })
-    const kind = inferKind(file)
-    const { url, error } = await uploadMedia(file, (p) =>
-      setField({ progress: p }),
-    )
-    if (error || !url) {
+    try {
+      const kind = inferKind(file)
+      const { url, error } = await uploadMedia(file, (p) =>
+        setField({ progress: p }),
+      )
+      if (error || !url) {
+        setError(`Erro no envio do arquivo: ${error}`)
+        return
+      }
+      setField({
+        uploading: false,
+        progress: 100,
+        media_url: url,
+        media_name: file.name,
+        kind,
+      })
+    } catch (e) {
+      setError(`Erro no envio do arquivo: ${e instanceof Error ? e.message : 'erro desconhecido'}`)
+    } finally {
       setField({ uploading: false })
-      setError(`Erro no envio do arquivo: ${error}`)
-      return
     }
-    setField({
-      uploading: false,
-      progress: 100,
-      media_url: url,
-      media_name: file.name,
-      kind,
-    })
   }
 
   async function addMessage() {
