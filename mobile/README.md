@@ -22,10 +22,30 @@ reuniões, alarmes reais, notificações de eventos e status da operação.
   "Conectar neste aparelho" → o site abre `vyntra://auth?access_token=...&refresh_token=...`
   (o scheme `consecom://` antigo continua aceito por compatibilidade) → o app
   troca o link por sessão permanente e entra sem pedir senha.
+- **Chat com a IA**: `POST /api/ai/chat` (mesmo backend do painel, auth por token
+  Supabase, HTTP nativo via CapacitorHttp sem CORS). Histórico persistido
+  localmente. Suporta texto e **mensagem de voz real**.
+- **Mensagem de voz**: plugin nativo `VyntraMic` (MediaRecorder .m4a +
+  SpeechRecognizer do Android em paralelo — transcrição no aparelho, sem STT
+  externo). Gestos estilo WhatsApp: pressionar-e-segurar, arrastar para cima
+  para travar, cancelar, timer e reprodução do áudio na conversa.
+- **Sidebar esquerda**: Chat no topo (função principal), operação
+  (Hoje/Reuniões/Alarmes/Avisos) no meio e Ajustes no rodapé.
+- **Notificações VYNTRA**: título "VYNTRA" + corpo descritivo em todos os
+  eventos (nova reunião, cancelada/reagendada, lead respondeu, campanha,
+  WhatsApp). Toque abre o app e navega. Permissão `POST_NOTIFICATIONS`
+  (Android 13+) sempre solicitada. Ajustes tem "Testar notificações":
+  imediata, em 20s (background) e alarme nativo em 1 min (app fechado).
 - **Sync de reuniões → alarmes**: motor puro (`src/core/syncEngine.ts`) decide
   criar/alterar/cancelar/reagendar alarmes com ID determinístico por lead
   (não duplica). Roda ao abrir, ao voltar do background, em realtime e a cada
   60s (fallback offline).
+
+> **Notificações com o app fechado**: o **alarme de reunião** (AlarmManager
+> nativo) soa com o app fechado/em Doze e restaura após reboot. Eventos via
+> **Supabase Realtime** exigem o processo do app vivo (aberto ou em segundo
+> plano); com o processo morto, não há push — um serviço de push (FCM) seria
+> necessário para esses casos.
 
 ## Estrutura
 
@@ -39,10 +59,15 @@ mobile/
     services/alarms.ts        serviço de alarmes (nativo ou fallback)
     services/realtime.ts      Realtime -> notificações configuráveis
     services/data.ts          consultas REST do painel
+    services/aiChat.ts        chat com a IA (/api/ai/chat + histórico local)
     native/vyntraAlarm.ts     bridge TS do módulo nativo VyntraAlarm
+    native/vyntraMic.ts       bridge TS do módulo nativo VyntraMic (voz)
     components/AlarmSoundPicker.tsx  som/volume/vibração + importar som
-    screens/                  Hoje, Reuniões, Meus alarmes, Notificações, Ajustes, Connect
+    components/VoiceInput.tsx  gravação de voz (pressionar/travar/cancelar)
+    screens/                  Chat, Hoje, Reuniões, Meus alarmes, Notificações, Ajustes, Connect
   tests/syncEngine.test.ts    Vitest (15 testes)
+  tests/voiceRecorder.test.ts Vitest — gestos do gravador (14 testes)
+  tests/chat.test.ts          Vitest — helpers do chat (4 testes)
   android/
     app/src/main/java/com/consecom/mobile/
       VyntraAlarmPlugin.java  bridge Capacitor (schedule/cancel/sons/permissão)
@@ -50,6 +75,7 @@ mobile/
       VyntraAlarmReceiver.java    dispara a notificação de alarme
       VyntraBootReceiver.java     restaura alarmes após reboot
       VyntraAlarmStore.java       registro persistente dos alarmes
+      VyntraMicPlugin.java    MediaRecorder + SpeechRecognizer (mensagem de voz)
 ```
 
 ## Desenvolvimento
