@@ -20,13 +20,13 @@ ON CONFLICT (id) DO UPDATE SET
 
 DROP POLICY IF EXISTS consecom_video_insert ON storage.objects;
 CREATE POLICY consecom_video_insert
-  ON storage.objects FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'consecom-video');
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'consecom-video' AND auth.role() = 'authenticated');
 
 DROP POLICY IF EXISTS consecom_video_update ON storage.objects;
 CREATE POLICY consecom_video_update
-  ON storage.objects FOR UPDATE TO authenticated
-  USING (bucket_id = 'consecom-video');
+  ON storage.objects FOR UPDATE
+  USING (bucket_id = 'consecom-video' AND auth.role() = 'authenticated');
 
 DROP POLICY IF EXISTS consecom_video_select_public ON storage.objects;
 CREATE POLICY consecom_video_select_public

@@ -19,6 +19,10 @@ export async function uploadMedia(
   file: File,
   _onProgress?: (percent: number) => void,
 ): Promise<{ url: string; error: string | null }> {
+  const { data: userData, error: authError } = await supabase.auth.getUser()
+  if (authError || !userData.user) {
+    return { url: '', error: 'Sua sessão expirou. Entre novamente para enviar o vídeo.' }
+  }
   if (file.type.toLowerCase().startsWith('video/') && file.size > MAX_VIDEO_BYTES) {
     return {
       url: '',
