@@ -28,6 +28,7 @@ import { registerAiRoutes } from './routes/ai.js';
 import { registerContactsRoutes } from './routes/contacts.js';
 import { registerMemoryRoutes } from './routes/memory.js';
 import { registerAgendaRoutes } from './routes/agenda.js';
+import { registerCampaignScheduleRoutes } from './routes/campaigns.js';
 import { buildDefaultRegistry } from './tools/index.js';
 import { ensureSchema, isDbEnabled } from './services/db.js';
 
@@ -209,6 +210,7 @@ export function buildApp(): BuiltApp {
   registerContactsRoutes(app);
   registerMemoryRoutes(app);
   registerAgendaRoutes(app);
+  registerCampaignScheduleRoutes(app);
 
   return { app };
 }

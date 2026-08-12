@@ -54,6 +54,7 @@ import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js
 import { loadAgentName, formatAgentSignature } from './supabase.leads.js';
 import { renderTemplate } from './template.service.js';
 import { getConversationStore } from './conversation.store.js';
+import { processDueScheduledCampaigns } from './campaign.schedule.service.js';
 import {
   loadCampaignStrategies,
   pickStrategyForLead,
@@ -627,6 +628,12 @@ export class SendWorker {
     this.busy = true;
     const log = getLogger();
     try {
+      // Scheduler persistente: campanhas agendadas cuja hora chegou entram no
+      // ar (agendada -> em_progresso). Corre a cada tick e também na subida.
+      const activated = await processDueScheduledCampaigns();
+      if (activated > 0) {
+        log.info({ activated }, 'send-worker: campanha(s) agendada(s) iniciada(s) pelo scheduler');
+      }
       const camps = await this.getActiveCampaigns();
       const now = Date.now();
       for (const camp of camps) {
@@ -681,6 +688,8 @@ export class SendWorker {
     const log = getLogger();
     log.info({ tickMs: TICK_MS }, 'send-worker: started');
     this.timer = setInterval(() => void this.tick(), TICK_MS);
+    // Check imediato na subida (scheduler persistente sobrevive a restarts).
+    void this.tick();
   }
 
   stop(): void {
