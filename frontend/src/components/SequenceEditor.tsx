@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { supabase, type Campaign, type QueueMessage } from '../lib/supabase'
-import { MAX_VIDEO_BYTES, uploadMedia } from '../lib/storage'
+import { MAX_VIDEO_BYTES, VIDEO_TOO_LARGE_MESSAGE, uploadMedia } from '../lib/storage'
 import {
   SUPPORTED_VARIABLES,
   renderTemplate,
@@ -67,7 +67,7 @@ export function SequenceEditor({
   async function handleFile(file: File) {
     if (!file) return
     if (file.type.toLowerCase().startsWith('video/') && file.size > MAX_VIDEO_BYTES) {
-      setError(`Vídeos devem ter no máximo ${MAX_VIDEO_BYTES / 1024 / 1024} MB. Este arquivo tem ${(file.size / 1024 / 1024).toFixed(1)} MB.`)
+      setError(VIDEO_TOO_LARGE_MESSAGE)
       return
     }
     setError('')

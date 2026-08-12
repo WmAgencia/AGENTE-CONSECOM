@@ -1,7 +1,9 @@
 import { supabase } from './supabase'
 
 export const MEDIA_BUCKET = 'consecom-media'
-export const MAX_VIDEO_BYTES = 100 * 1024 * 1024
+export const VIDEO_BUCKET = 'consecom-video'
+export const MAX_VIDEO_BYTES = 65 * 1024 * 1024
+export const VIDEO_TOO_LARGE_MESSAGE = 'Vídeo muito grande. O tamanho máximo permitido é 65 MB.'
 
 /** Tempo máximo de upload antes de reportar erro (evita travamento infinito). */
 const DEFAULT_UPLOAD_TIMEOUT_MS = 60_000
@@ -20,13 +22,14 @@ export async function uploadMedia(
   if (file.type.toLowerCase().startsWith('video/') && file.size > MAX_VIDEO_BYTES) {
     return {
       url: '',
-      error: `Vídeos devem ter no máximo ${MAX_VIDEO_BYTES / 1024 / 1024} MB. Este arquivo tem ${(file.size / 1024 / 1024).toFixed(1)} MB.`,
+      error: VIDEO_TOO_LARGE_MESSAGE,
     }
   }
   const ext = (file.name.split('.').pop() ?? 'bin').toLowerCase()
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+  const bucket = file.type.toLowerCase().startsWith('video/') ? VIDEO_BUCKET : MEDIA_BUCKET
 
-  const upload = supabase.storage.from(MEDIA_BUCKET).upload(path, file, {
+  const upload = supabase.storage.from(bucket).upload(path, file, {
     cacheControl: '3600',
     upsert: false,
   })
@@ -46,7 +49,7 @@ export async function uploadMedia(
       }),
     ])
     if (result.error) return { url: '', error: result.error.message }
-    const { data: urlData } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(result.data.path)
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(result.data.path)
     return { url: urlData.publicUrl, error: null }
   } catch (e) {
     return { url: '', error: e instanceof Error ? e.message : 'Falha no upload do arquivo' }
