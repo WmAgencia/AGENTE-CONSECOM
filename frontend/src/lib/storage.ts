@@ -32,6 +32,7 @@ export async function uploadMedia(
   const upload = supabase.storage.from(bucket).upload(path, file, {
     cacheControl: '3600',
     upsert: false,
+    contentType: file.type,
   })
 
   let timer: ReturnType<typeof setTimeout> | undefined
