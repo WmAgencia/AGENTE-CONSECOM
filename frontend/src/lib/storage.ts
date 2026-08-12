@@ -4,7 +4,8 @@ export const MEDIA_BUCKET = 'consecom-media'
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024
 
 /** Tempo máximo de upload antes de reportar erro (evita travamento infinito). */
-const UPLOAD_TIMEOUT_MS = 5 * 60_000
+const DEFAULT_UPLOAD_TIMEOUT_MS = 60_000
+const VIDEO_UPLOAD_TIMEOUT_MS = 5 * 60_000
 
 /**
  * Faz upload de um arquivo de mídia (áudio/vídeo/imagem/doc) para o bucket
@@ -31,13 +32,16 @@ export async function uploadMedia(
   })
 
   let timer: ReturnType<typeof setTimeout> | undefined
+  const uploadTimeoutMs = file.type.toLowerCase().startsWith('video/')
+    ? VIDEO_UPLOAD_TIMEOUT_MS
+    : DEFAULT_UPLOAD_TIMEOUT_MS
   try {
     const result = await Promise.race([
       upload,
       new Promise<never>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error(`upload excedeu ${UPLOAD_TIMEOUT_MS / 1000}s`)),
-          UPLOAD_TIMEOUT_MS,
+          () => reject(new Error(`upload excedeu ${uploadTimeoutMs / 1000}s`)),
+          uploadTimeoutMs,
         )
       }),
     ])
