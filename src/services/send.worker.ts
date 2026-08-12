@@ -49,6 +49,7 @@
 import { getSupabaseProspeccaoConfig, getEnv } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { sendText, sendMedia, type MediaKind } from './evolution.service.js';
+import { validateVideoSize } from './media.limits.js';
 import { SpamProtection } from './spam-protection.js';
 import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js';
 import { loadAgentName, formatAgentSignature } from './supabase.leads.js';
@@ -431,6 +432,7 @@ export class SendWorker {
     const agentName = await loadAgentName();
     let ok = false;
     let sentText = '';
+    let mediaValidationError: string | null = null;
     try {      if (strategyKind === 'text' && strategyText) {
         sentText = formatAgentSignature(renderTemplate(strategyText, lead), agentName);
         ok = (await sendText({ to: sendPhone, text: sentText, instance: sendInstance })).ok;
@@ -438,24 +440,27 @@ export class SendWorker {
         const mediaUrl = strategyMediaUrl.startsWith('http')
           ? strategyMediaUrl
           : `${this.url}/storage/v1/object/public/${strategyMediaUrl.replace(/^\/+/, '')}`;
-        const captionText = strategyCaption
-          ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
-          : `[${strategyKind}]`;
-        sentText = renderTemplate(strategyCaption ?? `[${strategyKind}]`, lead);
-        ok = (
-          await sendMedia({
-            to: sendPhone,
-            kind: strategyKind as MediaKind,
-            media: mediaUrl,
-            caption: strategyCaption
-              ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
-              : undefined,
-            mimetype: guessMimetype(mediaUrl, strategyKind),
-            filename: basename(mediaUrl),
-            instance: sendInstance,
-          })
-        ).ok;
-        if (!strategyCaption) sentText = `${captionText} ${mediaUrl}`;
+        mediaValidationError = await this.validateRemoteVideoSize(mediaUrl, strategyKind);
+        if (!mediaValidationError) {
+          const captionText = strategyCaption
+            ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
+            : `[${strategyKind}]`;
+          sentText = renderTemplate(strategyCaption ?? `[${strategyKind}]`, lead);
+          ok = (
+            await sendMedia({
+              to: sendPhone,
+              kind: strategyKind as MediaKind,
+              media: mediaUrl,
+              caption: strategyCaption
+                ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
+                : undefined,
+              mimetype: guessMimetype(mediaUrl, strategyKind),
+              filename: basename(mediaUrl),
+              instance: sendInstance,
+            })
+          ).ok;
+          if (!strategyCaption) sentText = `${captionText} ${mediaUrl}`;
+        }
       }
     } catch (err) {
       log.warn(
@@ -463,6 +468,12 @@ export class SendWorker {
         'send-worker: send threw; treating as failure',
       );
       ok = false;
+    }
+
+    if (mediaValidationError) {
+      log.warn({ runId: run.id, position, kind: strategyKind }, mediaValidationError);
+      await this.abortRun(run, position, 'video_too_large');
+      return;
     }
 
     if (!ok) {
@@ -679,6 +690,19 @@ export class SendWorker {
       await this.processRemarketing();
     } finally {
       this.busy = false;
+    }
+  }
+
+  private async validateRemoteVideoSize(url: string, kind: string): Promise<string | null> {
+    if (kind !== 'video') return null;
+    try {
+      const response = await fetch(url, { method: 'HEAD' });
+      if (!response.ok) return null;
+      const contentLength = Number(response.headers.get('content-length'));
+      if (!Number.isFinite(contentLength) || contentLength <= 0) return null;
+      return validateVideoSize(contentLength, 'video/*');
+    } catch {
+      return null;
     }
   }
 
