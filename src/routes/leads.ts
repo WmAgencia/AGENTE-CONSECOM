@@ -223,6 +223,11 @@ export function registerLeadsRoutes(app: FastifyInstance): void {
         body: JSON.stringify({ is_active_in_prospecting: false }),
       });
       if (!res.ok) {
+        const body = (await res.text()).slice(0, 300);
+        log.error(
+          { supabaseStatus: res.status, supabaseBody: body, count: leadIds.length },
+          'leads: clear-list PATCH rejeitado pelo Supabase (migration v17 pendente?)',
+        );
         return reply.status(502).send({ error: 'clear_failed' });
       }
 
