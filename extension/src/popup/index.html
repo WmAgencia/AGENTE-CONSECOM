@@ -19,15 +19,6 @@
       }
       h1 { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
       .sub { font-size: 11px; color: #8d82a8; margin-top: 1px; }
-      label { display: block; font-size: 11px; color: #8d82a8; margin: 12px 0 4px; }
-      input {
-        width: 100%; padding: 9px 11px;
-        background: rgba(0,0,0,0.28); border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 10px; color: #e9e4f4; font-size: 12px; outline: none;
-        transition: border-color .15s;
-      }
-      input:focus { border-color: #8b5cf6; }
-      input::placeholder { color: #5d5378; }
       button {
         width: 100%; margin-top: 12px; padding: 11px; border: none; border-radius: 10px;
         font-weight: 700; font-size: 12.5px; letter-spacing: .03em; color: #fff;
@@ -57,19 +48,14 @@
         </div>
       </div>
 
-      <label>URL do projeto Supabase</label>
-      <input id="url" placeholder="https://xxxx.supabase.co" spellcheck="false" />
-      <label>Chave anon (publishable)</label>
-      <input id="key" placeholder="eyJhbGci..." spellcheck="false" />
-      <label>Access token da sessão Vyntra</label>
-      <input id="token" placeholder="Cole o token copiado do painel" spellcheck="false" type="password" />
-      <button id="sync-session" class="secondary">Sincronizar sessão do Vyntra</button>
-      <button id="save">Salvar configuração</button>
-      <button id="open" class="secondary">Abrir painel no Maps</button>
+      <button id="open" class="primary">Abrir painel no Maps</button>
+      <button id="reseed" class="secondary">Reconectar à conta Vyntra</button>
       <div class="status" id="status"></div>
       <div class="hint">
-        Abra o <b>Google Maps</b>, faça uma busca (ex.: &quot;clínicas odontológicas em Sorocaba&quot;),
-        role a lista e toque em <b>PROSPECTAR</b> no painel para importar as empresas.
+        Extensão conectada à sua conta Vyntra. Abra o <b>Google Maps</b>, faça uma busca
+        (ex.: &quot;clínicas odontológicas em Sorocaba&quot;), role a lista e toque em
+        <b>PROSPECTAR</b> no painel para importar. Se a conexão cair, clique em
+        <b>Reconectar</b> (requer aba do Vyntra aberta).
       </div>
     </div>
     <script type="module" src="./index.ts"></script>

@@ -19,6 +19,7 @@ import { CommercialMemory } from './components/CommercialMemory'
 import { AgendaView } from './components/AgendaView'
 import { FollowUpsCalendarPanel } from './components/FollowUpsCalendarPanel'
 import { ThemeToggle } from './components/ThemeToggle'
+import { downloadPersonalizedExtension } from './lib/extensionDownload'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
 import { NAV_ITEMS, resolveTabFromPath, type Tab } from './lib/routes'
 
@@ -38,6 +39,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [extStatus, setExtStatus] = useState('')
   const activeTab: Tab | null = resolveTabFromPath(location.pathname)
 
   function navigateTab(t: Tab) {
@@ -129,16 +131,18 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           <div className="text-[11px] text-faint">{leads.length} leads no total</div>
           <div className="text-[11px] text-faint">v{APP_VERSION}</div>
 
-          {/* Atalho rápido — download da extensão (fonte estática versionada no repo) */}
-          <a
-            href="/downloads/consecom-extension.zip"
-            download="consecom-extension.zip"
-            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition focus:ring-2 focus:ring-indigo-400 focus:outline-none"
-            title="Baixar extensão Chrome (.zip)"
+          {/* Atalho rápido — download da extensão personalizada p/ conta logada */}
+          <button
+            onClick={() => {
+              void downloadPersonalizedExtension().then((r) => setExtStatus(r.message))
+            }}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+            title="Baixar extensão já conectada à sua conta"
           >
             <Download className="w-3.5 h-3.5" />
             Baixar extensão (.zip)
-          </a>
+          </button>
+          {extStatus && <div className="text-[11px] text-faint">{extStatus}</div>}
 
           <button
             onClick={() => {

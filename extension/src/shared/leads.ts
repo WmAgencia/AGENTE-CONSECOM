@@ -145,10 +145,13 @@ async function importThroughBackend(
   onProgress?: (done: number, total: number) => void,
   opts?: ImportOptions,
 ): Promise<ImportResult | null> {
-  if (!cfg.accessToken) return null
+  // Sem access token? O refresh token (embutido no .zip personalizado) renova a
+  // sessão no primeiro uso. Sem os dois, cai no fluxo direto do Supabase.
+  if (!cfg.accessToken && !cfg.refreshToken) return null
   if (cfg.refreshToken && !(await refreshBackendSession(cfg))) {
-    return { ok: 0, failed: leads.length, firstError: 'Sessão Vyntra expirada. Clique em “Sincronizar sessão do Vyntra” na extensão.', errors: [] }
+    return { ok: 0, failed: leads.length, firstError: 'Sessão Vyntra expirada. Clique em “Reconectar” (popup) ou baixe novamente a extensão no painel.', errors: [] }
   }
+  if (!cfg.accessToken) return null
   const endpoint = `${CONTACTS_API}/api/contacts/import`
   try {
     const response = await fetch(endpoint, {

@@ -41,6 +41,37 @@ export async function saveConfig(cfg: StoredConfig): Promise<void> {
   }
 }
 
+/** Nome do arquivo embutido no .zip personalizado gerado pelo backend. */
+const AUTO_CONFIG_FILE = '_auto-config.json'
+
+/**
+ * Lê `_auto-config.json` (presente no .zip PERSONALIZADO baixado do painel) e
+ * faz merge na config salva. O arquivo contém o refresh token da sessão do
+ * usuário logado no Vyntra — não há mais interface de access token.
+ * Retorna true quando o arquivo existiu e foi aplicado.
+ */
+export async function seedAutoConfig(force = false): Promise<boolean> {
+  try {
+    const res = await fetch(chrome.runtime.getURL(AUTO_CONFIG_FILE))
+    if (!res.ok) return false
+    const auto = (await res.json()) as Partial<StoredConfig>
+    const refreshToken = typeof auto.refreshToken === 'string' ? auto.refreshToken : undefined
+    if (auto.supabaseUrl || auto.anonKey || refreshToken) {
+      const cfg = await getStoredConfig()
+      await saveConfig({
+        supabaseUrl: auto.supabaseUrl || cfg.supabaseUrl,
+        anonKey: auto.anonKey || cfg.anonKey,
+        accessToken: force ? undefined : cfg.accessToken,
+        refreshToken: refreshToken || cfg.refreshToken,
+      })
+      return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
 let cachedClient: SupabaseClient | null = null
 let cachedUrl = ''
 let cachedKey = ''

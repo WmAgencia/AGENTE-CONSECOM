@@ -1506,20 +1506,18 @@ export class MapsScanner {
 
   // --- configuração e importação ---
 
-  private async promptConfig(): Promise<void> {
+private async promptConfig(): Promise<void> {
     this.cfg = this.cfg ?? (await getStoredConfig())
     const url = prompt('URL do projeto Supabase:', this.cfg?.supabaseUrl || '')
     if (url === null) return
     const key = prompt('Chave anon (publishable):', this.cfg?.anonKey || '')
     if (key === null) return
-    const accessToken = prompt('Access token da sessão Vyntra:', this.cfg?.accessToken || '')
-    if (accessToken === null) return
-    if (!url || !key || !accessToken) {
-      alert('Informe URL, chave anon e access token da sessão Vyntra.')
+    if (!url || !key) {
+      alert('Informe a URL e a chave anon do Supabase.')
       return
     }
-    await saveConfig({ supabaseUrl: url.replace(/\/+$/, ''), anonKey: key, accessToken })
-    this.cfg = { supabaseUrl: url.replace(/\/+$/, ''), anonKey: key, accessToken }
+    await saveConfig({ supabaseUrl: url.replace(/\/+$/, ''), anonKey: key, refreshToken: this.cfg?.refreshToken })
+    this.cfg = { supabaseUrl: url.replace(/\/+$/, ''), anonKey: key, refreshToken: this.cfg?.refreshToken }
     this.subscribeRealtime()
   }
 

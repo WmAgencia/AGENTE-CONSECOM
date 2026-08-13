@@ -182,6 +182,11 @@ const envSchema = z.object({
     .optional()
     .default('extensions/vyntra-prospector.zip'),
 
+  // URL base do .zip públicoservido pela Vercel/estático — usada pelo backend
+  // para gerar o .zip PERSONALIZADO por conta (injeta `_auto-config.json` com o
+  // refresh token da sessão do usuário). Quando vazia, usa o build público.
+  EXTENSION_BASE_ZIP_URL: z.string().optional().default(''),
+
   // === Scheduling / availability (site agenda) ===
 
   // Endpoint on the site that returns already-booked appointments so the agent
