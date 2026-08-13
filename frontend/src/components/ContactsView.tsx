@@ -99,6 +99,11 @@ export function ContactsView() {
         parsed.valid.map((c) => ({ name: c.name, phone: c.phone })),
       )
       setDone(res)
+      if (!res.ok) {
+        const detail = res.firstError?.body ?? `Falha ao gravar ${res.summary.errors} contato(s).`
+        console.error('[CONTACTS] import partial/failed', { summary: res.summary, firstError: res.firstError })
+        setError(detail)
+      }
       // Se a lista foi criada no backend, usa o id retornado para atualizar a UI.
       await loadLists()
     } catch (e) {

@@ -30,14 +30,27 @@ export function normalizePhone(input: string): string | null {
   if (digits.length === 0) return null;
   // +55 nacional remove o prefixo para comparar com DDD local.
   if (/^\+55/.test(raw) && digits.length >= 12) digits = digits.slice(2);
-  // remove 9 dígito repetido de operadora em celulares 11 dígitos (DDD + 9 + 8)
-  if (digits.length === 11 && digits[2] === '9') digits = digits[2] === '9' ? `${digits.slice(0, 2)}${digits.slice(3)}` : digits;
+  // Mantém o nono dígito de celulares: 11 dígitos é o formato nacional válido.
   return digits.length >= 10 && digits.length <= 13 ? digits : null;
 }
 
 const contactRowSchema = z.object({
   name: z.string().max(240).default(''),
   phone: z.string().max(40),
+  category: z.string().nullable().optional(),
+  website: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  rating: z.number().nullable().optional(),
+  reviews: z.number().nullable().optional(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
+  place_id: z.string().nullable().optional(),
+  maps_url: z.string().nullable().optional(),
+  instagram: z.string().nullable().optional(),
+  facebook: z.string().nullable().optional(),
+  whatsapp: z.string().nullable().optional(),
 });
 
 const importBodySchema = z.object({
@@ -184,7 +197,20 @@ export function registerContactsRoutes(app: FastifyInstance): void {
     const { listName, contacts } = parsed.data;
     const logPrefix = `contacts:import(${user.id.slice(0, 8)})`;
 
-    type Row = { name: string; phone: string };
+    type Row = {
+      name: string;
+      phone: string;
+      category?: string | null;
+      website?: string | null;
+      address?: string | null;
+      city?: string | null;
+      state?: string | null;
+      rating?: number | null;
+      reviews?: number | null;
+      latitude?: number | null;
+      longitude?: number | null;
+      place_id?: string | null;
+    };
     const normalized = new Map<string, Row>();
     const invalid: Row[] = [];
 
@@ -195,7 +221,7 @@ export function registerContactsRoutes(app: FastifyInstance): void {
         invalid.push(c);
         continue;
       }
-      if (!normalized.has(ph)) normalized.set(ph, { name: c.name.trim() || null as unknown as string, phone: ph });
+      if (!normalized.has(ph)) normalized.set(ph, { ...c, name: c.name.trim() || 'Sem nome', phone: ph });
     }
 
     try {
@@ -236,24 +262,41 @@ export function registerContactsRoutes(app: FastifyInstance): void {
         headers: { ...headers(s.key, true), Prefer: 'return=representation' },
         body: JSON.stringify({ imported_by: listLabel }),
       });
+      let listData: Array<{ id: string }> = [];
       if (!listRes.ok) {
         const txt = await listRes.text();
-        log.warn({ status: listRes.status, body: txt.slice(0, 200) }, `${logPrefix}: list create best-effort failed`);
+        log.warn({ status: listRes.status, body: txt.slice(0, 500) }, `${logPrefix}: list create best-effort failed`);
+      } else {
+        listData = (await listRes.json().catch(() => [])) as Array<{ id: string }>;
       }
-      const listData = (await listRes.json().catch(() => [])) as Array<{ id: string }>;
       const listId = listData[0]?.id ?? (await createListFallback(s, listLabel, log, logPrefix));
 
       // Upsert em lote dentro de leads com session_id da lista.
       let created = 0;
       let createdFails = 0;
+      let firstWriteError: { status: number; body: string } | null = null;
       const BATCH = 200;
       for (let i = 0; i < toCreate.length; i += BATCH) {
         const batch = toCreate.slice(i, i + BATCH).map((r) => ({
           name: r.name,
           phone: r.phone,
+          category: r.category ?? null,
+          website: r.website ?? null,
+          address: r.address ?? null,
+          city: r.city ?? null,
+          state: r.state ?? null,
+          rating: r.rating ?? null,
+          reviews: r.reviews ?? null,
+          latitude: r.latitude ?? null,
+          longitude: r.longitude ?? null,
+          place_id: r.place_id ?? null,
           niche: 'contato',
           status: 'novo',
           session_id: listId ?? null,
+          owner_user_id: user.id,
+          import_state: 'imported',
+          imported_at: new Date().toISOString(),
+          phone_normalized: normalizePhone(r.phone),
         }));
         const res = await fetch(`${s.url}/rest/v1/leads`, {
           method: 'POST',
@@ -262,6 +305,8 @@ export function registerContactsRoutes(app: FastifyInstance): void {
         });
         if (res.ok) created += batch.length;
         else {
+          const body = await res.text();
+          if (!firstWriteError) firstWriteError = { status: res.status, body: body.slice(0, 500) };
           // Falha única de constraint de duplicado → tenta por linha ignorando duplicados via upsert.
           const upsert = await fetch(`${s.url}/rest/v1/leads`, {
             method: 'POST',
@@ -272,14 +317,18 @@ export function registerContactsRoutes(app: FastifyInstance): void {
             body: JSON.stringify(batch),
           });
           if (upsert.ok) created += batch.length;
-          else createdFails += batch.length;
+          else {
+            const upsertBody = await upsert.text();
+            if (!firstWriteError) firstWriteError = { status: upsert.status, body: upsertBody.slice(0, 500) };
+            createdFails += batch.length;
+          }
         }
       }
 
       log.info({ total: contacts.length, unique: normalized.size, created, existing: duplicates.length, invalid: invalid.length, listId }, logPrefix);
 
-      return reply.send({
-        ok: true,
+      const response = {
+        ok: createdFails === 0,
         summary: {
           total: contacts.length,
           valid: normalized.size,
@@ -290,7 +339,12 @@ export function registerContactsRoutes(app: FastifyInstance): void {
         },
         listId,
         listName: listName.trim(),
-      });
+        firstError: firstWriteError,
+      };
+      if (createdFails > 0) {
+        log.error({ ...firstWriteError, created, createdFails }, `${logPrefix}: lead batch failed`);
+      }
+      return reply.send(response);
     } catch (err) {
       const em = err instanceof Error ? err.message : 'unknown';
       log.error({ errMessage: em }, logPrefix);

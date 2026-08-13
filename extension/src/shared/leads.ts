@@ -1,7 +1,7 @@
 import { getClient, type StoredConfig } from './config'
 import { normalizeBrazilianPhone } from './phone'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { PostgrestError } from '@supabase/supabase-js'
+import type { AuthError, PostgrestError } from '@supabase/supabase-js'
 
 export interface ScrapedLead {
   name: string
@@ -96,6 +96,7 @@ const V8_COLUMNS = [
 
 /** Cache de schema: true se as colunas v8 (source/instagram/facebook/tags/...) são suportadas. */
 let schemaCache: boolean | null = null
+let importedFlowSchemaCache: boolean | null = null
 async function dbSupportsV8Columns(client: SupabaseClient): Promise<boolean> {
   if (schemaCache !== null) return schemaCache
   // Probe explícito: pede um registro usando a coluna `source`.
@@ -111,17 +112,121 @@ async function dbSupportsV8Columns(client: SupabaseClient): Promise<boolean> {
   return supported
 }
 
+const CONTACTS_API = 'https://consecom-backend-production.up.railway.app'
+
+/** Usa o backend quando a chave anon local foi revogada/rotacionada. */
+async function importThroughBackend(
+  cfg: StoredConfig,
+  leads: ScrapedLead[],
+  onProgress?: (done: number, total: number) => void,
+  opts?: ImportOptions,
+): Promise<ImportResult | null> {
+  if (!cfg.accessToken) return null
+  const endpoint = `${CONTACTS_API}/api/contacts/import`
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cfg.accessToken}`,
+      },
+      body: JSON.stringify({
+        listName: `Importação ${new Date().toISOString().slice(0, 10)}`,
+        contacts: leads.map((lead) => ({
+          name: lead.name,
+          phone: lead.phone ?? '',
+          category: lead.category,
+          website: lead.website,
+          address: lead.address,
+          city: lead.city,
+          state: lead.state,
+          rating: lead.rating,
+          reviews: lead.reviews,
+          latitude: lead.latitude,
+          longitude: lead.longitude,
+          place_id: lead.place_id,
+          instagram: lead.instagram,
+          facebook: lead.facebook,
+          whatsapp: lead.whatsapp,
+        })),
+      }),
+    })
+    const body = await response.text()
+    let data: { summary?: { created?: number; errors?: number }; message?: string; error?: string; firstError?: { status?: number; body?: string } } = {}
+    try { data = body ? JSON.parse(body) as typeof data : {} } catch { /* diagnóstico usa o texto bruto abaixo */ }
+    if (!response.ok) {
+      const message = data.message ?? data.error ?? (body.trim().slice(0, 500) || `HTTP ${response.status}`)
+      console.error('[IMPORT] Backend import failed:', { endpoint, status: response.status, message })
+      return { ok: 0, failed: leads.length, firstError: message, errors: [] }
+    }
+    const ok = Number(data.summary?.created ?? 0)
+    const failed = Number(data.summary?.errors ?? 0)
+    console.log('[IMPORT] Backend import response:', { endpoint, status: response.status, ok, failed })
+    leads.forEach((_lead, i) => onProgress?.(i + 1, leads.length))
+    const firstError = data.firstError?.body
+    if (failed > 0) console.error('[IMPORT] Backend reported batch errors:', data.firstError)
+    return { ok, failed, firstError, errors: [] }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('[IMPORT] Backend import transport error:', { endpoint, message })
+    return { ok: 0, failed: leads.length, firstError: message, errors: [] }
+  }
+}
+
+/** O fluxo Importados exige as colunas introduzidas pela migration v19. */
+async function dbSupportsImportedFlowColumns(client: SupabaseClient): Promise<boolean> {
+  if (importedFlowSchemaCache !== null) return importedFlowSchemaCache
+  const { error } = await client
+    .from('leads')
+    .select('owner_user_id,import_state,imported_at,phone_normalized')
+    .limit(1)
+    .maybeSingle()
+  importedFlowSchemaCache = !error
+  console.log('[IMPORT] DB schema Importados (v19):', importedFlowSchemaCache)
+  if (error) {
+    console.error('[IMPORT] DB schema Importados error:', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    })
+  }
+  return importedFlowSchemaCache
+}
+
+function logPostgrestError(prefix: string, error: (PostgrestError | AuthError) | null): void {
+  if (!error) return
+  const detail = error as Partial<PostgrestError>
+  console.error(prefix, {
+    code: error.code,
+    message: error.message,
+    details: detail.details,
+    hint: detail.hint,
+  })
+}
+
 export async function importLeads(
   cfg: StoredConfig,
   leads: ScrapedLead[],
   onProgress?: (done: number, total: number) => void,
   opts?: ImportOptions,
 ): Promise<ImportResult> {
+  const backendResult = await importThroughBackend(cfg, leads, onProgress, opts)
+  if (backendResult) return backendResult
+
   const client = getClient(cfg)
   if (!client) return { ok: 0, failed: leads.length, firstError: 'Configure a URL e a chave anon do Supabase.', errors: [] }
   const { data: authData, error: authError } = await client.auth.getUser()
   if (authError || !authData.user) {
+    logPostgrestError('[IMPORT] Auth getUser failed:', authError)
     return { ok: 0, failed: leads.length, firstError: 'Cole um access token válido da sessão Vyntra.', errors: [] }
+  }
+
+  const supportsImportedFlow = await dbSupportsImportedFlowColumns(client)
+  if (!supportsImportedFlow) {
+    const message = 'O banco não possui as colunas do fluxo Importados (migration v19 pendente ou schema cache desatualizado).'
+    console.error('[IMPORT] Importação interrompida:', message)
+    return { ok: 0, failed: leads.length, firstError: message, errors: [] }
   }
 
   // Detecta compatibilidade de schema (v6+v8 aplicadas vs. apenas base).
@@ -159,7 +264,7 @@ let sessionId: string | null = null
       if (supportsV8) sessInsert.user_id = opts?.userId ?? authData.user.id
     const { data, error } = await client.from('capture_sessions').insert(sessInsert).select('id').single()
     if (error) {
-      console.log('[IMPORT] capture_sessions INSERT best-effort failed (continuing without session):', error.code, error.message)
+      logPostgrestError('[IMPORT] capture_sessions INSERT best-effort failed (continuing without session):', error)
       console.log('[IMPORT]   Hint: aplique a migration v9 (capture_sessions_anon_insert policy) no Supabase.')
     }
     if (!error && data) {
@@ -226,7 +331,7 @@ let sessionId: string | null = null
         const msg = error.message
         if (!firstError) firstError = msg
         errors.push({ index: i, name: lead.name, error: msg })
-        console.log(`[IMPORT] Failed lead: ${lead.name} | Error reason: ${msg}`)
+        logPostgrestError(`[IMPORT] Failed lead: ${lead.name}`, error)
       } else {
         ok++
         console.log(`[IMPORT] OK: ${lead.name} | place_id: ${lead.place_id}`)
@@ -236,7 +341,7 @@ let sessionId: string | null = null
       const msg = e instanceof Error ? e.message : String(e)
       if (!firstError) firstError = msg
       errors.push({ index: i, name: lead.name, error: msg })
-      console.log(`[IMPORT] Exception lead: ${lead.name} | Error reason: ${msg}`)
+      console.error(`[IMPORT] Exception lead: ${lead.name}`, { message: msg })
     }
     onProgress?.(i + 1, leads.length)
   }
@@ -275,7 +380,7 @@ async function upsertWithRetry(
     console.log(`[IMPORT] Retry attempt ${attempt}/${maxAttempts} for place_id=${row.place_id}`)
     await sleep(Math.pow(2, attempt) * 300) // backoff exponencial
   }
-  lastError && console.log(`[IMPORT] Failed after ${maxAttempts} attempts: ${lastError.message}`)
+  if (lastError) logPostgrestError(`[IMPORT] Failed after ${maxAttempts} attempts:`, lastError)
   return { error: lastError }
 }
 

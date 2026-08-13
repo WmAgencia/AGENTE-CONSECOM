@@ -16,6 +16,9 @@ export interface ApiError {
   error?: string
   message?: string
   statusCode?: number
+  code?: string
+  details?: string
+  hint?: string
 }
 
 export class ApiRequestError extends Error {
@@ -37,8 +40,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers })
   const text = await res.text()
-  const data = text ? (JSON.parse(text) as T & ApiError) : ({} as T)
+  let data: T & ApiError
+  try {
+    data = text ? JSON.parse(text) as T & ApiError : {} as T & ApiError
+  } catch {
+    data = { message: text.slice(0, 500) } as T & ApiError
+  }
   if (!res.ok) {
+    console.error('[API] request failed', {
+      endpoint: `${API_BASE}${path}`,
+      method: init?.method ?? 'GET',
+      status: res.status,
+      error: data.error,
+      message: data.message,
+      code: data.code,
+      details: data.details,
+      hint: data.hint,
+    })
     throw new ApiRequestError(res.status, data as unknown as ApiError)
   }
   return data
@@ -264,6 +282,7 @@ export interface ContactImportResponse {
   summary: ContactSummary
   listId: string | null
   listName: string
+  firstError?: { status?: number; body?: string } | null
 }
 
 /** Contrato real do backend para GET /api/contacts/lists (payload bruto). */

@@ -1062,6 +1062,13 @@ export class MapsScanner {
         btn.textContent = `Importando… ${pct}%`
       }, opts)
 
+      console.log('[IMPORT] Resultado completo:', {
+        ok: res.ok,
+        failed: res.failed,
+        firstError: res.firstError,
+        errors: res.errors,
+      })
+
       // Relatório final
       this.renderProspectReport({
         analyzed: this.found.length,
@@ -1077,7 +1084,7 @@ export class MapsScanner {
         showToast(`✅ ${res.ok} lead(s) importado(s)!`)
         this.selected.clear()
       } else {
-        showToast(`⚠️ ${res.ok} ok, ${res.failed} falharam`, 'warn')
+        showToast(`⚠️ ${res.ok} ok, ${res.failed} falharam${res.firstError ? `: ${res.firstError}` : ''}`, 'warn')
       }
       void this.checkUsed()
       this.syncAll()
@@ -1541,13 +1548,19 @@ export class MapsScanner {
         done = d
         btn.textContent = `${d}/${total}…`
       })
+      console.log('[IMPORT] Resultado completo:', {
+        ok: res.ok,
+        failed: res.failed,
+        firstError: res.firstError,
+        errors: res.errors,
+      })
       btn.textContent = res.failed === 0 ? '✓' : `${res.ok} ok, ${res.failed} falharam`
 
       if (res.failed === 0) {
         showToast(res.ok > 0 ? `✅ ${res.ok} lead(s) importado(s)!` : 'Nenhum lead novo para importar.')
         this.selected.clear()
       } else {
-        showToast(`⚠️ ${res.ok} ok, ${res.failed} falharam`, 'warn')
+        showToast(`⚠️ ${res.ok} ok, ${res.failed} falharam${res.firstError ? `: ${res.firstError}` : ''}`, 'warn')
       }
       void this.checkUsed()
       this.syncAll()

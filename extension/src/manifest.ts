@@ -10,6 +10,7 @@ export default defineManifest({
     'https://*.google.com/maps/*',
     'https://maps.google.com/*',
     'https://*.supabase.co/*',
+    'https://consecom-backend-production.up.railway.app/*',
   ],
   action: {
     default_title: 'Vyntra Prospector',
