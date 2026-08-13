@@ -86,6 +86,7 @@ export function ConnectionsPage() {
   })
 
   const [sessionUser, setSessionUser] = useState<string>('')
+  const [displayNameDrafts, setDisplayNameDrafts] = useState<Record<string, string>>({})
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -219,7 +220,8 @@ export function ConnectionsPage() {
     }
   }
 
-  async function saveDisplayName(c: Conn, value: string) {
+  async function saveDisplayName(c: Conn) {
+    const value = displayNameDrafts[c.id] ?? c.display_name ?? ''
     const displayName = value.trim() || null
     const { error } = await supabase
       .from('whatsapp_connections')
@@ -230,6 +232,7 @@ export function ConnectionsPage() {
       return
     }
     setConns((items) => items.map((item) => item.id === c.id ? { ...item, display_name: displayName } : item))
+    setDisplayNameDrafts((items) => ({ ...items, [c.id]: displayName ?? '' }))
   }
 
   async function loadGroups() {
@@ -386,15 +389,18 @@ export function ConnectionsPage() {
                         <span className="text-fg">{c.whatsapp_name ?? '—'}</span>
                       </div>
                       <div>
-                        <label className={label} htmlFor={`display-name-${c.id}`}>Nome na operação</label>
+                        <label className={label} htmlFor={`display-name-${c.id}`}>Nome que aparecerá nas mensagens</label>
                         <input
                           id={`display-name-${c.id}`}
-                          defaultValue={c.display_name ?? ''}
+                          value={displayNameDrafts[c.id] ?? c.display_name ?? ''}
                           placeholder="Ex.: João"
                           maxLength={80}
                           className="w-full rounded-md border border-line-2 bg-subtle-2 px-2 py-1 text-sm text-fg"
-                          onBlur={(event) => void saveDisplayName(c, event.currentTarget.value)}
+                          onChange={(event) => setDisplayNameDrafts((items) => ({ ...items, [c.id]: event.target.value }))}
                         />
+                        <button onClick={() => void saveDisplayName(c)} className={`${btnGhost} mt-2`} disabled={busy(c.id)}>
+                          Salvar alterações
+                        </button>
                       </div>
                       {c.last_sync_at && (
                         <div>

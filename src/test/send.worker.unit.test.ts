@@ -63,6 +63,7 @@ interface Campaign {
 interface Connection {
   id: string
   instance_name: string
+  display_name: string | null
   status: string
 }
 interface Message {
@@ -317,8 +318,8 @@ function resetBoard(
   return { now }
 }
 
-function addConnection(id: string, instanceName: string, status = 'connected'): void {
-  store.connections.set(id, { id, instance_name: instanceName, status })
+function addConnection(id: string, instanceName: string, status = 'connected', displayName: string | null = null): void {
+  store.connections.set(id, { id, instance_name: instanceName, display_name: displayName, status })
 }
 
 async function runTicks(worker: { tick(): Promise<void> }, count: number): Promise<void> {
@@ -971,4 +972,72 @@ test('43) fila usa position da campanha, não created_at global', async () => {
     '5511999990003',
     '5511999990001',
   ])
+})
+
+test('44) prefixa o nome da conexão efetiva e preserva o template/renderização', async () => {
+  const l1 = setupLead('Maria', '11999990001')
+  resetBoard([{ text: 'Olá, {nome}! Tudo bem?' }], 0, l1)
+  addConnection('conn-a', 'instA', 'connected', 'Ana')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a']
+
+  const w = await newWorker()
+  await w.tick()
+
+  assert.equal(store.sent[0]?.text, '*Ana*\nOlá, Maria! Tudo bem?')
+  assert.equal(store.messages.get('c1')?.[0]?.text, 'Olá, {nome}! Tudo bem?')
+})
+
+test('45) cada conexão usa seu próprio nome sem alterar a rotação', async () => {
+  const leads = [
+    setupLead('L1', '11999990001'),
+    setupLead('L2', '11999990002'),
+    setupLead('L3', '11999990003'),
+  ]
+  resetBoard(1, 0, ...leads)
+  addConnection('conn-a', 'instA', 'connected', 'Ana')
+  addConnection('conn-b', 'instB', 'connected', 'João')
+  addConnection('conn-c', 'instC', 'connected', 'Carlos')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a', 'conn-b', 'conn-c']
+
+  const w = await newWorker()
+  await runTicks(w, 10)
+
+  assert.deepEqual(store.sent.map((m) => [m.instance, m.text]), [
+    ['instA', '*Ana*\nM1'],
+    ['instB', '*João*\nM1'],
+    ['instC', '*Carlos*\nM1'],
+  ])
+})
+
+test('46) queda durante a sequência troca também o nome, sem duplicar prefixo', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  resetBoard(3, 0, l1)
+  addConnection('conn-a', 'instA', 'connected', 'Ana')
+  addConnection('conn-b', 'instB', 'connected', 'João')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a', 'conn-b']
+
+  const w = await newWorker()
+  await w.tick()
+  assert.equal(store.sent[0]?.text, '*Ana*\nM1')
+
+  store.connections.get('conn-a')!.status = 'disconnected'
+  makeDue(l1.id)
+  await w.tick()
+  makeDue(l1.id)
+  await w.tick()
+
+  assert.deepEqual(store.sent.map((m) => m.text), ['*Ana*\nM1', '*João*\nM2'])
+  assert.equal(store.sent.every((m) => !m.text.includes('*Ana*\n*João*')), true)
+})
+
+test('47) conexão sem nome mantém o texto original e prefixo preexistente não duplica', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  resetBoard([{ text: '*Origem*\nMensagem' }], 0, l1)
+  addConnection('conn-a', 'instA', 'connected')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a']
+
+  const w = await newWorker()
+  await w.tick()
+
+  assert.equal(store.sent[0]?.text, '*Origem*\nMensagem')
 })

@@ -332,6 +332,17 @@ export class SendWorker {
     return rows[0]?.display_name ?? null;
   }
 
+  /** Prefixa apenas a mensagem final da campanha, sem alterar o template salvo. */
+  private formatConnectionMessage(text: string, displayName: string | null): string {
+    const name = displayName?.trim();
+    if (!name) return text;
+    const prefix = `*${name}*`;
+    if (text === prefix || text.startsWith(`${prefix}\n`) || text.startsWith(`${prefix}\r\n`)) return text;
+    // Evita empilhar prefixos caso outro estágio já tenha formatado a mensagem.
+    if (/^\*[^*\r\n]+\*\r?\n/.test(text)) return text;
+    return `${prefix}\n${text}`;
+  }
+
   /** Encerra de verdade a campanha (status finalizada + finished_at). */
   private async finalizeCampaign(campaignId: string): Promise<void> {
     await fetch(`${this.url}/rest/v1/campaigns?id=eq.${campaignId}`, {
@@ -614,12 +625,12 @@ export class SendWorker {
     // aleatório antes do envio (pode bloquear o tick enquanto espera).
     await this.spam.checkRateLimit();
     await this.spam.jitter();
-    const agentName = await loadAgentName();
+    const connectionDisplayName = await this.getConnectionDisplayName(sendInstance);
     let ok = false;
     let sentText = '';
     let mediaValidationError: string | null = null;
     try {      if (strategyKind === 'text' && strategyText) {
-        sentText = formatAgentSignature(renderTemplate(strategyText, lead), agentName);
+        sentText = this.formatConnectionMessage(renderTemplate(strategyText, lead), connectionDisplayName);
         ok = (await sendText({ to: sendPhone, text: sentText, instance: sendInstance })).ok;
       } else if (strategyMediaUrl) {
         const mediaUrl = strategyMediaUrl.startsWith('http')
@@ -628,16 +639,16 @@ export class SendWorker {
         mediaValidationError = await this.validateRemoteVideoSize(mediaUrl, strategyKind);
         if (!mediaValidationError) {
           const captionText = strategyCaption
-            ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
+            ? this.formatConnectionMessage(renderTemplate(strategyCaption, lead), connectionDisplayName)
             : `[${strategyKind}]`;
-          sentText = renderTemplate(strategyCaption ?? `[${strategyKind}]`, lead);
+          sentText = captionText;
           ok = (
             await sendMedia({
               to: sendPhone,
               kind: strategyKind as MediaKind,
               media: mediaUrl,
               caption: strategyCaption
-                ? formatAgentSignature(renderTemplate(strategyCaption, lead), agentName)
+                ? this.formatConnectionMessage(renderTemplate(strategyCaption, lead), connectionDisplayName)
                 : undefined,
               mimetype: guessMimetype(mediaUrl, strategyKind),
               filename: basename(mediaUrl),
