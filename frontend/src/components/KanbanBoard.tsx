@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, type Lead, type LeadStatus, type Campaign, type ConversationMessage } from '../lib/supabase'
 import { computeEngagement, type Engagement } from '../lib/engagement'
+import { filterLeadsBySearch } from '../lib/kanbanSearch'
 import { LeadChat } from './LeadChat'
 
 type Section =
@@ -106,6 +107,9 @@ export function KanbanBoard({
   const [modal, setModal] = useState<'meeting' | 'close' | null>(null)
   const [chatLead, setChatLead] = useState<Lead | null>(null)
   const [messagesByLead, setMessagesByLead] = useState<Map<string, ConversationMessage[]>>(new Map())
+  // Busca por nome/telefone (debounce para não filtrar a cada tecla).
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
   // Leads POR CAMPANHA vêm de send_runs (a participação real da campanha),
   // NÃO da lista global /leads — assim "limpar lista" nunca apaga o Kanban.
   const [byCampaign, setByCampaign] = useState<Map<string, Lead[]>>(new Map())
@@ -186,6 +190,12 @@ export function KanbanBoard({
     }
   }, [])
 
+  // Busca com debounce: só filtra depois de 300ms sem digitar.
+  useEffect(() => {
+    const t = window.setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 300)
+    return () => window.clearTimeout(t)
+  }, [searchInput])
+
   const engagement = useMemo(() => {
     const map = new Map<string, Engagement>()
     for (const l of leads) {
@@ -195,16 +205,18 @@ export function KanbanBoard({
   }, [leads, messagesByLead])
 
   const list = useMemo(() => {
+    let base: Lead[]
     if (campaignFilter === 'all') {
       const all = Array.from(byCampaign.values()).flat()
-      return all.filter((l, i) => all.findIndex((x) => x.id === l.id) === i)
-    }
-    if (campaignFilter === NO_CAMPAIGN) {
+      base = all.filter((l, i) => all.findIndex((x) => x.id === l.id) === i)
+    } else if (campaignFilter === NO_CAMPAIGN) {
       // Sem campanha = leads ativos ainda não vinculados a nenhuma campanha.
-      return leads.filter((l) => l.is_active_in_prospecting !== false && !enrolledIds.has(l.id))
+      base = leads.filter((l) => l.is_active_in_prospecting !== false && !enrolledIds.has(l.id))
+    } else {
+      base = byCampaign.get(campaignFilter) ?? []
     }
-    return byCampaign.get(campaignFilter) ?? []
-  }, [leads, campaignFilter, byCampaign, enrolledIds])
+    return search ? filterLeadsBySearch(base, search) : base
+  }, [leads, campaignFilter, byCampaign, enrolledIds, search])
 
   const perCampaign = useMemo(() => {
     const map = new Map<string | null, { total: number; sections: Record<Section, number> }>()
@@ -256,6 +268,25 @@ export function KanbanBoard({
               className="text-xs text-indigo-300 hover:text-fg transition">
               ← Todas as campanhas
             </button>
+          )}
+          {campaignFilter !== 'all' && (
+            <div className="relative">
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Buscar por nome ou telefone…"
+                className="w-56 bg-field border border-line-2 rounded-lg pl-3 pr-7 py-1.5 text-sm text-fg outline-none focus:border-indigo-500 placeholder:text-faint"
+              />
+              {searchInput && (
+                <button
+                  onClick={() => setSearchInput('')}
+                  title="Limpar busca"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-faint hover:text-fg"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           )}
           <label className="text-xs text-muted">
             Filtrar por campanha
@@ -309,6 +340,15 @@ export function KanbanBoard({
                 </button>
               )
             })}
+          </div>
+        </div>
+      ) : list.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center px-6 py-16">
+          <div className="text-center">
+            <div className="text-3xl mb-2">{search ? '🔍' : '📭'}</div>
+            <div className="text-sm text-muted">
+              {search ? 'Nenhum lead encontrado.' : 'Sem leads nesta visão.'}
+            </div>
           </div>
         </div>
       ) : (

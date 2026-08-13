@@ -57,6 +57,96 @@ export function shouldActivateConversation(status: string | null | undefined): b
 }
 
 // ---------------------------------------------------------------------------
+// Completude da sequência de campanha (MODIFICAÇÃO 1).
+//
+// O lead só deve ser movido para "Conversando" quando TODAS as mensagens da
+// campanha já foram enviadas. Se ele responder no MEIO da sequência (ainda há
+// mensagem pendente), ou se alguma mensagem falhou (run 'failed'), o lead é
+// mantido na coluna atual (Enviados) e a sequência continua normalmente.
+// ---------------------------------------------------------------------------
+
+export interface LeadSequenceCompleteness {
+  hasRun: boolean;
+  runStatus: string | null;
+  currentPosition: number | null;
+  queueMessageCount: number | null;
+}
+
+/**
+ * Decisão pura de movimento do kanban com base na sequência da campanha.
+ *
+ * - Sem run (lead sem campanha): comportamento antigo preservado (move).
+ * - Run 'pending'/'running'/'failed': mensagens ainda não enviadas/enviadas
+ *   por completo => NÃO move (mensagem falha não conta como enviada).
+ * - Run 'done': move apenas quando `current_position` alcançou o total de
+ *   mensagens da fila. Se a contagem não for conhecida (falha de leitura),
+ *   assume done = completo para não travar o fluxo.
+ */
+export function isSequenceComplete(info: LeadSequenceCompleteness): boolean {
+  const { hasRun, runStatus, currentPosition, queueMessageCount } = info;
+  if (!hasRun) return true;
+  if (runStatus !== 'done') return false;
+  if (typeof currentPosition === 'number' && typeof queueMessageCount === 'number') {
+    return currentPosition >= queueMessageCount;
+  }
+  return true;
+}
+
+/**
+ * Carrega o estado da sequência de campanha do lead (run mais recente +
+ * quantidade de mensagens da fila). Best-effort: nunca lança erro.
+ */
+export async function loadLeadSequenceCompleteness(
+  leadId: string,
+): Promise<LeadSequenceCompleteness> {
+  const cfg = getSupabaseProspeccaoConfig();
+  const empty: LeadSequenceCompleteness = {
+    hasRun: false,
+    runStatus: null,
+    currentPosition: null,
+    queueMessageCount: null,
+  };
+  if (!cfg.url || !cfg.serviceRoleKey || !leadId) return empty;
+  try {
+    const r = await fetch(
+      `${cfg.url}/rest/v1/send_runs?select=id,campaign_id,status,current_position` +
+        `&lead_id=eq.${encodeURIComponent(leadId)}&order=created_at.desc&limit=1`,
+      { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+    );
+    if (!r.ok) return empty;
+    const rows = (await r.json()) as Array<{
+      campaign_id: string | null;
+      status: string | null;
+      current_position: number | null;
+    }>;
+    const run = rows[0];
+    if (!run) return empty;
+
+    let queueMessageCount: number | null = null;
+    if (run.campaign_id) {
+      const q = await fetch(
+        `${cfg.url}/rest/v1/queue_messages?select=id` +
+          `&campaign_id=eq.${encodeURIComponent(run.campaign_id)}&limit=2000`,
+        { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+      );
+      if (q.ok) {
+        const msgs = (await q.json()) as Array<{ id: string }>;
+        queueMessageCount = msgs.length;
+      }
+    }
+
+    return {
+      hasRun: true,
+      runStatus: run.status,
+      currentPosition: run.current_position,
+      queueMessageCount,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Índice de leads em memória (TTL) para a busca por telefone.
 //
 // O lead.phone é gravado FORMATADO (ex.: "(34) 99203-8968"), então a busca

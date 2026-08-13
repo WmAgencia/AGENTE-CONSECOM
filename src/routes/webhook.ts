@@ -50,6 +50,8 @@ import {
   updateLeadStatus,
   canAutoReply,
   shouldActivateConversation,
+  isSequenceComplete,
+  loadLeadSequenceCompleteness,
   appendConversationTurn,
   loadAgentDirectives,
   loadAgentName,
@@ -539,8 +541,20 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
           '[KANBAN] Lead movido para Sem interesse + campanha interrompida',
         );
       } else if (shouldActivateConversation(freshStatus)) {
-        await updateLeadStatus(lead.id, 'conversando').catch(() => {});
-        log.info({ leadId: lead.id }, '[KANBAN] Lead movido para Conversando');
+        // MODIFICAÇÃO 1: só move para 'conversando' quando TODAS as mensagens
+        // da campanha foram enviadas. Resposta no meio da sequência (ou com
+        // alguma mensagem pendente/falha) mantém o lead na coluna atual; a
+        // sequência segue normalmente e o movimento acontece depois.
+        const sequence = await loadLeadSequenceCompleteness(lead.id).catch(() => null);
+        if (sequence === null || isSequenceComplete(sequence)) {
+          await updateLeadStatus(lead.id, 'conversando').catch(() => {});
+          log.info({ leadId: lead.id }, '[KANBAN] Lead movido para Conversando');
+        } else {
+          log.info(
+            { leadId: lead.id, status: freshStatus, runStatus: sequence.runStatus },
+            '[KANBAN] Sequência de campanha incompleta — lead mantido na coluna atual',
+          );
+        }
       } else {
         log.info({ leadId: lead.id, status: freshStatus }, '[KANBAN] Status mantido');
       }

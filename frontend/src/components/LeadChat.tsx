@@ -153,8 +153,13 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
       : STATUS_LABEL[lead.status]
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-6">
-      <div className="w-full max-w-3xl h-[92vh] flex flex-col overflow-hidden rounded-xl border border-line-2 shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-6"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="w-full max-w-3xl h-[92vh] flex flex-col overflow-hidden rounded-xl border border-line-2 shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center gap-3 px-3 py-2.5 bg-chat-bar">
           <button onClick={onClose} title="Fechar"
