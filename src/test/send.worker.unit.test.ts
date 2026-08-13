@@ -38,6 +38,9 @@ interface Run {
   current_position: number
   next_send_at: string | null
   created_at: string
+  connection_id?: string | null
+  connection_instance?: string | null
+  fail_reason?: string | null
 }
 interface Lead {
   id: string
@@ -54,6 +57,12 @@ interface Campaign {
   finished_at: string | null
   success_count: number
   fail_count: number
+  connection_ids?: string[] | null
+}
+interface Connection {
+  id: string
+  instance_name: string
+  status: string
 }
 interface Message {
   id: string
@@ -70,10 +79,12 @@ const store = {
   campaigns: new Map<string, Campaign>(),
   runs: new Map<string, Run>(),
   leads: new Map<string, Lead>(),
+  connections: new Map<string, Connection>(),
   messages: new Map<string, Message[]>(),
-  sent: [] as Array<{ to: string; text: string }>,
+  sent: [] as Array<{ to: string; text: string; instance?: string }>,
   finalizeSeq: [] as number[],
   failSend: new Set<string>(),
+  killOnFail: new Set<string>(),
   leadHistory: [] as Array<{ lead_id: string; status: string; notes: string | null }>,
 }
 let sendSeq = 0
@@ -102,8 +113,13 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
     if (method === 'GET') {
       const id = eq('id')
       if (id) return jsonRes([store.campaigns.get(id)].filter((c): c is Campaign => Boolean(c)))
-      // lista usada pelo tick: só campanhas ainda ativas (status=eq.em_progresso)
-      return jsonRes([...store.campaigns.values()].filter((c) => c.status === 'em_progresso'))
+      // lista usada pelo tick: campanhas ativas (acao do worker em_progresso e
+      // as que estão aguardando conexão para auto-resumo).
+      return jsonRes(
+        [...store.campaigns.values()].filter(
+          (c) => c.status === 'em_progresso' || c.status === 'waiting_connection',
+        ),
+      )
     }
     if (method === 'PATCH') {
       const id = eq('id')!
@@ -112,6 +128,28 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
       if (body?.status === 'finalizada') store.finalizeSeq.push(sendSeq)
       return jsonRes([])
     }
+  }
+
+  if (url.includes('/rest/v1/whatsapp_connections')) {
+    const id = eq('id')
+    const inst = eq('instance_name')
+    // or=(id.eq.<a>,id.eq.<b>) -> pool de conexões configurado da campanha.
+    const orMatch = url.match(/or=\(([^)]+)\)/)
+    let rows = [...store.connections.values()]
+    if (orMatch) {
+      const ids = new Set(
+        orMatch[1]
+          .split(',')
+          .map((s) => s.replace(/^id\.eq\./, ''))
+          .filter(Boolean),
+      )
+      rows = rows.filter((c) => ids.has(c.id))
+    } else if (id) {
+      rows = rows.filter((c) => c.id === id)
+    } else if (inst) {
+      rows = rows.filter((c) => c.instance_name === inst)
+    }
+    return jsonRes(rows)
   }
 
   if (url.includes('/rest/v1/send_runs')) {
@@ -162,22 +200,30 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
     const to = String(body?.number ?? '')
     const kind = String(body?.mediatype ?? 'media')
     const media = String(body?.media ?? '')
+    const instance = decodeURIComponent(url.split('/message/sendMedia/')[1].split('?')[0])
     sendSeq++
     if (store.failSend.has(`${to}|media:${kind}`)) {
+      if (store.killOnFail.has(instance)) {
+        for (const c of store.connections.values()) if (c.instance_name === instance) c.status = 'disconnected'
+      }
       return jsonRes({ error: 'boom' }, 500)
     }
-    store.sent.push({ to, text: `[media:${kind}] ${media}` })
+    store.sent.push({ to, text: `[media:${kind}] ${media}`, instance })
     return jsonRes({ key: { id: `mock-${sendSeq}` } })
   }
 
   if (url.includes('/message/sendText/')) {
     const to = String(body?.number ?? '')
     const text = String(body?.text ?? '')
+    const instance = decodeURIComponent(url.split('/message/sendText/')[1].split('?')[0])
     sendSeq++
     if (store.failSend.has(`${to}|${text}`)) {
+      if (store.killOnFail.has(instance)) {
+        for (const c of store.connections.values()) if (c.instance_name === instance) c.status = 'disconnected'
+      }
       return jsonRes({ error: 'boom' }, 500)
     }
-    store.sent.push({ to, text })
+    store.sent.push({ to, text, instance })
     return jsonRes({ key: { id: `mock-${sendSeq}` } })
   }
 
@@ -195,7 +241,7 @@ async function newWorker() {
 
 type MsgSpec = { text: string; kind?: 'text' | 'video'; delay_seconds?: number }
 
-function setupCampaign(msgs: MsgSpec[], globalDelay: number | number[] = 0): void {
+function setupCampaign(msgs: MsgSpec[], globalDelay: number | number[] = 0, connectionIds?: string[] | null): void {
   const delays = Array.isArray(globalDelay) ? globalDelay : msgs.map(() => globalDelay)
   store.campaigns.set('c1', {
     id: 'c1',
@@ -205,6 +251,7 @@ function setupCampaign(msgs: MsgSpec[], globalDelay: number | number[] = 0): voi
     finished_at: null,
     success_count: 0,
     fail_count: 0,
+    connection_ids: connectionIds ?? null,
   })
   store.messages.set(
     'c1',
@@ -252,7 +299,9 @@ function resetBoard(
   store.sent.length = 0
   store.finalizeSeq.length = 0
   store.failSend.clear()
+  store.killOnFail.clear()
   store.leadHistory.length = 0
+  store.connections.clear()
   sendSeq = 0
   const specs: MsgSpec[] =
     typeof msgs === 'number'
@@ -263,6 +312,10 @@ function resetBoard(
   // created_at distinto (ordem de entrada: L1 mais antigo => dispara primeiro).
   leads.forEach((l, i) => enqueue(l, now + i))
   return { now }
+}
+
+function addConnection(id: string, instanceName: string, status = 'connected'): void {
+  store.connections.set(id, { id, instance_name: instanceName, status })
 }
 
 async function runTicks(worker: { tick(): Promise<void> }, count: number): Promise<void> {
@@ -664,6 +717,111 @@ test('P2) pausar DURANTE um lead: preserva o ponto exato e retomar não reenvia 
   await w.tick() // finaliza
   assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
   assert.equal(store.finalizeSeq.length, 1)
+})
+
+test('39) TODAS as conexões caem => status waiting_connection (fila preservada); conexão de volta => auto-retoma', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  resetBoard(1, 0, l1, l2)
+  addConnection('conn-a', 'instA', 'disconnected')
+  addConnection('conn-b', 'instB', 'disconnected')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a', 'conn-b']
+
+  const w = await newWorker()
+
+  // Todas fora: a campanha NÃO falha nem finaliza — entra em waiting_connection.
+  await w.tick()
+  assert.equal(store.campaigns.get('c1')!.status, 'waiting_connection')
+  assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'pending', 'fila preservada (não aborta)')
+  assert.equal(store.sent.length, 0, 'nenhum envio sem conexão')
+
+  // Uma conexão volta: o worker retoma sozinho (waiting_connection -> em_progresso)
+  // e o disparo continua normalmente.
+  store.connections.get('conn-a')!.status = 'connected'
+  await w.tick()
+  assert.equal(store.campaigns.get('c1')!.status, 'em_progresso', 'retomada automática')
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
+
+  // A fila completa normalmente até finalizar.
+  await runTicks(w, 10)
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado')
+  assert.equal(store.leads.get(l2.id)!.status, 'enviado')
+  assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
+  assert.equal(store.finalizeSeq.length, 1)
+})
+
+test('41/33) conexão cai no MEIO da sequência => lead NÃO aborta, troca para conexão viva a partir da próxima mensagem', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  resetBoard(3, 0, l1, l2)
+  addConnection('conn-a', 'instA', 'connected')
+  addConnection('conn-b', 'instB', 'connected')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a', 'conn-b']
+
+  const w = await newWorker()
+  // Primiero lead começa na conexão que estava no topo do pool (instA).
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990001').map((s) => s.text), ['M1'])
+  assert.equal(store.runs.get(`run-${l1.id}`)!.connection_instance, 'instA')
+
+  // conexão do lead ativo cai; a outra segue de pé.
+  store.connections.get('conn-a')!.status = 'disconnected'
+  makeDue(l1.id)
+  await w.tick()
+  // lead continua: reatribuído p/ instB, na MESMA posição, sem abortar.
+  assert.equal(store.runs.get(`run-${l1.id}`)!.connection_instance, 'instB')
+  assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'running', 'lead preservado (não abortei)')
+  assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 1)
+
+  // Próxima mensagem (M2) sai pela nova conexão; lead não é trocado.
+  makeDue(l1.id)
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990001').map((s) => s.text), ['M1', 'M2'])
+  assert.equal(store.runs.get(`run-${l1.id}`)!.connection_instance, 'instB', 'segue na conexão viva')
+
+  // L2 não começou enquanto L1 estava no meio da sequência (Regra A mantida).
+  assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'pending', 'L2 aguarda a vez')
+
+  makeDue(l1.id)
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990001').map((s) => s.text), ['M1', 'M2', 'M3'])
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado')
+
+  await w.tick()
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990002').map((s) => s.text), ['M1'])
+  assert.equal(store.runs.get(`run-${l2.id}`)!.connection_instance, 'instB')
+})
+
+test('40) envio falha com a conexão CAÍDA => reatribuído para conexão viva, tentativa NÃO contabilizada, lead não aborta', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  resetBoard(1, 0, l1, l2)
+  addConnection('conn-a', 'instA', 'connected')
+  addConnection('conn-b', 'instB', 'connected')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a', 'conn-b']
+
+  const w = await newWorker()
+
+  // M1 de L1 falha no envio E a conexão em uso (instA) morre exatamente nesse
+  // instante: o worker discrimina falha de CONEXÃO (não é falha do lead).
+  store.failSend.add('5511999990001|M1')
+  store.killOnFail.add('instA')
+  await w.tick()
+  assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'running', 'não aborta por falha de conexão')
+  assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 0, 'mensagem não contabilizada')
+  assert.equal(store.runs.get(`run-${l1.id}`)!.connection_instance, 'instB', 'reatribuído para conexão viva')
+  assert.equal(store.runs.get(`run-${l1.id}`)!.fail_reason, 'connection_failed')
+  assert.equal(store.leads.get(l1.id)!.status, 'novo', 'lead não penalizado')
+  assert.equal(store.campaigns.get('c1')!.status, 'em_progresso', 'campanha segue ativa')
+
+  // Com a conexão de volta e o envio funcionando, o mesmo passo é retomado.
+  store.failSend.clear()
+  store.killOnFail.clear()
+  store.connections.get('conn-b')!.status = 'connected'
+  makeDue(l1.id)
+  await w.tick()
+  assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado')
 })
 
 test('P3) cliques repetidos de retomar NÃO duplicam (estado idempotente + worker único)', async () => {

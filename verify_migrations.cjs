@@ -58,6 +58,7 @@ function buildConfig() {
     { name: 'v10: leads.call_reason', q: "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='leads' AND column_name='call_reason') AS ok" },
     { name: 'v10: leads.call_moved_at', q: "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='leads' AND column_name='call_moved_at') AS ok" },
     { name: 'v10: send_runs.fail_reason', q: "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='send_runs' AND column_name='fail_reason') AS ok" },
+    { name: 'v20: campaigns aceita waiting_connection', q: "SELECT EXISTS(SELECT 1 FROM pg_constraint con JOIN pg_class rel ON rel.oid = con.conrelid WHERE rel.relname='campaigns' AND con.contype='c' AND pg_get_constraintdef(con.oid) LIKE '%waiting_connection%') AS ok" },
   ];
 
   let ok = 0, fail = 0;

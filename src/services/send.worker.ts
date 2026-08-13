@@ -148,15 +148,17 @@ export class SendWorker {
     return rows[0] ?? null;
   }
 
-  private async getActiveCampaigns(): Promise<Array<{ id: string }>> {
+  private async getActiveCampaigns(): Promise<Array<{ id: string; status: string }>> {
     // Campanhas em andamento. O worker finaliza cada uma quando não há mais
     // nenhum run pendente/ativo (intercalado por rodadas dentro da campanha).
+    // 'waiting_connection' entra no mesmo fence para retomar sozinho quando
+    // uma conexão voltar (item 28/33).
     const r = await fetch(
-      `${this.url}/rest/v1/campaigns?select=id&status=eq.em_progresso`,
+      `${this.url}/rest/v1/campaigns?select=id,status&status=in.("em_progresso","waiting_connection")`,
       { headers: this.headers() },
     );
     if (!r.ok) return [];
-    return (await r.json()) as Array<{ id: string }>;
+    return (await r.json()) as Array<{ id: string; status: string }>;
   }
 
   private async getCampaignRuns(campaignId: string): Promise<SendRunRow[]> {
@@ -224,18 +226,52 @@ private async getConnectionInstance(connectionId?: string | null): Promise<strin
     return rows[0]?.status === 'connected';
   }
 
-  /** Reatribui a conexão de um run pendente entre as conexões disponíveis. */
+  /** Reatribui a conexão de um run pendente entre as conexões disponíveis (round-robin). */
   private async reassignRunConnection(run: SendRunRow, available: Array<{ id: string; instance_name: string }>): Promise<void> {
     if (available.length === 0) return;
-    const idx = Math.abs(this.hashRunId(run.id)) % available.length;
-    const conn = available[idx];
+    const conn = this.pickAvailableConnection(run.campaign_id, available);
     await this.patchSendRun(run.id, { connection_id: conn.id, connection_instance: conn.instance_name });
   }
 
-  private hashRunId(id: string): number {
-    let h = 0;
-    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
-    return h;
+  /**
+   * Pool dinâmico + round-robin: índice rotativo POR CAMPANHA sobre as
+   * conexões disponíveis. Conexões que caem saem do pool automaticamente
+   * (o `% available.length` redistribui) e voltam quando reconectam — sem
+   * duplicar nem trocar lead no meio do envio (item 33/42).
+   */
+  private readonly rotationIndex = new Map<string, number>();
+
+  private pickAvailableConnection(
+    campaignId: string,
+    available: Array<{ id: string; instance_name: string }>,
+  ): { id: string; instance_name: string } {
+    const rot = this.rotationIndex.get(campaignId) ?? 0;
+    const conn = available[rot % available.length];
+    this.rotationIndex.set(campaignId, rot + 1);
+    return conn;
+  }
+
+  /** Reatribui um run para outra conexão viva do pool (se existir). */
+  private async switchRunToAvailableConnection(run: SendRunRow): Promise<string | null> {
+    const live = await this.getAvailableCampaignConnections(run.campaign_id);
+    if (live.length === 0) return null;
+    const conn = this.pickAvailableConnection(run.campaign_id, live);
+    await this.patchSendRun(run.id, { connection_id: conn.id, connection_instance: conn.instance_name });
+    return conn.instance_name;
+  }
+
+  /** Atualiza o status da campanha (best-effort; falha não derruba o tick). */
+  private async patchCampaignStatus(campaignId: string, status: string): Promise<void> {
+    const r = await fetch(
+      `${this.url}/rest/v1/campaigns?id=eq.${encodeURIComponent(campaignId)}`,
+      { method: 'PATCH', headers: this.headers(true), body: JSON.stringify({ status }) },
+    );
+    if (!r.ok) {
+      getLogger().warn(
+        { campaignId, status, http: r.status },
+        'send-worker: falha ao atualizar status da campanha (verifique a migração do status waiting_connection)',
+      );
+    }
   }
 
   /** Retorna true se a campanha tem connection_ids configuradas (mesmo que todas caiam). */
@@ -449,15 +485,16 @@ const assignedInstance = run.connection_instance || await this.getConnectionInst
       const available = await this.isInstanceAvailable(sendInstance);
       if (!available) {
         this.onConnectionDown(sendInstance);
-        // Se o lead ainda está no início da sequência (position 0, sem envios),
-        // e a campanha tem outras conexões disponíveis, reatribui para uma conexão viva.
-        if (run.current_position === 0) {
-          const live = await this.getAvailableCampaignConnections(run.campaign_id);
-          if (live.length > 0) {
-            await this.reassignRunConnection(run, live);
-            log.info({ runId: run.id, oldInstance: sendInstance }, 'send-worker: conexao caiu, reatribuindo lead inicio para conexao viva');
-            return;
-          }
+        // Conexão caiu: NÃO aborta o lead. Reatribui para qualquer conexão viva
+        // do pool e o run continua 'running' na mesma posição (a mensagem do
+        // instante da queda pode duplicar, mas o lead nunca é perdido nem pulado).
+        const alt = await this.switchRunToAvailableConnection(run);
+        if (alt) {
+          log.warn(
+            { runId: run.id, oldInstance: sendInstance, newInstance: alt },
+            'send-worker: conexao caiu — continuando lead em conexao viva do pool',
+          );
+          return;
         }
         log.warn({ runId: run.id, instance: sendInstance }, 'send-worker: conexao indisponivel, aguardando (lead preservado)');
         return;
@@ -595,6 +632,31 @@ const assignedInstance = run.connection_instance || await this.getConnectionInst
       // O run permanece ativo com um retry agendado (backoff x tentativa),
       // mantendo sequence_active = true e a IA bloqueada. Ao esgotar as
       // tentativas o run é marcado 'failed' (sequência interrompida).
+      //
+      // Discrimina falha de CONEXÃO de falha do LEAD: se a instância caiu no
+      // momento do envio, reatribui para uma conexão viva e re-agenda o MESMO
+      // passo SEM contar tentativa nem abortar — falha de infraestrutura não
+      // deve penalizar o lead. Só falhas com a conexão de pé (número inválido,
+      // recusa, banimento) contabilizam tentativa e podem abortar.
+      if (sendInstance) {
+        const connAlive = await this.isInstanceAvailable(sendInstance);
+        if (!connAlive) {
+          this.onConnectionDown(sendInstance);
+          const alt = await this.switchRunToAvailableConnection(run);
+          const retryAt = new Date(Date.now() + 30_000).toISOString();
+          await this.patchSendRun(run.id, {
+            status: 'running',
+            current_position: position,
+            next_send_at: retryAt,
+            fail_reason: 'connection_failed',
+          });
+          log.warn(
+            { runId: run.id, position, oldInstance: sendInstance, newInstance: alt ?? null },
+            'send-worker: envio falhou por conexao — reatribuido, tentativa nao contabilizada',
+          );
+          return;
+        }
+      }
       const maxRetries = (() => {
         try {
           return getEnv().CONSECOM_SEND_MAX_RETRIES;
@@ -774,8 +836,19 @@ const assignedInstance = run.connection_instance || await this.getConnectionInst
         const available = await this.getAvailableCampaignConnections(camp.id);
         const campaignHasConnections = await this.campaignHasConnections(camp.id);
         if (campaignHasConnections && available.length === 0) {
-          log.warn({ campaignId: camp.id }, 'send-worker: todas as conexoes da campanha indisponiveis — aguardando (campanha permanece em_progresso)');
+          // Todas as conexões caíram: sinaliza waiting_connection para a UI
+          // (sem travar o loop) e preserva a fila. Status nunca é 'failed'.
+          if (camp.status !== 'waiting_connection') {
+            await this.patchCampaignStatus(camp.id, 'waiting_connection');
+            log.warn({ campaignId: camp.id }, 'send-worker: todas as conexoes da campanha cairam — campanha em waiting_connection (fila preservada)');
+          }
           continue;
+        }
+        // Conexão(ões) de volta: retoma automaticamente uma campanha pausada
+        // por falta de conexão (waiting_connection -> em_progresso).
+        if (camp.status === 'waiting_connection') {
+          await this.patchCampaignStatus(camp.id, 'em_progresso');
+          log.info({ campaignId: camp.id }, 'send-worker: conexao(ões) disponíveis novamente — campanha retomada (em_progresso)');
         }
         // Reatribui runs pendentes cuja conexão caiu para conexões vivas.
         for (const run of runs) {
@@ -787,7 +860,7 @@ const assignedInstance = run.connection_instance || await this.getConnectionInst
           const connStillLive = available.find((a) => a.id === run.connection_id);
           if (!connStillLive && run.connection_instance) {
             this.onConnectionDown(run.connection_instance);
-            if (available.length > 0) await this.reassignRunConnection(run, available);
+            await this.reassignRunConnection(run, available);
           }
         }
         // EXECUÇÃO SEQUENCIAL POR LEAD (Regra A): a campanha dispara UM lead

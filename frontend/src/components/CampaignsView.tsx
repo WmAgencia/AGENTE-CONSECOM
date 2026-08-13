@@ -633,6 +633,11 @@ function CampaignCard({
           ▶ Retomar campanha
         </button>
       )}
+      {campaign.status === 'waiting_connection' && (
+        <button onClick={onResume} className="w-full mb-3 text-sm py-2 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg font-medium">
+          ▶ Retomar agora (conexão disponível)
+        </button>
+      )}
 
       {!open ? (
         <ol className="space-y-1.5">
@@ -1018,6 +1023,7 @@ const CAMPAIGN_STATUS: Record<Campaign['status'], { label: string; cls: string }
   pronta: { label: 'Pronta', cls: 'bg-subtle text-secondary' },
   agendada: { label: 'Agendada', cls: 'bg-indigo-500/15 text-indigo-300' },
   em_progresso: { label: 'Em andamento', cls: 'bg-emerald-500/15 text-emerald-300' },
+  waiting_connection: { label: 'Aguardando conexão', cls: 'bg-orange-500/15 text-orange-300' },
   pausada: { label: 'Pausada', cls: 'bg-amber-500/15 text-amber-300' },
   finalizada: { label: 'Concluída', cls: 'bg-sky-500/15 text-sky-300' },
   cancelada: { label: 'Cancelada', cls: 'bg-rose-500/15 text-rose-300' },
@@ -1047,6 +1053,15 @@ function CampaignStatusBanner({ status, scheduledAt }: { status: Campaign['statu
       <div className="mb-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-sm text-emerald-300 flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         🟢 Campanha em andamento
+      </div>
+    )
+  }
+  if (status === 'waiting_connection') {
+    return (
+      <div className="mb-3 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-2 text-sm text-orange-300 flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+        🟠 Todas as conexões do WhatsApp caíram — fila preservada, aguardando conexão.
+        Retoma automaticamente quando alguma conexão voltar.
       </div>
     )
   }

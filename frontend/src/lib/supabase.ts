@@ -81,7 +81,7 @@ export interface Campaign {
   name: string
   description: string | null
   is_active: boolean
-  status: 'pronta' | 'em_progresso' | 'pausada' | 'finalizada' | 'cancelada' | 'agendada'
+  status: 'pronta' | 'em_progresso' | 'pausada' | 'finalizada' | 'cancelada' | 'agendada' | 'waiting_connection'
   scheduled_at: string | null
   started_at: string | null
   finished_at: string | null
