@@ -52,7 +52,6 @@ import { sendText, sendMedia, type MediaKind } from './evolution.service.js';
 import { validateVideoSize } from './media.limits.js';
 import { SpamProtection } from './spam-protection.js';
 import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js';
-import { loadAgentName, formatAgentSignature } from './supabase.leads.js';
 import { renderTemplate } from './template.service.js';
 import { getConversationStore } from './conversation.store.js';
 import { processDueScheduledCampaigns } from './campaign.schedule.service.js';
@@ -832,8 +831,7 @@ export class SendWorker {
         continue;
       }
       const body = renderTemplate(message, lead);
-      const agentName = await loadAgentName();
-      const finalText = formatAgentSignature(body, agentName);
+      const finalText = body;
       const ok = (await sendText({ to: sendPhone, text: finalText })).ok;
       if (!ok) {
         log.warn({ leadId: lead.id, phone: sendPhone }, 'send-worker: remarketing send failed');

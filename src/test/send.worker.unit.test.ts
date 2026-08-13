@@ -1041,3 +1041,28 @@ test('47) conexão sem nome mantém o texto original e prefixo preexistente não
 
   assert.equal(store.sent[0]?.text, '*Origem*\nMensagem')
 })
+
+test('48) retomar preserva posição durante sequência com múltiplas conexões', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  resetBoard(3, 0, l1, l2)
+  addConnection('conn-a', 'instA', 'connected')
+  addConnection('conn-b', 'instB', 'connected')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a', 'conn-b']
+
+  const w = await newWorker()
+  await w.tick()
+  assert.deepEqual(store.sent.map((m) => m.text), ['M1'])
+  assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 1)
+
+  store.campaigns.get('c1')!.status = 'pausada'
+  await runTicks(w, 3)
+  assert.deepEqual(store.sent.map((m) => m.text), ['M1'])
+
+  store.campaigns.get('c1')!.status = 'em_progresso'
+  makeDue(l1.id)
+  await w.tick()
+  assert.deepEqual(store.sent.map((m) => m.text), ['M1', 'M2'])
+  assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 2)
+  assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'pending')
+})

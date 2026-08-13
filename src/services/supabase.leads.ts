@@ -17,8 +17,8 @@ export interface LeadRow {
   status: string | null;
   niche: string | null;
   category: string | null;
+  ai_control?: 'ai' | 'human' | null;
 }
-
 // CAMPAIGN ≠ CONVERSAÇÃO. O lead pode responder em QUALQUER status do funil
 // (novo/na_fila durante a campanha, enviado após concluir, conversando,
 // remarketing, reuniao_marcada/cancelada). Só ficam de fora estados terminais
@@ -173,10 +173,16 @@ async function fetchLeadIndex(): Promise<LeadRow[]> {
   try {
     let offset = 0;
     for (let page = 0; page < 20; page++) {
-      const res = await fetch(
-        `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category&order=id&offset=${offset}&limit=1000`,
+      let res = await fetch(
+        `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category,ai_control&order=id&offset=${offset}&limit=1000`,
         { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
       );
+      if (!res.ok) {
+        res = await fetch(
+          `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category&order=id&offset=${offset}&limit=1000`,
+          { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+        );
+      }
       if (!res.ok) break;
       const batch = (await res.json()) as LeadRow[];
       rows.push(...batch);
@@ -248,10 +254,16 @@ export async function getLeadById(leadId: string): Promise<LeadRow | null> {
   const cfg = getSupabaseProspeccaoConfig();
   if (!cfg.url || !cfg.serviceRoleKey || !leadId) return null;
   try {
-    const res = await fetch(
-      `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category&id=eq.${encodeURIComponent(leadId)}&limit=1`,
+    let res = await fetch(
+      `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category,ai_control&id=eq.${encodeURIComponent(leadId)}&limit=1`,
       { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
     );
+    if (!res.ok) {
+      res = await fetch(
+        `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category&id=eq.${encodeURIComponent(leadId)}&limit=1`,
+        { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
+      );
+    }
     if (!res.ok) return null;
     const rows = (await res.json()) as LeadRow[];
     return rows[0] ?? null;
@@ -465,10 +477,8 @@ export async function loadAgentDirectives(): Promise<string | null> {
     const objective = typeof map.objective === 'string' ? map.objective : '';
     const service = typeof map.service === 'string' ? map.service : '';
     const project = typeof map.project === 'string' ? map.project : '';
-    const agentName = typeof map.agent_name === 'string' ? map.agent_name : '';
     const company = typeof map.company === 'string' ? map.company : '';
 
-    if (agentName) parts.push(`SEU NOME é ${agentName}. Você se apresenta e assina as mensagens como ${agentName}.`);
     if (company) parts.push(`SOBRE A EMPRESA (contexto que você domina para vender): ${company}`);
     if (greeting) parts.push(`SAUDAÇÃO inicial (use no primeiro contato): ${greeting}`);
     if (objective) parts.push(`OBJETIVO da conversa: ${objective}`);
@@ -485,7 +495,7 @@ export async function loadAgentDirectives(): Promise<string | null> {
 /**
  * Carrega os nomes/aliases do vendedor humano (para classificar papéis nas
  * exportações). Prioriza a config `seller_names` (separados por vírgula);
- * se vazia, cai no `agent_name` (nome que a IA usa para assinar).
+ * se vazia, não usa nomes da antiga configuração de assinatura.
  */
 export async function loadSellerNames(): Promise<string[]> {
   const cfg = getSupabaseProspeccaoConfig();
@@ -502,46 +512,33 @@ export async function loadSellerNames(): Promise<string[]> {
     for (const r of rows) map[r.key] = r.value;
 
     const sellers = typeof map.seller_names === 'string' ? map.seller_names : '';
-    const agentName = typeof map.agent_name === 'string' ? map.agent_name : '';
 
     const names = sellers
       .split(',')
       .map((n) => n.trim())
       .filter((n) => n.length > 0);
     if (names.length > 0) return names;
-    return agentName.trim() ? [agentName.trim()] : [];
+    return [];
   } catch {
     return [];
   }
 }
 
-/** Carrega o nome configurado do agente (para assinar as mensagens). */
-export async function loadAgentName(): Promise<string | null> {
+/** Delay configurado para agrupar mensagens recebidas antes da resposta. */
+export async function loadAiResponseDelaySeconds(): Promise<number> {
   const cfg = getSupabaseProspeccaoConfig();
-  if (!cfg.url || !cfg.serviceRoleKey) return null;
+  if (!cfg.url || !cfg.serviceRoleKey) return 0;
   try {
     const res = await fetch(
-      `${cfg.url}/rest/v1/agent_settings?select=key,value&limit=100`,
+      `${cfg.url}/rest/v1/agent_settings?select=value&key=eq.ai_response_delay_seconds&limit=1`,
       { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
     );
-    if (!res.ok) return null;
-    const rows = (await res.json()) as Array<{ key: string; value: unknown }>;
-    if (rows.length === 0) return null;
-    const map: Record<string, unknown> = {};
-    for (const r of rows) map[r.key] = r.value;
-    const name = typeof map.agent_name === 'string' ? map.agent_name : null;
-    return name;
+    if (!res.ok) return 0;
+    const rows = (await res.json()) as Array<{ value: unknown }>;
+    const value = Number(rows[0]?.value ?? 0);
+    return Number.isFinite(value) ? Math.max(0, Math.min(300, value)) : 0;
   } catch {
-    return null;
+    return 0;
   }
 }
 
-/** Prefixa o nome do agente em *nome* acima da mensagem. Sem nome, devolve o texto puro. */
-const TRAILING_SIGNATURE_RE = /\s*[\u2013\u2014-]\s*[A-Za-zÀ-ÿ]{2,20}\s*$/;
-
-export function formatAgentSignature(text: string, name: string | null): string {
-  let body = (text ?? '').trim();
-  body = body.replace(TRAILING_SIGNATURE_RE, '').trim();
-  if (!name || !name.trim()) return body;
-  return `*${name.trim()}*\n${body}`;
-}

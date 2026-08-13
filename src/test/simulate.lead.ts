@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 dotenv.config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '.env.local'), override: true });
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { loadAgentDirectives, loadAgentName, formatAgentSignature } from '../services/supabase.leads.js';
+import { loadAgentDirectives } from '../services/supabase.leads.js';
 import { loadLearningsForPrompt } from '../services/agent.learning.js';
 import { loadCommercialMemoryForPrompt } from '../services/memory.service.js';
 import { runAgentLoop } from '../services/agent.service.js';
@@ -62,9 +62,8 @@ async function main() {
   state.push({ role: 'assistant', content: result.result });
   saveState(state);
 
-  const name = await loadAgentName();
   console.log('\n[LEAD] ' + msg);
-  console.log('[IA]   ' + formatAgentSignature(result.result, name));
+  console.log('[IA]   ' + result.result);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

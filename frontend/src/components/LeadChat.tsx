@@ -77,6 +77,8 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [userId, setUserId] = useState<string>('')
+  const [aiMode, setAiMode] = useState<'ai' | 'human'>(lead.ai_control === 'human' ? 'human' : 'ai')
+  const [controlSaving, setControlSaving] = useState(false)
   const scrollerRef = useRef<HTMLDivElement>(null)
 
   const loadMessages = useCallback(async () => {
@@ -91,7 +93,13 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.id) setUserId(data.user.id)
+      if (data.user?.id) {
+        setUserId(data.user.id)
+        void fetch(`${API}/api/leads/${lead.id}/ai-control`, { headers: { 'x-user-id': data.user.id } })
+          .then((r) => r.ok ? r.json() as Promise<{ ai_control?: 'ai' | 'human' }> : null)
+          .then((control) => { if (control) setAiMode(control.ai_control === 'human' ? 'human' : 'ai') })
+          .catch(() => {})
+      }
     })
     void loadMessages()
     const ch = supabase
@@ -106,6 +114,26 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
       supabase.removeChannel(ch)
     }
   }, [loadMessages, lead.id])
+
+  async function toggleAiControl() {
+    if (!userId || controlSaving) return
+    const next = aiMode === 'ai' ? 'human' : 'ai'
+    setControlSaving(true)
+    setError(null)
+    try {
+      const r = await fetch(`${API}/api/leads/${lead.id}/ai-control`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+        body: JSON.stringify({ mode: next }),
+      })
+      if (!r.ok) throw new Error('control_update_failed')
+      setAiMode(next)
+    } catch {
+      setError('Não foi possível atualizar o responsável pela conversa.')
+    } finally {
+      setControlSaving(false)
+    }
+  }
 
   useEffect(() => {
     const el = scrollerRef.current
@@ -177,6 +205,13 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
             <div className="text-xs text-muted truncate">{subtitle}</div>
           </div>
           <div className="text-muted text-xs">{lead.phone || ''}</div>
+          <button
+            onClick={() => void toggleAiControl()}
+            disabled={controlSaving || !userId}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50 ${aiMode === 'human' ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'}`}
+          >
+            {aiMode === 'human' ? 'Deixar IA responder' : 'Assumir conversa'}
+          </button>
         </div>
 
         {/* Messages */}

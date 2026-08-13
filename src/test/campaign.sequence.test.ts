@@ -46,6 +46,7 @@ interface LeadRow {
   status: string
   niche: string | null
   category: string | null
+  ai_control?: 'ai' | 'human'
 }
 
 const store = {
@@ -296,5 +297,33 @@ test('6) webhook: sequência ativa => aceita, salva mensagem e NÃO chama a IA',
   // NENHUMA resposta de IA / Evolution (runAgentLoop não foi chamado)
   assert.equal(store.evolutionSent.length, 0, 'webhook não envia resposta enquanto a sequência está ativa')
 
+  await app.close()
+})
+
+test('7) takeover persistido => webhook salva a mensagem e não responde este lead', async () => {
+  clearStore()
+  const lead = setupLead()
+  lead.ai_control = 'human'
+
+  const { buildApp } = await import('../app.js')
+  const { app } = buildApp()
+  await app.ready()
+  const res = await app.inject({
+    method: 'POST',
+    url: '/webhook/evolution',
+    headers: { 'x-webhook-secret': 'test-secret', 'content-type': 'application/json' },
+    payload: {
+      event: 'messages.upsert',
+      instance: 'inst',
+      data: {
+        key: { id: 'webhook-human-1', remoteJid: '5511999990001@s.whatsapp.net', fromMe: false },
+        message: { conversation: 'Mensagem para o operador' },
+        pushName: 'Lead Um',
+      },
+    },
+  })
+  assert.equal(res.statusCode, 200)
+  await waitFor(() => store.conversations.some((c) => c.content === 'Mensagem para o operador'))
+  assert.equal(store.evolutionSent.length, 0)
   await app.close()
 })

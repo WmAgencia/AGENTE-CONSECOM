@@ -65,6 +65,7 @@ export interface Lead {
   distributed_at?: string | null
   created_at: string
   updated_at: string
+  ai_control?: 'ai' | 'human'
 }
 
 export interface ConversationMessage {

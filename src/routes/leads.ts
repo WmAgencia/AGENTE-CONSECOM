@@ -106,6 +106,40 @@ function parseLeadIds(body: unknown): string[] | null {
 export function registerLeadsRoutes(app: FastifyInstance): void {
   const log = getLogger();
 
+  app.get('/api/leads/:id/ai-control', async (req, reply) => {
+    const { workspaceId, userId } = getWorkspaceAndUser(req);
+    if (!(workspaceId ?? userId)) return reply.status(401).send({ error: 'unauthorized' });
+    const leadId = (req.params as { id?: string }).id;
+    const s = sup();
+    if (!leadId) return reply.status(400).send({ error: 'lead_id_required' });
+    if (!s) return reply.status(503).send({ error: 'server_misconfigured' });
+    const r = await fetch(`${s.url}/rest/v1/leads?select=ai_control&id=eq.${encodeURIComponent(leadId)}&limit=1`, {
+      headers: supHeaders(s.serviceRoleKey),
+    });
+    if (!r.ok) return reply.status(502).send({ error: 'lead_lookup_failed' });
+    const rows = (await r.json()) as Array<{ ai_control?: 'ai' | 'human' }>;
+    if (rows.length === 0) return reply.status(404).send({ error: 'lead_not_found' });
+    return reply.send({ ai_control: rows[0].ai_control === 'human' ? 'human' : 'ai' });
+  });
+
+  app.patch('/api/leads/:id/ai-control', async (req, reply) => {
+    const { workspaceId, userId } = getWorkspaceAndUser(req);
+    if (!(workspaceId ?? userId)) return reply.status(401).send({ error: 'unauthorized' });
+    const leadId = (req.params as { id?: string }).id;
+    const mode = (req.body as { mode?: unknown } | null)?.mode;
+    const s = sup();
+    if (!leadId) return reply.status(400).send({ error: 'lead_id_required' });
+    if (mode !== 'ai' && mode !== 'human') return reply.status(400).send({ error: 'invalid_mode' });
+    if (!s) return reply.status(503).send({ error: 'server_misconfigured' });
+    const r = await fetch(`${s.url}/rest/v1/leads?id=eq.${encodeURIComponent(leadId)}`, {
+      method: 'PATCH',
+      headers: supHeaders(s.serviceRoleKey, true),
+      body: JSON.stringify({ ai_control: mode }),
+    });
+    if (!r.ok) return reply.status(502).send({ error: 'lead_update_failed' });
+    return reply.send({ ok: true, ai_control: mode });
+  });
+
   app.post('/api/leads/:id/reply', async (req, reply) => {
     const { workspaceId, userId } = getWorkspaceAndUser(req);
     const identifier = workspaceId ?? userId;

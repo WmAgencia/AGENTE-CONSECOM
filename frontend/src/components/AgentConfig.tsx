@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 interface AgentCfg {
-  agent_name: string
   company: string
   greeting: string
   objective: string
@@ -12,10 +11,10 @@ interface AgentCfg {
   remarket_days: number
   remarket_message: string
   no_interest_months: number
+  ai_response_delay_seconds: number
 }
 
 const DEFAULTS: AgentCfg = {
-  agent_name: '',
   company: '',
   greeting: 'Olá! Meu nome é {nome_ia}, da {empresa}.',
   objective: 'Apresentar nosso serviço/projeto e marcar uma reunião com o responsável.',
@@ -25,6 +24,7 @@ const DEFAULTS: AgentCfg = {
   remarket_days: 1,
   remarket_message: 'E aí, conseguiu olhar a mensagem que enviei ontem? Posso te passar mais detalhes :)',
   no_interest_months: 6,
+  ai_response_delay_seconds: 0,
 }
 
 export function AgentConfig() {
@@ -42,7 +42,6 @@ export function AgentConfig() {
       const map: Record<string, unknown> = {}
       data.forEach((r) => { map[r.key] = r.value })
       setCfg({
-        agent_name: (map.agent_name as string) ?? DEFAULTS.agent_name,
         company: (map.company as string) ?? DEFAULTS.company,
         greeting: (map.greeting as string) ?? DEFAULTS.greeting,
         objective: (map.objective as string) ?? DEFAULTS.objective,
@@ -52,6 +51,7 @@ export function AgentConfig() {
         remarket_days: (map.remarket_days as number) ?? DEFAULTS.remarket_days,
         remarket_message: (map.remarket_message as string) ?? DEFAULTS.remarket_message,
         no_interest_months: (map.no_interest_months as number) ?? DEFAULTS.no_interest_months,
+        ai_response_delay_seconds: (map.ai_response_delay_seconds as number) ?? DEFAULTS.ai_response_delay_seconds,
       })
     }
   }
@@ -80,11 +80,6 @@ export function AgentConfig() {
         <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
           <h2 className="text-sm font-semibold text-secondary">Apresentação</h2>
           <div>
-            <label className={label}>Nome do agente</label>
-            <input value={cfg.agent_name} onChange={(e) => set('agent_name', e.target.value)} placeholder="Ex: Alex" className={input} />
-            <p className="text-[11px] text-faint mt-1">Quando definido, aparece em *negrito* acima de toda mensagem enviada pela IA.</p>
-          </div>
-          <div>
             <label className={label}>Sobre a empresa</label>
             <textarea value={cfg.company} onChange={(e) => set('company', e.target.value)} placeholder="Explique a empresa, o mercado, o que ela vende, diferenciais, público-alvo..." rows={4} className={input} />
             <p className="text-[11px] text-faint mt-1">A IA usa esse contexto para entender o negócio e vender melhor.</p>
@@ -104,6 +99,22 @@ export function AgentConfig() {
           <div>
             <label className={label}>Projeto / proposta (opcional)</label>
             <textarea value={cfg.project} onChange={(e) => set('project', e.target.value)} rows={3} className={input} />
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-secondary">Resposta da IA</h2>
+          <div>
+            <label className={label}>Delay de resposta da IA (segundos)</label>
+            <input
+              type="number"
+              min={0}
+              max={300}
+              value={cfg.ai_response_delay_seconds}
+              onChange={(e) => set('ai_response_delay_seconds', Math.max(0, Math.min(300, Number(e.target.value) || 0)))}
+              className={input}
+            />
+            <p className="text-[11px] text-faint mt-1">Aguarda esse tempo após a última mensagem para agrupar mensagens do cliente antes de responder.</p>
           </div>
         </section>
 

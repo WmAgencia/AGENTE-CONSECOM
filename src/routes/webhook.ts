@@ -54,8 +54,7 @@ import {
   loadLeadSequenceCompleteness,
   appendConversationTurn,
   loadAgentDirectives,
-  loadAgentName,
-  formatAgentSignature,
+  loadAiResponseDelaySeconds,
   updateLeadAnalytics,
   cancelLeadSendRuns,
   recordAgentOutcome,
@@ -72,7 +71,8 @@ import {
   planInbound,
 } from '../services/intent.classifier.js';
 import { computeLeadScore } from '../services/scoring.js';
-import { blockIfSequenceActive } from '../services/campaign.gate.js';
+import { blockIfSequenceActive, isLeadSequenceActive } from '../services/campaign.gate.js';
+import { InboundMessageDebouncer } from '../services/inbound.message.debouncer.js';
 
 const IDEMPOTENCY_MAX_ENTRIES = 1000;
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -152,6 +152,7 @@ function extractSecret(req: FastifyRequest): string | undefined {
 export function registerWebhookRoutes(app: FastifyInstance): void {
   const cache = new IdempotencyCache();
   let semaphore: Semaphore;
+  const delayedMessages = new InboundMessageDebouncer<Parameters<typeof processMessage>[0]>();
   try {
     semaphore = new Semaphore(getEnv().EVOLUTION_AGENT_CONCURRENCY);
   } catch {
@@ -395,7 +396,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     messageKeyId: string | undefined;
     pushName: string | undefined;
     instance?: string;
-  }): Promise<void> {
+  }, deferred = false): Promise<void> {
     const log = getLogger();
     const mockMode = isEvolutionMockMode();
     const fromJid = msg.from;
@@ -420,6 +421,10 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         log.info({ from: maskFrom(fromJid) }, '[LEAD][ERROR] Lead não encontrado para o número (inbound ignorado)');
         return;
       }
+      // O índice telefônico é cacheado; o controle de takeover precisa ser
+      // lido fresco para reagir imediatamente após o clique do operador.
+      const freshControl = await getLeadById(lead.id);
+      if (freshControl) lead = { ...lead, ai_control: freshControl.ai_control };
       if (!canAutoReply(lead.status)) {
         log.info(
           { leadId: lead.id, status: lead.status },
@@ -451,6 +456,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     const conversationId = `wa:${fromJid}`;
     const store = getConversationStore();
     const history = turnsToHistory(await store.get(conversationId));
+    const agentHistory = deferred && history.at(-1)?.role === 'user' ? history.slice(0, -1) : history;
     log.info(
       {
         conversationId,
@@ -470,11 +476,38 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       })
       .catch(() => {});
 
+    // O takeover é por lead e persistido no banco; não desliga a IA global.
+    if (lead.ai_control === 'human') {
+      try {
+        await store.appendUser(conversationId, msg.text);
+      } catch {}
+      await appendConversationTurn(lead.id, 'user', msg.text).catch(() => {});
+      log.info({ leadId: lead.id }, '[AI] conversa assumida por operador — resposta automática ignorada');
+      return;
+    }
+
     // --- Regra B: bloqueio da IA durante sequência de campanha ativa --------
     // Enquanto o lead tiver um run 'pending'/'running', a mensagem é salva mas
     // a IA NÃO é chamada nem envia resposta. Ao terminar a sequência (run
     // 'done') ou ela ser interrompida ('failed'), o portão libera.
-    if (await blockIfSequenceActive({ leadId: lead.id, conversationId, text: msg.text })) {
+    if (deferred
+      ? await isLeadSequenceActive(lead.id)
+      : await blockIfSequenceActive({ leadId: lead.id, conversationId, text: msg.text })) {
+      return;
+    }
+
+    const delaySeconds = deferred ? 0 : await loadAiResponseDelaySeconds();
+    if (delaySeconds > 0) {
+      try {
+        await store.appendUser(conversationId, msg.text);
+      } catch {}
+      await appendConversationTurn(lead.id, 'user', msg.text).catch(() => {});
+      delayedMessages.schedule(lead.id, msg, delaySeconds * 1000, (pending) => {
+        void processMessage(pending, true).catch((err) => {
+          log.error({ leadId: lead.id, errMessage: err instanceof Error ? err.message : 'unknown' }, '[AI] delayed processing crashed');
+        });
+      });
+      log.info({ leadId: lead.id, delaySeconds }, '[AI] mensagem agrupada — janela reiniciada');
       return;
     }
 
@@ -488,7 +521,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         task: msg.text,
         conversationId,
         source: 'whatsapp',
-        history,
+        history: agentHistory,
         directives: (await loadAgentDirectives()) ?? undefined,
         learnings: (await loadLearningsForPrompt()) ?? undefined,
         commercialMemory: (await loadCommercialMemoryForPrompt(memoryOwnerId)) ?? undefined,
@@ -561,9 +594,9 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
 
       // --- Persistência dos turnos (sem o marker de intenção) --------------
       await store.appendAssistant(conversationId, cleanReply);
-      await store.appendUser(conversationId, msg.text);
+      if (!deferred) await store.appendUser(conversationId, msg.text);
       if (lead.id) {
-        await appendConversationTurn(lead.id, 'user', msg.text).catch(() => {});
+        if (!deferred) await appendConversationTurn(lead.id, 'user', msg.text).catch(() => {});
         await appendConversationTurn(lead.id, 'assistant', cleanReply, agentResult.model).catch(() => {});
       }
 
@@ -586,8 +619,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       }
 
       // --- Envio da resposta (assinatura + limpa) ---------------------------
-      const agentName = await loadAgentName();
-      const finalText = formatAgentSignature(cleanReply || agentResult.result, agentName);
+      const finalText = cleanReply || agentResult.result;
       log.info({ messageKeyId: msg.messageKeyId }, '[AI] Resposta gerada');
       const send = await sendText({ to: fromJid, text: finalText, instance: msg.instance });
       if (!send.ok) {

@@ -20,8 +20,6 @@ import { extractBearerToken } from '../utils/auth.js';
 import { runAgentLoop } from '../services/agent.service.js';
 import {
   loadAgentDirectives,
-  loadAgentName,
-  formatAgentSignature,
 } from '../services/supabase.leads.js';
 import {
   getConversationStore,
@@ -171,12 +169,9 @@ export function registerAiRoutes(app: FastifyInstance): void {
       await store.appendAssistant(conversationId, result.result);
       touchActivity('chat');
 
-      const agentName = await loadAgentName();
-      const signed = formatAgentSignature(result.result, agentName);
-
       return reply.send({
         conversationId,
-        response: signed || result.result,
+        response: result.result,
         model: result.model,
         provider: PROVIDER,
         latencyMs: result.latencyMs,
@@ -255,7 +250,6 @@ export function registerAiRoutes(app: FastifyInstance): void {
       const mensagem = (msgMatch ? msgMatch[1].trim() : result.result.trim()).slice(0, 4000);
       const proximaEtapa = proxMatch ? proxMatch[1].trim().slice(0, 200) : 'Aguardar resposta';
 
-      const agentName = await loadAgentName();
       return reply.send({
         mode: 'simulation',
         simulationNotice: 'Modo de teste — nenhuma mensagem será enviada.',
@@ -267,7 +261,7 @@ export function registerAiRoutes(app: FastifyInstance): void {
         model: result.model,
         provider: PROVIDER,
         latencyMs: result.latencyMs,
-        signed: agentName ? formatAgentSignature(mensagem, agentName) : mensagem,
+        signed: mensagem,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'AI flow-test failed';
