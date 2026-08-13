@@ -103,7 +103,7 @@ export function ImportedLeadsView({
           {connections.filter((c) => c.status === 'connected').map((connection) => (
             <label key={connection.id} className="flex items-center gap-1 px-2 py-1 rounded border border-line-2">
               <input type="checkbox" checked={connectionIds.includes(connection.id)} onChange={() => toggleConnection(connection.id)} />
-              {connection.whatsapp_name ?? connection.phone_number ?? connection.instance_name}
+              {connection.display_name ?? connection.whatsapp_name ?? connection.phone_number ?? connection.instance_name}
             </label>
           ))}
           {connections.filter((c) => c.status === 'connected').length === 0 && <span>Nenhuma conexão conectada selecionada.</span>}

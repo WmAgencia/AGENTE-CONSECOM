@@ -45,6 +45,7 @@ interface Conn {
   instance_name: string
   phone_number: string | null
   whatsapp_name: string | null
+  display_name: string | null
   status: ConnStatus
   qr_code: string | null
   last_sync_at: string | null
@@ -218,6 +219,19 @@ export function ConnectionsPage() {
     }
   }
 
+  async function saveDisplayName(c: Conn, value: string) {
+    const displayName = value.trim() || null
+    const { error } = await supabase
+      .from('whatsapp_connections')
+      .update({ display_name: displayName })
+      .eq('id', c.id)
+    if (error) {
+      window.alert('Não foi possível salvar o nome desta conexão.')
+      return
+    }
+    setConns((items) => items.map((item) => item.id === c.id ? { ...item, display_name: displayName } : item))
+  }
+
   async function loadGroups() {
     if (!sessionUser) return
     setGroupError(null)
@@ -370,6 +384,17 @@ export function ConnectionsPage() {
                       <div>
                         <span className={label}>Nome do WhatsApp</span>
                         <span className="text-fg">{c.whatsapp_name ?? '—'}</span>
+                      </div>
+                      <div>
+                        <label className={label} htmlFor={`display-name-${c.id}`}>Nome na operação</label>
+                        <input
+                          id={`display-name-${c.id}`}
+                          defaultValue={c.display_name ?? ''}
+                          placeholder="Ex.: João"
+                          maxLength={80}
+                          className="w-full rounded-md border border-line-2 bg-subtle-2 px-2 py-1 text-sm text-fg"
+                          onBlur={(event) => void saveDisplayName(c, event.currentTarget.value)}
+                        />
                       </div>
                       {c.last_sync_at && (
                         <div>

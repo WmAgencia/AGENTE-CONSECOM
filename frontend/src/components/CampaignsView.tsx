@@ -141,7 +141,7 @@ async function loadRuns() {
     const { data, error } = await supabase
       .from('send_runs')
       .select('*, campaign:campaigns(name), lead:leads(id,name,phone,status)')
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: true })
       .limit(500)
     if (!error && data) {
       setRunsByCampaign(groupRunsByCampaign(data))
@@ -154,6 +154,10 @@ async function loadRuns() {
       const arr = map[r.campaign_id] ?? []
       arr.push(r)
       map[r.campaign_id] = arr
+    }
+    for (const arr of Object.values(map)) {
+      arr.sort((a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER)
+        || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
     }
     return map
   }
@@ -589,7 +593,7 @@ function CampaignCard({
               <label key={connection.id} className="flex items-center gap-1.5 rounded border border-line-2 px-2 py-1 text-[11px] text-secondary cursor-pointer">
                 <input type="checkbox" checked={checked} onChange={() => onSetConnections(checked ? (campaign.connection_ids ?? []).filter((id) => id !== connection.id) : [...(campaign.connection_ids ?? []), connection.id])} />
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                {connection.whatsapp_name ?? connection.phone_number ?? connection.instance_name}
+                {connection.display_name ?? connection.whatsapp_name ?? connection.phone_number ?? connection.instance_name}
               </label>
             )
           })}

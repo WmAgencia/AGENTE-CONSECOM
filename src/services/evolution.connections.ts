@@ -114,6 +114,7 @@ export interface WhatsAppConnection {
   instance_name: string;
   phone_number: string | null;
   whatsapp_name: string | null;
+  display_name: string | null;
   status: 'pending' | 'connecting' | 'connected' | 'disconnected' | 'error';
   evolution_instance_id: string | null;
   qr_code: string | null;
@@ -580,6 +581,7 @@ export async function disconnectInstance(
       qr_code: null,
       phone_number: null,
       whatsapp_name: null,
+      display_name: null,
       evolution_instance_id: null,
       last_sync_at: new Date().toISOString(),
     } as const;

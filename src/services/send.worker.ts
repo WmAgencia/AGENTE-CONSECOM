@@ -72,6 +72,7 @@ interface SendRunRow {
   status: 'pending' | 'running' | 'done' | 'failed';
   current_position: number;
   next_send_at: string | null;
+  position?: number | null;
   connection_id?: string | null;
   connection_instance?: string | null;
 }
@@ -162,14 +163,20 @@ export class SendWorker {
   }
 
   private async getCampaignRuns(campaignId: string): Promise<SendRunRow[]> {
-    // Ordenação da fila (Regra A): por ordem de ENTRADA (created_at). O
-    // primeiro 'running' é o lead em disparo; sem nenhum, o primeiro 'pending'
-    // (mais antigo) é o próximo a iniciar. current_position/next_send_at são
-    // por-lead e não mais usados para intercalar rodadas.
-    const r = await fetch(
-      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at,connection_id,connection_instance&campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.("pending","running")&order=created_at.asc,id.asc`,
+    // Ordenação persistente por campanha. Os fallbacks mantêm compatibilidade
+    // com rows criadas antes da migração da posição.
+    const query = `campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.("pending","running")`;
+    let r = await fetch(
+      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at,position,connection_id,connection_instance&${query}&order=position.asc,created_at.asc,id.asc`,
       { headers: this.headers() },
     );
+    if (!r.ok) {
+      // Permite deploy gradual enquanto a v21 ainda aguarda aplicação manual.
+      r = await fetch(
+        `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at,connection_id,connection_instance&${query}&order=created_at.asc,id.asc`,
+        { headers: this.headers() },
+      );
+    }
     if (!r.ok) return [];
     return (await r.json()) as SendRunRow[];
   }
@@ -486,8 +493,9 @@ private async getConnectionInstance(connectionId?: string | null): Promise<strin
       return;
     }
 
-const assignedInstance = run.connection_instance || await this.getConnectionInstance(run.connection_id);
-    const campaignInstance = await this.getCampaignInstance(run.campaign_id);
+    const assignedInstance = run.connection_instance || await this.getConnectionInstance(run.connection_id);
+    const hasSelectedConnections = await this.campaignHasConnections(run.campaign_id);
+    const campaignInstance = hasSelectedConnections ? null : await this.getCampaignInstance(run.campaign_id);
     const sendInstance = assignedInstance || campaignInstance || undefined;
 
     // Disponibilidade da conexão atribuída: se caiu, NÃO aborta o lead —
@@ -863,21 +871,8 @@ const assignedInstance = run.connection_instance || await this.getConnectionInst
           await this.patchCampaignStatus(camp.id, 'em_progresso');
           log.info({ campaignId: camp.id }, 'send-worker: conexao(ões) disponíveis novamente — campanha retomada (em_progresso)');
         }
-        // Reatribui runs pendentes cuja conexão caiu para conexões vivas.
-        for (const run of runs) {
-          if (run.status !== 'pending') continue;
-          if (!run.connection_id) {
-            await this.reassignRunConnection(run, available);
-            continue;
-          }
-          const connStillLive = available.find((a) => a.id === run.connection_id);
-          if (!connStillLive && run.connection_instance) {
-            this.onConnectionDown(run.connection_instance);
-            await this.reassignRunConnection(run, available);
-          }
-        }
         // EXECUÇÃO SEQUENCIAL POR LEAD (Regra A): a campanha dispara UM lead
-        // por vez, em ordem de entrada (created_at). O lead ativo é o primeiro
+        // por vez, na posição persistida. O lead ativo é o primeiro
         // run 'running' (em andamento); sem nenhum, o primeiro 'pending'
         // (mais antigo) inicia a própria sequência. Os demais leads aguardam:
         //   L1 M1 -> (delay L1 M1) L1 M2 -> ... -> L1 Mn -> L2 M1 -> ...
@@ -895,6 +890,10 @@ const assignedInstance = run.connection_instance || await this.getConnectionInst
         this.processingRuns.add(active.id);
         try {
           if (active.status === 'pending') {
+            // A atribuição acontece somente quando a sequência começa. Assim,
+            // alterar a seleção também corrige runs antigos sem trocar a
+            // conexão de um lead que já está running.
+            if (campaignHasConnections) await this.reassignRunConnection(active, available);
             // Início do disparo do lead: marca 'running' imediatamente para
             // fechar a janela do portão da IA (só o lead em disparo fica
             // bloqueado; 'pending' na fila não bloqueia).

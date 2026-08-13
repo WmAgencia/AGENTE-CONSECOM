@@ -109,6 +109,7 @@ export interface WhatsAppConnection {
   instance_name: string
   phone_number: string | null
   whatsapp_name: string | null
+  display_name: string | null
   status: WhatsAppConnStatus
   qr_code: string | null
   last_sync_at: string | null
@@ -146,6 +147,7 @@ export interface SendRun {
   last_sent_at: string | null
   fail_reason?: string | null
   created_at: string
+  position?: number | null
   campaign?: Pick<Campaign, 'id' | 'name'>
   lead?: Pick<Lead, 'id' | 'name' | 'phone' | 'status'>
   connection_id?: string | null

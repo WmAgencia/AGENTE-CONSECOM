@@ -37,6 +37,7 @@ interface Run {
   status: string
   current_position: number
   next_send_at: string | null
+  position?: number | null
   created_at: string
   connection_id?: string | null
   connection_instance?: string | null
@@ -155,11 +156,12 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
   if (url.includes('/rest/v1/send_runs')) {
     if (method === 'GET') {
       const campId = eq('campaign_id')
-      // Espelha a ordenação do worker (Regra A): ordem de ENTRADA (created_at,
-      // depois id). current_position/next_send_at são por-lead.
+      // Espelha a ordenação do worker: posição persistida por campanha, com
+      // fallback para fixtures antigas sem position.
       const out = [...store.runs.values()]
         .filter((r) => r.campaign_id === campId && (r.status === 'pending' || r.status === 'running'))
-        .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+        .sort((a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER)
+          || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
       return jsonRes(out)
     }
     if (method === 'PATCH') {
@@ -284,6 +286,7 @@ function enqueue(lead: Lead, createdMs: number): Run {
     current_position: 0,
     // next_send_at no passado: o 1º run da fila fica elegível já no 1º tick.
     next_send_at: '2000-01-01T00:00:00.000Z',
+    position: store.runs.size,
     created_at: at,
   }
   store.runs.set(r.id, r)
@@ -948,4 +951,24 @@ test('P3) cliques repetidos de retomar NÃO duplicam (estado idempotente + worke
   assert.equal(store.leads.get(l2.id)!.status, 'enviado')
   assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
   assert.equal(store.finalizeSeq.length, 1)
+})
+
+test('43) fila usa position da campanha, não created_at global', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  const l3 = setupLead('Lead 3', '11999990003')
+  resetBoard(1, 0, l1, l2, l3)
+  store.runs.get(`run-${l1.id}`)!.position = 2
+  store.runs.get(`run-${l2.id}`)!.position = 0
+  store.runs.get(`run-${l3.id}`)!.position = 1
+  store.runs.get(`run-${l1.id}`)!.created_at = '2000-01-01T00:00:00.000Z'
+  store.runs.get(`run-${l3.id}`)!.created_at = '2030-01-01T00:00:00.000Z'
+
+  const w = await newWorker()
+  await runTicks(w, 3)
+  assert.deepEqual(store.sent.map((s) => s.to), [
+    '5511999990002',
+    '5511999990003',
+    '5511999990001',
+  ])
 })
