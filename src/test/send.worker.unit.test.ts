@@ -824,6 +824,103 @@ test('40) envio falha com a conexão CAÍDA => reatribuído para conexão viva, 
   assert.equal(store.leads.get(l1.id)!.status, 'enviado')
 })
 
+test('42) ROUND-ROBIN real por LEAD: 3 conexões conectadas, 6 leads x 3 mensagens — sequência inteira na mesma conexão, rotacionando conn-a/b/c', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  const l3 = setupLead('Lead 3', '11999990003')
+  const l4 = setupLead('Lead 4', '11999990004')
+  const l5 = setupLead('Lead 5', '11999990005')
+  const l6 = setupLead('Lead 6', '11999990006')
+  resetBoard(3, 0, l1, l2, l3, l4, l5, l6)
+  addConnection('conn-a', 'instA', 'connected')
+  addConnection('conn-b', 'instB', 'connected')
+  addConnection('conn-c', 'instC', 'connected')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a', 'conn-b', 'conn-c']
+
+  const w = await newWorker()
+  // Sequência completa de cada lead (3 mensagens). Sem intervalos: um tick por msg.
+  await runTicks(w, 40)
+
+  const sentByPhone = (phone: string) => store.sent.filter((s) => s.to === phone)
+
+  // ROTATION POR LEAD: cada lead envia TODA a sequência pela MESMA conexão.
+  assert.equal(sentByPhone('5511999990001').every((s) => s.instance === 'instA'), true, 'L1 toda em instA')
+  assert.equal(sentByPhone('5511999990002').every((s) => s.instance === 'instB'), true, 'L2 toda em instB')
+  assert.equal(sentByPhone('5511999990003').every((s) => s.instance === 'instC'), true, 'L3 toda em instC')
+  assert.equal(sentByPhone('5511999990004').every((s) => s.instance === 'instA'), true, 'L4 toda em instA')
+  assert.equal(sentByPhone('5511999990005').every((s) => s.instance === 'instB'), true, 'L5 toda em instB')
+  assert.equal(sentByPhone('5511999990006').every((s) => s.instance === 'instC'), true, 'L6 toda em instC')
+
+  // 3 mensagens por lead, sem duplicação, todos concluídos.
+  for (const phone of ['5511999990001', '5511999990002', '5511999990003', '5511999990004', '5511999990005', '5511999990006']) {
+    assert.equal(sentByPhone(phone).length, 3, `${phone}: 3 mensagens`)
+  }
+  for (const l of [l1, l2, l3, l4, l5, l6]) assert.equal(store.leads.get(l.id)!.status, 'enviado')
+  assert.equal(store.campaigns.get('c1')!.status, 'finalizada')
+})
+
+test('42b) round-robin IGNORA conexão caída: conn-b desconectada => L1 a, L2 c, L3 a, L4 c, L5 a, L6 c', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  const l2 = setupLead('Lead 2', '11999990002')
+  const l3 = setupLead('Lead 3', '11999990003')
+  const l4 = setupLead('Lead 4', '11999990004')
+  const l5 = setupLead('Lead 5', '11999990005')
+  const l6 = setupLead('Lead 6', '11999990006')
+  resetBoard(3, 0, l1, l2, l3, l4, l5, l6)
+  addConnection('conn-a', 'instA', 'connected')
+  addConnection('conn-b', 'instB', 'disconnected') // fora do pool
+  addConnection('conn-c', 'instC', 'connected')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a', 'conn-b', 'conn-c']
+
+  const w = await newWorker()
+  await runTicks(w, 40)
+
+  const first = (phone: string) => store.sent.filter((s) => s.to === phone)[0]
+  assert.equal(first('5511999990001').instance, 'instA')
+  assert.equal(first('5511999990002').instance, 'instC', 'conn-b ignorada')
+  assert.equal(first('5511999990003').instance, 'instA')
+  assert.equal(first('5511999990004').instance, 'instC')
+  assert.equal(first('5511999990005').instance, 'instA')
+  assert.equal(first('5511999990006').instance, 'instC')
+  for (const phone of ['5511999990001', '5511999990002', '5511999990003', '5511999990004', '5511999990005', '5511999990006']) {
+    assert.equal(store.sent.filter((s) => s.to === phone).length, 3)
+  }
+})
+
+test('42c) lead migra de conexão no MEIO da sequência SEM reiniciar nem duplicar (WPP cai pós-M1)', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  resetBoard(3, 0, l1)
+  addConnection('conn-a', 'instA', 'connected')
+  addConnection('conn-b', 'instB', 'connected')
+  store.campaigns.get('c1')!.connection_ids = ['conn-a', 'conn-b']
+
+  const w = await newWorker()
+  await w.tick() // L1 M1 -> instA
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990001').map((s) => [s.text, s.instance]), [['M1', 'instA']])
+
+  // instA cai no meio da sequência.
+  store.connections.get('conn-a')!.status = 'disconnected'
+  makeDue(l1.id)
+  await w.tick() // reatribui (ainda não envia M2)
+  assert.equal(store.runs.get(`run-${l1.id}`)!.connection_instance, 'instB')
+  assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 1, 'posição preservada, sem reiniciar M1')
+
+  makeDue(l1.id)
+  await w.tick() // M2 -> instB
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990001').map((s) => [s.text, s.instance]), [
+    ['M1', 'instA'],
+    ['M2', 'instB'],
+  ])
+  makeDue(l1.id)
+  await w.tick() // M3 -> instB (continua na viva)
+  assert.deepEqual(store.sent.filter((s) => s.to === '5511999990001').map((s) => [s.text, s.instance]), [
+    ['M1', 'instA'],
+    ['M2', 'instB'],
+    ['M3', 'instB'],
+  ])
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado', 'lead conclui normalmente')
+})
+
 test('P3) cliques repetidos de retomar NÃO duplicam (estado idempotente + worker único)', async () => {
   const l1 = setupLead('Lead 1', '11999990001')
   const l2 = setupLead('Lead 2', '11999990002')

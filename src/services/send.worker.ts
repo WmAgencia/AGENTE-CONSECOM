@@ -212,7 +212,13 @@ private async getConnectionInstance(connectionId?: string | null): Promise<strin
     );
     if (!r.ok) return [];
     const all = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
-    return all.filter((c) => c.status === 'connected');
+    // Ordena na mesma ordem de `connection_ids` da campanha para que o
+    // round-robin percorra as conexões na ordem em que o usuário as escolheu
+    // (PostgREST não garante ordem no filtro `or`).
+    const order = new Map(ids.map((id, i) => [id, i]));
+    return all
+      .filter((c) => c.status === 'connected')
+      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
   }
 
   /** Verifica se a instância está 'connected' agora. */
@@ -230,6 +236,11 @@ private async getConnectionInstance(connectionId?: string | null): Promise<strin
   private async reassignRunConnection(run: SendRunRow, available: Array<{ id: string; instance_name: string }>): Promise<void> {
     if (available.length === 0) return;
     const conn = this.pickAvailableConnection(run.campaign_id, available);
+    // Atualiza o objeto em memória ANTES do PATCH: processRun() usa o mesmo
+    // objeto `run` neste tick e, se ficar stale (connection_id null), cai no
+    // fallback legado (campaigns.whatsapp_instance) enviando TUDO por UM WhatsApp.
+    run.connection_id = conn.id;
+    run.connection_instance = conn.instance_name;
     await this.patchSendRun(run.id, { connection_id: conn.id, connection_instance: conn.instance_name });
   }
 
@@ -256,6 +267,8 @@ private async getConnectionInstance(connectionId?: string | null): Promise<strin
     const live = await this.getAvailableCampaignConnections(run.campaign_id);
     if (live.length === 0) return null;
     const conn = this.pickAvailableConnection(run.campaign_id, live);
+    run.connection_id = conn.id;
+    run.connection_instance = conn.instance_name;
     await this.patchSendRun(run.id, { connection_id: conn.id, connection_instance: conn.instance_name });
     return conn.instance_name;
   }
