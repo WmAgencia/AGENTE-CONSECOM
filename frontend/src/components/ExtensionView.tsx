@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 const BACKEND = import.meta.env.VITE_BACKEND_URL as string | undefined
 const API = BACKEND ?? 'https://consecom-backend-production.up.railway.app'
 
-export const EXTENSION_VERSION = '1.3.0'
+export const EXTENSION_VERSION = '1.4.3'
 export const EXTENSION_ZIP_URL = '/downloads/consecom-extension.zip'
 
 interface ExtensionDownload {
@@ -75,12 +75,12 @@ export function ExtensionView() {
           Baixar extensão (.zip)
         </a>
 
-        <button
-          onClick={() => void copySessionToken()}
-          className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border border-line-2 text-secondary hover:bg-subtle transition"
-        >
-          Copiar token da sessão para a extensão
-        </button>
+         <button
+           onClick={() => void copySessionToken()}
+           className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border border-line-2 text-secondary hover:bg-subtle transition"
+         >
+           Copiar token da sessão (alternativo)
+         </button>
         {tokenStatus && <p className="mt-2 text-xs text-emerald-300">{tokenStatus}</p>}
 
         {backendError && (
@@ -93,8 +93,8 @@ export function ExtensionView() {
           <li>1. Baixe e descompacte o arquivo.</li>
           <li>2. Abra <span className="text-fg">chrome://extensions</span> e ative o <span className="text-fg">modo de desenvolvedor</span>.</li>
           <li>3. Clique em "Carregar sem compactação" e selecione a pasta descompactada.</li>
-          <li>4. Clique em "Copiar token da sessão" acima e cole no popup da extensão (campo <span className="text-fg">Access token</span>).</li>
-          <li>5. Abra o Google Maps, faça uma busca, clique em <span className="text-fg">PROSPECTAR</span>, ajuste os filtros e importe.</li>
+           <li>4. Abra o Vyntra em uma aba, abra o popup da extensão e clique em <span className="text-fg">Sincronizar sessão do Vyntra</span>.</li>
+           <li>5. Abra o Google Maps, faça uma busca, clique em <span className="text-fg">PROSPECTAR</span>, ajuste os filtros e importe.</li>
         </ol>
       </div>
     </div>
