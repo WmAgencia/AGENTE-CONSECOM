@@ -100,6 +100,31 @@ export function registerContactsRoutes(app: FastifyInstance): void {
     return resolveSupabaseUser(bearer);
   }
 
+  app.post('/api/contacts/refresh-session', async (req, reply) => {
+    const s = sup();
+    const refreshToken = (req.body as { refreshToken?: unknown } | null)?.refreshToken;
+    if (!s || typeof refreshToken !== 'string' || refreshToken.length < 20) {
+      return reply.status(400).send({ error: 'refresh_token_required' });
+    }
+    const r = await fetch(`${s.url}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { ...headers(s.key, true) },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    const body = await r.text();
+    if (!r.ok) {
+      log.warn({ status: r.status, body: body.slice(0, 300) }, 'contacts: refresh session failed');
+      return reply.status(401).send({ error: 'refresh_failed', message: 'Sessão expirada. Sincronize novamente a sessão do Vyntra.' });
+    }
+    try {
+      const data = JSON.parse(body) as { access_token?: string; refresh_token?: string; expires_in?: number };
+      if (!data.access_token || !data.refresh_token) return reply.status(502).send({ error: 'refresh_invalid_response' });
+      return reply.send({ accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in });
+    } catch {
+      return reply.status(502).send({ error: 'refresh_invalid_response' });
+    }
+  });
+
   app.get('/api/contacts/lists', async (req, reply) => {
     const s = sup();
     if (!s) return reply.status(503).send({ error: 'server_misconfigured', statusCode: 503 });

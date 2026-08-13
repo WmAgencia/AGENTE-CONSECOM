@@ -1,4 +1,4 @@
-import { getClient, type StoredConfig } from './config'
+import { getClient, saveConfig, type StoredConfig } from './config'
 import { normalizeBrazilianPhone } from './phone'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AuthError, PostgrestError } from '@supabase/supabase-js'
@@ -114,6 +114,30 @@ async function dbSupportsV8Columns(client: SupabaseClient): Promise<boolean> {
 
 const CONTACTS_API = 'https://consecom-backend-production.up.railway.app'
 
+async function refreshBackendSession(cfg: StoredConfig): Promise<string | null> {
+  if (!cfg.refreshToken) return cfg.accessToken ?? null
+  try {
+    const response = await fetch(`${CONTACTS_API}/api/contacts/refresh-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: cfg.refreshToken }),
+    })
+    const body = await response.text()
+    const data = body ? JSON.parse(body) as { accessToken?: string; refreshToken?: string; message?: string } : {}
+    if (!response.ok || !data.accessToken || !data.refreshToken) {
+      console.error('[IMPORT] Sessão não pôde ser renovada:', { status: response.status, message: data.message ?? body.slice(0, 300) })
+      return null
+    }
+    cfg.accessToken = data.accessToken
+    cfg.refreshToken = data.refreshToken
+    await saveConfig(cfg)
+    return data.accessToken
+  } catch (error) {
+    console.error('[IMPORT] Erro ao renovar sessão:', { message: error instanceof Error ? error.message : String(error) })
+    return null
+  }
+}
+
 /** Usa o backend quando a chave anon local foi revogada/rotacionada. */
 async function importThroughBackend(
   cfg: StoredConfig,
@@ -122,6 +146,9 @@ async function importThroughBackend(
   opts?: ImportOptions,
 ): Promise<ImportResult | null> {
   if (!cfg.accessToken) return null
+  if (cfg.refreshToken && !(await refreshBackendSession(cfg))) {
+    return { ok: 0, failed: leads.length, firstError: 'Sessão Vyntra expirada. Clique em “Sincronizar sessão do Vyntra” na extensão.', errors: [] }
+  }
   const endpoint = `${CONTACTS_API}/api/contacts/import`
   try {
     const response = await fetch(endpoint, {

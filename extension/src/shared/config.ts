@@ -5,6 +5,7 @@ export interface StoredConfig {
   anonKey: string
   /** Access token da sessão autenticada no painel Vyntra. */
   accessToken?: string
+  refreshToken?: string
 }
 
 const CONFIG_KEY = 'consecom-config-v2'
@@ -22,6 +23,7 @@ export async function getStoredConfig(): Promise<StoredConfig> {
     supabaseUrl: cfg.supabaseUrl || DEFAULT_CONFIG.supabaseUrl,
     anonKey: cfg.anonKey || DEFAULT_CONFIG.anonKey,
     accessToken: cfg.accessToken || undefined,
+    refreshToken: cfg.refreshToken || undefined,
   }
   console.log('[consecom] config usada -> url:', result.supabaseUrl, '| key tail:', result.anonKey.slice(-16))
   return result

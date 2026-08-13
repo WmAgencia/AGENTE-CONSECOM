@@ -11,6 +11,8 @@ export default defineManifest({
     'https://maps.google.com/*',
     'https://*.supabase.co/*',
     'https://consecom-backend-production.up.railway.app/*',
+    'https://frontend-seven-sooty-78.vercel.app/*',
+    'https://frontend-consecom.vercel.app/*',
   ],
   action: {
     default_title: 'Vyntra Prospector',
@@ -30,6 +32,14 @@ export default defineManifest({
         'https://maps.google.com/*',
       ],
       js: ['src/content/index.ts'],
+      run_at: 'document_idle',
+    },
+    {
+      matches: [
+        'https://frontend-seven-sooty-78.vercel.app/*',
+        'https://frontend-consecom.vercel.app/*',
+      ],
+      js: ['src/content/vyntra-session.ts'],
       run_at: 'document_idle',
     },
   ],

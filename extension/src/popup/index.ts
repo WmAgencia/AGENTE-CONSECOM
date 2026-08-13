@@ -26,6 +26,20 @@ document.getElementById('save')?.addEventListener('click', async () => {
   if (s) s.textContent = 'Salvo ✓'
 })
 
+document.getElementById('sync-session')?.addEventListener('click', async () => {
+  const status = document.getElementById('status')
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.id) return
+  const result = await chrome.tabs.sendMessage(tab.id, { type: 'consecom:request-session' }).catch(() => null) as { accessToken?: string; refreshToken?: string; error?: string } | null
+  if (!result?.accessToken || !result.refreshToken) {
+    if (status) status.textContent = 'Abra o Vyntra em uma aba e tente novamente.'
+    return
+  }
+  const cfg = await getStoredConfig()
+  await saveConfig({ ...cfg, accessToken: result.accessToken, refreshToken: result.refreshToken })
+  if (status) status.textContent = 'Sessão sincronizada ✓'
+})
+
 document.getElementById('open')?.addEventListener('click', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (!tab?.id) return
