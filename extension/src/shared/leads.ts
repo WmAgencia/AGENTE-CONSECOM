@@ -140,8 +140,21 @@ export async function importLeads(
   // Tratamento best-effort: se capture_sessions INSERT falhar (ex.: RLS sem
   // policy anon_insert, ou tabela sem user_id), seguimos com sessionId=null.
   // Os leads ainda são importados — apenas sem agrupamento por sessão.
-  let sessionId: string | null = null
+let sessionId: string | null = null
   if (leads.length > 0) {
+    // Reset da lista temporária de Importados: arquivar (distributed) leads
+    // antigos 'imported' do mesmo owner que ainda não foram distribuídos,
+    // para que a nova sessão não se misture com a anterior. Histórico
+    // (distributed/blocked) permanece intacto.
+    try {
+      await client
+        .from('leads')
+        .update({ import_state: 'distributed', updated_at: new Date().toISOString() })
+        .eq('owner_user_id', authData.user.id)
+        .eq('import_state', 'imported')
+    } catch {
+      // best-effort: se a coluna não existir (migration pendente), ignora.
+    }
     const sessInsert: Record<string, unknown> = { imported_by: 'extension' }
       if (supportsV8) sessInsert.user_id = opts?.userId ?? authData.user.id
     const { data, error } = await client.from('capture_sessions').insert(sessInsert).select('id').single()

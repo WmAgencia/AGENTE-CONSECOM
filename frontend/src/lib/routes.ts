@@ -58,7 +58,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'kanban', label: 'Kanban', icon: SquareKanban, path: TAB_PATHS.kanban },
   { key: 'campanhas', label: 'Campanhas', icon: Megaphone, path: TAB_PATHS.campanhas },
   { key: 'agenda', label: 'Agenda', icon: CalendarDays, path: TAB_PATHS.agenda },
-  { key: 'leads', label: 'Leads', icon: Users, path: TAB_PATHS.leads },
+  { key: 'leads', label: 'Histórico de Leads', icon: Users, path: TAB_PATHS.leads },
   { key: 'importados', label: 'Importados', icon: Users, path: TAB_PATHS.importados },
   { key: 'contatos', label: 'Contatos', icon: ContactRound, path: TAB_PATHS.contatos },
   { key: 'ia', label: 'Central da IA', icon: Bot, path: TAB_PATHS.ia },
