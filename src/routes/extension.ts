@@ -88,6 +88,26 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
 
     const parsed = downloadBodySchema.safeParse(req.body);
     if (!parsed.success) {
+      const raw = req.body as unknown;
+      const bodyType = raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw;
+      const keys =
+        raw && typeof raw === 'object' && !Array.isArray(raw)
+          ? Object.keys(raw as Record<string, unknown>)
+          : [];
+      const rt =
+        raw && typeof raw === 'object' && !Array.isArray(raw)
+          ? (raw as Record<string, unknown>).refreshToken
+          : undefined;
+      log.warn(
+        {
+          bodyType,
+          keys,
+          refreshTokenType: typeof rt,
+          refreshTokenLength: typeof rt === 'string' ? rt.length : -1,
+          issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), code: i.code })),
+        },
+        'extension: download body validation failed',
+      );
       return reply.status(400).send({
         error: 'validation_error',
         message: 'refreshToken inválido ou ausente',
