@@ -4,6 +4,7 @@ import { supabase, type Campaign, type QueueMessage, type Lead, type SendRun, ty
 import { SequenceEditor } from './SequenceEditor'
 import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
 import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDateTime } from '../lib/month'
+import { subscribeConnectionAlerts } from '../lib/connectionAlerts'
 
 export function CampaignsView({ leads }: { leads: Lead[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -121,6 +122,12 @@ export function CampaignsView({ leads }: { leads: Lead[] }) {
   useEffect(() => {
     void loadConnections()
   }, [])
+
+  // Alerta sonoro quando uma conexão cai (config centralizada em lib/connectionAlerts).
+  useEffect(() => {
+    const stop = subscribeConnectionAlerts(() => connections)
+    return stop
+  }, [connections])
 
   async function setCampaignInstance(c: Campaign, instanceName: string | null) {
     const { error } = await supabase

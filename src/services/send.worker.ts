@@ -123,6 +123,10 @@ export class SendWorker {
   // Anti-spam da Evolution: rate limit por minuto + jitter entre envios.
   private readonly spam = new SpamProtection();
 
+  // Conexões atualmente indisponíveis (instance_name): o worker pula envios
+  // por essas conexões sem abortar o lead, e remove daqui quando voltam.
+  private readonly downConnections = new Map<string, number>();
+
   constructor() {
     const c = getSupabaseProspeccaoConfig();
     this.url = c.url;
@@ -178,7 +182,7 @@ export class SendWorker {
     return rows[0]?.whatsapp_instance ?? null;
   }
 
-  private async getConnectionInstance(connectionId?: string | null): Promise<string | null> {
+private async getConnectionInstance(connectionId?: string | null): Promise<string | null> {
     if (!connectionId) return null;
     const r = await fetch(
       `${this.url}/rest/v1/whatsapp_connections?select=instance_name&id=eq.${encodeURIComponent(connectionId)}&limit=1`,
@@ -187,6 +191,78 @@ export class SendWorker {
     if (!r.ok) return null;
     const rows = (await r.json()) as Array<{ instance_name: string | null }>;
     return rows[0]?.instance_name ?? null;
+  }
+
+  /** Lista as conexões disponíveis da campanha (connection_ids filtradas por status 'connected'). */
+  private async getAvailableCampaignConnections(campaignId: string): Promise<Array<{ id: string; instance_name: string }>> {
+    const cr = await fetch(
+      `${this.url}/rest/v1/campaigns?select=connection_ids&id=eq.${encodeURIComponent(campaignId)}`,
+      { headers: this.headers() },
+    );
+    if (!cr.ok) return [];
+    const rows = (await cr.json()) as Array<{ connection_ids: string[] | null }>;
+    const ids = rows[0]?.connection_ids ?? [];
+    if (ids.length === 0) return [];
+    const orFilter = ids.map((id) => `id.eq.${id}`).join(',');
+    const r = await fetch(
+      `${this.url}/rest/v1/whatsapp_connections?select=id,instance_name,status&or=(${orFilter})`,
+      { headers: this.headers() },
+    );
+    if (!r.ok) return [];
+    const all = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
+    return all.filter((c) => c.status === 'connected');
+  }
+
+  /** Verifica se a instância está 'connected' agora. */
+  private async isInstanceAvailable(instance: string): Promise<boolean> {
+    const r = await fetch(
+      `${this.url}/rest/v1/whatsapp_connections?select=status&instance_name=eq.${encodeURIComponent(instance)}&limit=1`,
+      { headers: this.headers() },
+    );
+    if (!r.ok) return false;
+    const rows = (await r.json()) as Array<{ status: string }>;
+    return rows[0]?.status === 'connected';
+  }
+
+  /** Reatribui a conexão de um run pendente entre as conexões disponíveis. */
+  private async reassignRunConnection(run: SendRunRow, available: Array<{ id: string; instance_name: string }>): Promise<void> {
+    if (available.length === 0) return;
+    const idx = Math.abs(this.hashRunId(run.id)) % available.length;
+    const conn = available[idx];
+    await this.patchSendRun(run.id, { connection_id: conn.id, connection_instance: conn.instance_name });
+  }
+
+  private hashRunId(id: string): number {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+    return h;
+  }
+
+  /** Retorna true se a campanha tem connection_ids configuradas (mesmo que todas caiam). */
+  private async campaignHasConnections(campaignId: string): Promise<boolean> {
+    const r = await fetch(
+      `${this.url}/rest/v1/campaigns?select=connection_ids&id=eq.${encodeURIComponent(campaignId)}`,
+      { headers: this.headers() },
+    );
+    if (!r.ok) return false;
+    const rows = (await r.json()) as Array<{ connection_ids: string[] | null }>;
+    return (rows[0]?.connection_ids ?? []).length > 0;
+  }
+
+  /** Registra que uma conexão caiu (uma vez por ocorrência; evita alerta repetido). */
+  private onConnectionDown(instance: string): void {
+    const log = getLogger();
+    if (this.downConnections.has(instance)) return;
+    this.downConnections.set(instance, Date.now());
+    log.warn({ instance }, 'send-worker: conexao indisponivel — removida temporariamente do ciclo de distribuicao');
+  }
+
+  /** Registra que uma conexão voltou. */
+  private onConnectionBack(instance: string): void {
+    const log = getLogger();
+    if (!this.downConnections.has(instance)) return;
+    this.downConnections.delete(instance);
+    log.info({ instance }, 'send-worker: conexao voltou — reentrou no ciclo de distribuicao');
   }
 
   /** Encerra de verdade a campanha (status finalizada + finished_at). */
@@ -361,9 +437,33 @@ export class SendWorker {
       return;
     }
 
-    const assignedInstance = run.connection_instance || await this.getConnectionInstance(run.connection_id);
+const assignedInstance = run.connection_instance || await this.getConnectionInstance(run.connection_id);
     const campaignInstance = await this.getCampaignInstance(run.campaign_id);
     const sendInstance = assignedInstance || campaignInstance || undefined;
+
+    // Disponibilidade da conexão atribuída: se caiu, NÃO aborta o lead —
+    // apenas pula este tick (o run continua 'running' e será reprocessado
+    // quando a conexão voltar, ou com fallback se o lead ainda não recebeu
+    // nenhuma mensagem).
+    if (sendInstance) {
+      const available = await this.isInstanceAvailable(sendInstance);
+      if (!available) {
+        this.onConnectionDown(sendInstance);
+        // Se o lead ainda está no início da sequência (position 0, sem envios),
+        // e a campanha tem outras conexões disponíveis, reatribui para uma conexão viva.
+        if (run.current_position === 0) {
+          const live = await this.getAvailableCampaignConnections(run.campaign_id);
+          if (live.length > 0) {
+            await this.reassignRunConnection(run, live);
+            log.info({ runId: run.id, oldInstance: sendInstance }, 'send-worker: conexao caiu, reatribuindo lead inicio para conexao viva');
+            return;
+          }
+        }
+        log.warn({ runId: run.id, instance: sendInstance }, 'send-worker: conexao indisponivel, aguardando (lead preservado)');
+        return;
+      }
+      this.onConnectionBack(sendInstance);
+    }
 
     const position = run.current_position;
     const next = msgs[position];
@@ -668,6 +768,27 @@ export class SendWorker {
           await this.finalizeCampaign(camp.id);
           log.info({ campaignId: camp.id }, 'send-worker: campaign finalized / no active runs');
           continue;
+        }
+        // Conexões disponíveis da campanha. Se a campanha usa connection_ids,
+        // e TODAS caíram, aguarda sem pausar a campanha (preserva a fila).
+        const available = await this.getAvailableCampaignConnections(camp.id);
+        const campaignHasConnections = await this.campaignHasConnections(camp.id);
+        if (campaignHasConnections && available.length === 0) {
+          log.warn({ campaignId: camp.id }, 'send-worker: todas as conexoes da campanha indisponiveis — aguardando (campanha permanece em_progresso)');
+          continue;
+        }
+        // Reatribui runs pendentes cuja conexão caiu para conexões vivas.
+        for (const run of runs) {
+          if (run.status !== 'pending') continue;
+          if (!run.connection_id) {
+            await this.reassignRunConnection(run, available);
+            continue;
+          }
+          const connStillLive = available.find((a) => a.id === run.connection_id);
+          if (!connStillLive && run.connection_instance) {
+            this.onConnectionDown(run.connection_instance);
+            if (available.length > 0) await this.reassignRunConnection(run, available);
+          }
         }
         // EXECUÇÃO SEQUENCIAL POR LEAD (Regra A): a campanha dispara UM lead
         // por vez, em ordem de entrada (created_at). O lead ativo é o primeiro
