@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { supabase, type Lead, type LeadStatus, type Campaign, type ConversationMessage } from '../lib/supabase'
+import { supabase, type Lead, type LeadStatus, type Campaign, type ConversationMessage, type FollowUp } from '../lib/supabase'
 import { computeEngagement, type Engagement } from '../lib/engagement'
 import { filterLeadsBySearch } from '../lib/kanbanSearch'
 import { LeadChat } from './LeadChat'
+import { followUpsApi } from '../lib/api'
 
 type Section =
   | 'enviados'
   | 'conversando'
   | 'sem_interesse'
   | 'remarketing'
+  | 'responder_depois'
   | 'reuniao_marcada'
   | 'reuniao_cancelada'
   | 'para_ligacao'
@@ -18,6 +20,7 @@ const SECTIONS: { key: Section; label: string; icon: string; statuses: LeadStatu
   { key: 'enviados', label: 'Enviados', icon: '📤', statuses: ['enviado', 'na_fila'] },
   { key: 'conversando', label: 'Conversando', icon: '💬', statuses: ['conversando'] },
   { key: 'remarketing', label: 'Remarketing', icon: '🔁', statuses: ['remarketing'] },
+  { key: 'responder_depois', label: 'Responder depois', icon: '↩', statuses: ['responder_depois'] },
   { key: 'sem_interesse', label: 'Sem interesse', icon: '🚫', statuses: ['sem_interesse'] },
   { key: 'reuniao_marcada', label: 'Reuniões', icon: '📅', statuses: ['reuniao_marcada'] },
   { key: 'reuniao_cancelada', label: 'Reuniões canceladas', icon: '🗓️', statuses: ['reuniao_cancelada'] },
@@ -29,6 +32,7 @@ const SECTION_COLOR: Record<Section, string> = {
   enviados: 'bg-sky-500',
   conversando: 'bg-violet-500',
   remarketing: 'bg-amber-500',
+  responder_depois: 'bg-cyan-500',
   sem_interesse: 'bg-rose-500',
   reuniao_marcada: 'bg-emerald-500',
   reuniao_cancelada: 'bg-orange-500',
@@ -72,6 +76,7 @@ function emptySections(): Record<Section, number> {
     conversando: 0,
     sem_interesse: 0,
     remarketing: 0,
+    responder_depois: 0,
     reuniao_marcada: 0,
     reuniao_cancelada: 0,
     para_ligacao: 0,
@@ -114,6 +119,7 @@ export function KanbanBoard({
   // NÃO da lista global /leads — assim "limpar lista" nunca apaga o Kanban.
   const [byCampaign, setByCampaign] = useState<Map<string, Lead[]>>(new Map())
   const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set())
+  const [followUpsByLead, setFollowUpsByLead] = useState<Map<string, FollowUp[]>>(new Map())
 
   // Leads por campanha via send_runs (fonte única para o pipeline).
   useEffect(() => {
@@ -150,6 +156,26 @@ export function KanbanBoard({
       active = false
       supabase.removeChannel(ch)
     }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    async function load() {
+      const rows = await followUpsApi.list().catch(() => [])
+      const map = new Map<string, FollowUp[]>()
+      for (const row of rows) {
+        const arr = map.get(row.lead_id) ?? []
+        arr.push(row)
+        map.set(row.lead_id, arr)
+      }
+      if (active) setFollowUpsByLead(map)
+    }
+    void load()
+    const ch = supabase
+      .channel('follow-ups-kanban-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'follow_ups' }, () => void load())
+      .subscribe()
+    return () => { active = false; supabase.removeChannel(ch) }
   }, [])
 
   // Conversas em tempo real (métricas de engajamento) — recarrega quando uma
@@ -376,6 +402,7 @@ export function KanbanBoard({
                       key={lead.id}
                       lead={lead}
                       engagement={engagement.get(lead.id)}
+                      followUps={followUpsByLead.get(lead.id) ?? []}
                       onAction={() => setChatLead(lead)}
                       onChat={() => setChatLead(lead)}
                       onMeeting={() => { setSelectedLead(lead); setModal('meeting') }}
@@ -428,6 +455,7 @@ const STATUS_BADGE: Record<LeadStatus, { label: string; cls: string }> = {
   conversando: { label: 'Conversando', cls: 'bg-violet-500/15 text-violet-300' },
   sem_interesse: { label: 'Sem interesse', cls: 'bg-rose-500/15 text-rose-300' },
   remarketing: { label: 'Remarketing', cls: 'bg-amber-500/15 text-amber-300' },
+  responder_depois: { label: 'Responder depois', cls: 'bg-cyan-500/15 text-cyan-300' },
   reuniao_marcada: { label: 'Reunião', cls: 'bg-emerald-500/15 text-emerald-300' },
   reuniao_cancelada: { label: 'Cancelada', cls: 'bg-orange-500/15 text-orange-300' },
   fechado: { label: 'Fechado', cls: 'bg-green-500/15 text-green-300' },
@@ -440,9 +468,10 @@ const CALL_REASON_LABEL: Record<string, string> = {
   numero_invalido: 'Número inválido / incorreto',
 }
 
-export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClose }: {
+export function LeadCard({ lead, engagement, followUps, onAction, onChat, onMeeting, onClose }: {
   lead: Lead
   engagement?: Engagement
+  followUps: FollowUp[]
   onAction: () => void
   onChat: () => void
   onMeeting: () => void
@@ -502,6 +531,13 @@ export function LeadCard({ lead, engagement, onAction, onChat, onMeeting, onClos
           {lead.call_moved_at && (
             <span className="text-cyan-300/60"> · {new Date(lead.call_moved_at).toLocaleString('pt-BR')}</span>
           )}
+        </div>
+      )}
+      {lead.status === 'responder_depois' && followUps[0] && (
+        <div className="mt-2 space-y-1 text-[11px] text-cyan-200 bg-cyan-500/10 rounded-md px-2 py-1.5">
+          <div>↩ {followUps[0].message}</div>
+          <div>{followUps[0].scheduled_date} · {followUps[0].scheduled_time ?? 'horário não informado'}</div>
+          <div className="text-cyan-300/70">{followUps[0].status} · {followUps[0].source === 'ia' ? 'Agendado pela IA' : 'Agendado pelo operador'}</div>
         </div>
       )}
 

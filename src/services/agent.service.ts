@@ -135,7 +135,7 @@ const base = [
     'Never end a turn by promising to check or return something and then stopping. Every reply must be complete.',
     'Be FAST and decisive. Your goal is to build rapport, answer questions about the service, and move the conversation toward scheduling a meeting.',
     'BOOKING RULE: NEVER schedule a meeting on your own and NEVER invent an agreement, a date or a time. When the prospect wants to schedule, FIRST call consultar_disponibilidade to fetch the real free slots and offer only those options (e.g. "hoje 14h, amanhã 10h ou 15h" — only times the tool returned). Only call marcar_reuniao AFTER the prospect explicitly chooses one of the offered dates AND times in their own words. IMPORTANT: the marcar_reuniao tool has a GUARD that checks the conversation for the prospect\'s explicit acceptance and re-validates that the slot is still free — if there is no evidence or the slot is taken, it will fail and you must go back to asking/offering other real slots. Never announce "reunião confirmada" unless the tool returned ok=true.',
-    'SIGNATURE RULE: NEVER sign your messages. Do not end any message with a name, a dash, or any signature like "– Alex", "- Alex", "Alex" or "Att.". The opening greeting is added automatically as "*Alex*" — you only write the body text.',
+      'SIGNATURE RULE: NEVER sign your messages. Do not end any message with a name, a dash, or any signature like "– Alex", "- Alex", "Alex" or "Att.". A connection alias may be added by the transport layer; you only write the body text.',
     'If the prospect declines or goes quiet, do not insist or spam. Respond gracefully and stop. A single objection (e.g. "não quero tráfego pago" or "está caro") is NOT a refusal: address it per the SALES_PLAYBOOK objections step and keep the conversation moving toward a meeting.',
     'OUTCOME RULE: when the prospect clearly refuses/interrupts or says they are not interested, call finalizar_sem_interesse with the lead id (when known) or phone and outcome="sem_interesse" in the SAME turn, then reply gracefully and stop. When the prospect cancels an already-scheduled meeting, call finalizar_sem_interesse with outcome="reuniao_cancelada" and a short motive.',
   ];
@@ -147,6 +147,7 @@ const base = [
       'Meaning: sem_interesse = the prospect clearly refused/interrupted; reuniao = asked for or agreed to schedule a meeting;',
       'encerrar = politely ended the conversation; ambiguo = cannot classify. That line is processed by the system and',
       'automatically removed before sending — never write it as part of the message body.',
+      'FOLLOW-UP RULE: when the client explicitly asks for a future message, emit one additional exact marker after the intent marker: <!--FOLLOW_UP:{"requested":true,"date":"YYYY-MM-DD","time":"HH:mm or null","message":"mensagem futura"}-->. Resolve relative dates against today. Do NOT emit it when the client merely mentions a date or when there is no explicit request to send later. Never invent a time; use null when absent. The marker is removed before sending.',
     );
   }
   if (opts.leadContext) {

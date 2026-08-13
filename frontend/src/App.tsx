@@ -17,6 +17,7 @@ import { AICenter } from './components/AICenter'
 import { ContactsView } from './components/ContactsView'
 import { CommercialMemory } from './components/CommercialMemory'
 import { AgendaView } from './components/AgendaView'
+import { FollowUpsCalendarPanel } from './components/FollowUpsCalendarPanel'
 import { ThemeToggle } from './components/ThemeToggle'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
 import { NAV_ITEMS, resolveTabFromPath, type Tab } from './lib/routes'
@@ -160,7 +161,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           <Route path="/leads" element={<LeadsView leads={activeLeads} campaigns={campaigns} />} />
           <Route path="/importados" element={<ImportedLeadsView leads={importedLeads} campaigns={campaigns} onChanged={onLeadsChanged} />} />
           <Route path="/campanhas" element={<CampaignsView />} />
-          <Route path="/agenda" element={<AgendaView />} />
+          <Route path="/agenda" element={<div className="h-full overflow-auto"><AgendaView /><div className="max-w-6xl mx-auto px-4 pb-6"><FollowUpsCalendarPanel /></div></div>} />
           <Route path="/dashboard" element={<DashboardView leads={leads} />} />
           <Route path="/agente" element={<AgentConfig />} />
           <Route path="/voz" element={<VoiceSettings />} />

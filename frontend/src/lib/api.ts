@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { supabase, type FollowUp } from './supabase'
 import { normalizeEvidence } from './evidence'
 
 export { normalizeEvidence }
@@ -354,6 +354,30 @@ export const contactsApi = {
       contacts,
     })
     return res
+  },
+}
+
+export const followUpsApi = {
+  async list(opts?: { leadId?: string; start?: string; end?: string }): Promise<FollowUp[]> {
+    const params = new URLSearchParams()
+    if (opts?.leadId) params.set('leadId', opts.leadId)
+    if (opts?.start) params.set('start', opts.start)
+    if (opts?.end) params.set('end', opts.end)
+    const r = await request<{ followUps: FollowUp[] }>(`/api/follow-ups${params.toString() ? `?${params}` : ''}`, {
+      method: 'GET', cache: 'no-store', headers: await userIdHeader(),
+    })
+    return r.followUps ?? []
+  },
+  async create(input: { leadId: string; scheduledDate: string; scheduledTime?: string | null; message: string; connectionId?: string | null; conversationId?: string | null; originContext?: string | null }): Promise<FollowUp> {
+    const r = await request<{ followUp: FollowUp }>('/api/follow-ups', {
+      method: 'POST', body: JSON.stringify(input), headers: await userIdHeader(),
+    })
+    return r.followUp
+  },
+  async update(id: string, input: { scheduledDate?: string; scheduledTime?: string | null; message?: string; status?: 'cancelado' }): Promise<void> {
+    await request(`/api/follow-ups/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify(input), headers: await userIdHeader(),
+    })
   },
 }
 

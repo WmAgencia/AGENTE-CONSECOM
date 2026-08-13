@@ -22,7 +22,8 @@ export type LeadStatus =
   | 'reuniao_cancelada'
   | 'fechado'
   | 'nao_fechado'
-  | 'para_ligacao'
+   | 'para_ligacao'
+  | 'responder_depois'
 
 export interface Lead {
   id: string
@@ -154,4 +155,22 @@ export interface SendRun {
   lead?: Pick<Lead, 'id' | 'name' | 'phone' | 'status'>
   connection_id?: string | null
   connection_instance?: string | null
+}
+
+export interface FollowUp {
+  id: string
+  lead_id: string
+  scheduled_date: string
+  scheduled_time: string | null
+  message: string
+  status: 'agendado' | 'processando' | 'enviado' | 'falhou' | 'cancelado'
+  source: 'ia' | 'operador'
+  connection_id: string | null
+  connection_instance: string | null
+  conversation_id: string | null
+  origin_context: string | null
+  failure_reason: string | null
+  created_at: string
+  sent_at: string | null
+  lead?: Pick<Lead, 'id' | 'name' | 'phone' | 'status'>
 }

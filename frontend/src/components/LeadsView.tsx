@@ -14,6 +14,7 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   fechado: 'Fechado',
   nao_fechado: 'Não fechado',
   para_ligacao: 'Nº p/ ligação',
+  responder_depois: 'Responder depois',
 }
 
 const STATUS_COLOR: Record<LeadStatus, string> = {
@@ -28,6 +29,7 @@ const STATUS_COLOR: Record<LeadStatus, string> = {
   fechado: 'bg-green-500/15 text-green-300',
   nao_fechado: 'bg-rose-500/15 text-rose-300',
   para_ligacao: 'bg-cyan-400/15 text-cyan-300',
+  responder_depois: 'bg-cyan-500/15 text-cyan-300',
 }
 
 const COMPAIGN_NONE = '__none__'

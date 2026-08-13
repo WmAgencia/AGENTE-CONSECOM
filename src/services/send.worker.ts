@@ -55,6 +55,7 @@ import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js
 import { renderTemplate } from './template.service.js';
 import { getConversationStore } from './conversation.store.js';
 import { processDueScheduledCampaigns } from './campaign.schedule.service.js';
+import { claimDueFollowUp, getDueFollowUps, updateFollowUp, type FollowUpRow } from './followup.service.js';
 import {
   loadCampaignStrategies,
   pickStrategyForLead,
@@ -856,6 +857,58 @@ export class SendWorker {
     }
   }
 
+  /** Follow-ups usam esta mesma instância do worker e o mesmo sendText. */
+  private async processFollowUps(): Promise<void> {
+    const due = await getDueFollowUps();
+    for (const followUp of due) {
+      if (!(await claimDueFollowUp(followUp.id))) continue;
+      try {
+        const connection = await this.resolveFollowUpConnection(followUp);
+        if (!connection) {
+          await updateFollowUp(followUp.id, { status: 'falhou', failure_reason: 'sem_conexao_disponivel' });
+          continue;
+        }
+        const lead = await this.getLead(followUp.lead_id);
+        if (!lead || !lead.phone) {
+          await updateFollowUp(followUp.id, { status: 'falhou', failure_reason: 'lead_sem_telefone' });
+          continue;
+        }
+        const displayName = await this.getConnectionDisplayName(connection.id, connection.instance_name);
+        const text = this.formatConnectionMessage(followUp.message, displayName);
+        const result = await sendText({ to: lead.phone, text, instance: connection.instance_name });
+        if (!result.ok) {
+          await updateFollowUp(followUp.id, { status: 'falhou', failure_reason: result.error ?? `http_${result.status ?? 500}` });
+          continue;
+        }
+        await updateFollowUp(followUp.id, {
+          status: 'enviado',
+          connection_id: connection.id,
+          connection_instance: connection.instance_name,
+          failure_reason: null,
+          sent_at: new Date().toISOString(),
+        });
+        await this.recordCampaignTurn(followUp.lead_id, lead.phone, followUp.message, displayName);
+        await fetch(`${this.url}/rest/v1/leads?id=eq.${encodeURIComponent(followUp.lead_id)}&status=eq.responder_depois`, {
+          method: 'PATCH', headers: this.headers(true), body: JSON.stringify({ status: 'conversando', last_message_sent: new Date().toISOString() }),
+        });
+      } catch (err) {
+        await updateFollowUp(followUp.id, { status: 'falhou', failure_reason: err instanceof Error ? err.message : 'follow_up_error' });
+      }
+    }
+  }
+
+  private async resolveFollowUpConnection(followUp: FollowUpRow): Promise<{ id: string; instance_name: string } | null> {
+    const filter = followUp.connection_id
+      ? `id=eq.${encodeURIComponent(followUp.connection_id)}`
+      : 'status=eq.connected';
+    const r = await fetch(`${this.url}/rest/v1/whatsapp_connections?select=id,instance_name,status&${filter}`, { headers: this.headers() });
+    if (!r.ok) return null;
+    const rows = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
+    const available = rows.filter((row) => row.status === 'connected');
+    if (available.length === 0) return null;
+    return this.pickAvailableConnection('followups', available);
+  }
+
   async tick(): Promise<void> {
     if (this.busy) return;
     this.busy = true;
@@ -932,6 +985,7 @@ export class SendWorker {
           this.processingRuns.delete(active.id);
         }
       }
+      await this.processFollowUps();
       await this.processRemarketing();
     } finally {
       this.busy = false;

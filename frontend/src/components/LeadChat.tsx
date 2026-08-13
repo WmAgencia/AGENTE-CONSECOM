@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { supabase, type Lead, type LeadStatus, type ConversationMessage } from '../lib/supabase'
+import { supabase, type Lead, type LeadStatus, type ConversationMessage, type FollowUp } from '../lib/supabase'
+import { followUpsApi } from '../lib/api'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL as string | undefined
 const API = BACKEND ?? 'https://consecom-backend-production.up.railway.app'
@@ -16,6 +17,7 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   fechado: 'Fechado',
   nao_fechado: 'Não fechado',
   para_ligacao: 'Nº p/ ligação',
+  responder_depois: 'Responder depois',
 }
 
 const AVATAR_COLORS = [
@@ -79,6 +81,13 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
   const [userId, setUserId] = useState<string>('')
   const [aiMode, setAiMode] = useState<'ai' | 'human'>(lead.ai_control === 'human' ? 'human' : 'ai')
   const [controlSaving, setControlSaving] = useState(false)
+  const [followUpOpen, setFollowUpOpen] = useState(false)
+  const [followUpDate, setFollowUpDate] = useState('')
+  const [followUpTime, setFollowUpTime] = useState('')
+  const [followUpMessage, setFollowUpMessage] = useState('')
+  const [followUpSaving, setFollowUpSaving] = useState(false)
+  const [leadFollowUps, setLeadFollowUps] = useState<FollowUp[]>([])
+  const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
 
   const loadMessages = useCallback(async () => {
@@ -102,6 +111,7 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
       }
     })
     void loadMessages()
+    void followUpsApi.list({ leadId: lead.id }).then(setLeadFollowUps).catch(() => {})
     const ch = supabase
       .channel(`chat-${lead.id}`)
       .on(
@@ -132,6 +142,33 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
       setError('Não foi possível atualizar o responsável pela conversa.')
     } finally {
       setControlSaving(false)
+    }
+  }
+
+  async function saveFollowUp() {
+    if (!followUpDate || !followUpMessage.trim() || followUpSaving) return
+    setFollowUpSaving(true)
+    setError(null)
+    try {
+      if (editingFollowUpId) {
+        await followUpsApi.update(editingFollowUpId, { scheduledDate: followUpDate, scheduledTime: followUpTime || null, message: followUpMessage.trim() })
+      } else {
+        await followUpsApi.create({
+          leadId: lead.id,
+          scheduledDate: followUpDate,
+          scheduledTime: followUpTime || null,
+          message: followUpMessage.trim(),
+          conversationId: `wa:${lead.phone ?? lead.id}`,
+        })
+      }
+      setLeadFollowUps(await followUpsApi.list({ leadId: lead.id }))
+      setFollowUpOpen(false)
+      setFollowUpMessage('')
+      setEditingFollowUpId(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Não foi possível salvar o follow-up.')
+    } finally {
+      setFollowUpSaving(false)
     }
   }
 
@@ -212,7 +249,34 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
           >
             {aiMode === 'human' ? 'Deixar IA responder' : 'Assumir conversa'}
           </button>
+          <button
+            onClick={() => setFollowUpOpen((open) => !open)}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30"
+          >
+            ↩ Responder depois
+          </button>
         </div>
+
+        {followUpOpen && (
+          <div className="px-4 py-3 bg-subtle border-b border-line space-y-2">
+            <div className="text-xs font-semibold text-secondary">Agendar follow-up</div>
+            {leadFollowUps.filter((item) => ['agendado', 'processando'].includes(item.status)).map((item) => (
+              <div key={item.id} className="rounded-md border border-line px-2 py-1.5 text-[11px] text-muted flex items-center gap-2">
+                <span className="flex-1">{item.scheduled_date} · {item.scheduled_time ?? 'sem horário'} · {item.message}</span>
+                <button onClick={() => { setEditingFollowUpId(item.id); setFollowUpDate(item.scheduled_date); setFollowUpTime(item.scheduled_time ?? ''); setFollowUpMessage(item.message) }} className="text-cyan-300 hover:text-cyan-100">Editar</button>
+                <button onClick={() => void followUpsApi.update(item.id, { status: 'cancelado' }).then(() => followUpsApi.list({ leadId: lead.id })).then(setLeadFollowUps)} className="text-rose-300 hover:text-rose-100">Cancelar</button>
+              </div>
+            ))}
+            <div className="grid grid-cols-2 gap-2">
+              <input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} className="rounded-md bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
+              <input type="time" value={followUpTime} onChange={(e) => setFollowUpTime(e.target.value)} className="rounded-md bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
+            </div>
+            <textarea value={followUpMessage} onChange={(e) => setFollowUpMessage(e.target.value)} placeholder="Mensagem que será enviada" rows={2} className="w-full rounded-md bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
+            <button onClick={() => void saveFollowUp()} disabled={followUpSaving || !followUpDate || !followUpMessage.trim()} className="px-3 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-xs font-medium text-white">
+              {followUpSaving ? 'Salvando...' : editingFollowUpId ? 'Salvar alterações' : 'Salvar follow-up'}
+            </button>
+          </div>
+        )}
 
         {/* Messages */}
         <div ref={scrollerRef} className="flex-1 overflow-y-auto px-3 sm:px-8 py-3 space-y-0.5 bg-chat-bg">

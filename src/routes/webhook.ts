@@ -73,6 +73,8 @@ import {
 import { computeLeadScore } from '../services/scoring.js';
 import { blockIfSequenceActive, isLeadSequenceActive } from '../services/campaign.gate.js';
 import { InboundMessageDebouncer } from '../services/inbound.message.debouncer.js';
+import { parseFollowUpMarker, stripFollowUpMarker } from '../services/followup.parser.js';
+import { createFollowUp } from '../services/followup.service.js';
 
 const IDEMPOTENCY_MAX_ENTRIES = 1000;
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -541,10 +543,30 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       );
 
       // --- Intenção: marker da IA (fonte principal) com fallback heurístico.
-      let intent = parseIntentMarker(agentResult.result);
-      if (!intent) intent = classifyIntentHeuristic(msg.text)?.intent ?? 'ambiguo';
-      const cleanReply = stripIntentMarker(agentResult.result);
-      log.info({ messageKeyId: msg.messageKeyId, intent }, '[IA] Intenção detectada');
+       const followUp = parseFollowUpMarker(agentResult.result);
+       let intent = parseIntentMarker(agentResult.result);
+       if (!intent) intent = classifyIntentHeuristic(msg.text)?.intent ?? 'ambiguo';
+       const cleanReply = stripIntentMarker(stripFollowUpMarker(agentResult.result));
+       log.info({ messageKeyId: msg.messageKeyId, intent }, '[IA] Intenção detectada');
+
+       if (followUp) {
+         const idempotencyKey = `ai:${lead.id}:${followUp.date}:${followUp.time ?? 'sem-horario'}:${followUp.message}`;
+         const created = await createFollowUp({
+           lead_id: lead.id,
+           owner_user_id: lead.owner_user_id ?? memoryOwnerId,
+           scheduled_date: followUp.date,
+           scheduled_time: followUp.time,
+           message: followUp.message,
+           source: 'ia',
+           conversation_id: conversationId,
+           origin_context: msg.text,
+           idempotency_key: idempotencyKey,
+         });
+         if (created) {
+           await updateLeadStatus(lead.id, 'responder_depois').catch(() => {});
+           log.info({ leadId: lead.id, followUpId: created.id, date: followUp.date, time: followUp.time }, '[FOLLOW_UP] criado pela IA');
+         }
+       }
 
       // --- Plano de ação (Kanban + campanha — sem misturar os sistemas) -----
       // IMPORTANTE: o agente pode ter executado TOOLS que já mudaram o estado
