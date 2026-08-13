@@ -321,10 +321,13 @@ export class SendWorker {
     log.info({ instance }, 'send-worker: conexao voltou — reentrou no ciclo de distribuicao');
   }
 
-  private async getConnectionDisplayName(instance?: string): Promise<string | null> {
-    if (!instance) return null;
+  private async getConnectionDisplayName(connectionId?: string | null, instance?: string | null): Promise<string | null> {
+    if (!connectionId && !instance) return null;
+    const filter = connectionId
+      ? `id=eq.${encodeURIComponent(connectionId)}`
+      : `instance_name=eq.${encodeURIComponent(instance!)}`;
     const r = await fetch(
-      `${this.url}/rest/v1/whatsapp_connections?select=display_name&instance_name=eq.${encodeURIComponent(instance)}&limit=1`,
+      `${this.url}/rest/v1/whatsapp_connections?select=display_name&${filter}&limit=1`,
       { headers: this.headers() },
     );
     if (!r.ok) return null;
@@ -625,7 +628,7 @@ export class SendWorker {
     // aleatório antes do envio (pode bloquear o tick enquanto espera).
     await this.spam.checkRateLimit();
     await this.spam.jitter();
-    const connectionDisplayName = await this.getConnectionDisplayName(sendInstance);
+    const connectionDisplayName = await this.getConnectionDisplayName(run.connection_id, sendInstance);
     let ok = false;
     let sentText = '';
     let mediaValidationError: string | null = null;
@@ -753,7 +756,7 @@ export class SendWorker {
 
     // Contexto da campanha no histórico do agente (assistant turn real).
     const recordedText = sentText || `[${next.kind}]`;
-    await this.recordCampaignTurn(run.lead_id, sendPhone, recordedText, await this.getConnectionDisplayName(sendInstance));
+    await this.recordCampaignTurn(run.lead_id, sendPhone, recordedText, await this.getConnectionDisplayName(run.connection_id, sendInstance));
 
     const delayMs = (next.delay_seconds ?? 0) * 1000;
     const newPosition = position + 1;
