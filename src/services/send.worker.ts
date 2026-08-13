@@ -191,7 +191,7 @@ export class SendWorker {
     return rows[0]?.whatsapp_instance ?? null;
   }
 
-private async getConnectionInstance(connectionId?: string | null): Promise<string | null> {
+  private async getConnectionInstance(connectionId?: string | null): Promise<string | null> {
     if (!connectionId) return null;
     const r = await fetch(
       `${this.url}/rest/v1/whatsapp_connections?select=instance_name&id=eq.${encodeURIComponent(connectionId)}&limit=1`,
@@ -319,6 +319,17 @@ private async getConnectionInstance(connectionId?: string | null): Promise<strin
     if (!this.downConnections.has(instance)) return;
     this.downConnections.delete(instance);
     log.info({ instance }, 'send-worker: conexao voltou — reentrou no ciclo de distribuicao');
+  }
+
+  private async getConnectionDisplayName(instance?: string): Promise<string | null> {
+    if (!instance) return null;
+    const r = await fetch(
+      `${this.url}/rest/v1/whatsapp_connections?select=display_name&instance_name=eq.${encodeURIComponent(instance)}&limit=1`,
+      { headers: this.headers() },
+    );
+    if (!r.ok) return null;
+    const rows = (await r.json()) as Array<{ display_name: string | null }>;
+    return rows[0]?.display_name ?? null;
   }
 
   /** Encerra de verdade a campanha (status finalizada + finished_at). */
@@ -454,6 +465,7 @@ private async getConnectionInstance(connectionId?: string | null): Promise<strin
     leadId: string,
     sendPhone: string,
     sentText: string,
+    senderDisplayName: string | null = null,
   ): Promise<void> {
     try {
       const jid = `${sendPhone}@s.whatsapp.net`;
@@ -474,6 +486,7 @@ private async getConnectionInstance(connectionId?: string | null): Promise<strin
           role: 'assistant',
           content: sentText,
           agent_model: null,
+          sender_display_name: senderDisplayName,
         }),
       });
     } catch (err) {
@@ -729,7 +742,7 @@ private async getConnectionInstance(connectionId?: string | null): Promise<strin
 
     // Contexto da campanha no histórico do agente (assistant turn real).
     const recordedText = sentText || `[${next.kind}]`;
-    await this.recordCampaignTurn(run.lead_id, sendPhone, recordedText);
+    await this.recordCampaignTurn(run.lead_id, sendPhone, recordedText, await this.getConnectionDisplayName(sendInstance));
 
     const delayMs = (next.delay_seconds ?? 0) * 1000;
     const newPosition = position + 1;

@@ -160,7 +160,7 @@ export function KanbanBoard({
     async function load() {
       const { data, error } = await supabase
         .from('consecom_conversations')
-        .select('id, lead_id, role, content, agent_model, created_at')
+        .select('*')
         .order('created_at', { ascending: true })
       if (error || !data) return
       const map = new Map<string, ConversationMessage[]>()

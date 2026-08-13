@@ -82,7 +82,7 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
   const loadMessages = useCallback(async () => {
     const { data, error } = await supabase
       .from('consecom_conversations')
-      .select('id, lead_id, role, content, agent_model, created_at')
+      .select('*')
       .eq('lead_id', lead.id)
       .order('created_at', { ascending: true })
       .limit(500)
@@ -223,6 +223,9 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
                       borderBottomRightRadius: isLast ? 12 : (incoming ? 12 : 0),
                     }}
                   >
+                    {m.sender_display_name && !incoming && (
+                      <div className="text-[10px] text-emerald-100/80 mb-0.5">Enviado por {m.sender_display_name}</div>
+                    )}
                     <span className="whitespace-pre-wrap break-words pr-6">{m.content}</span>
                     <span className="absolute bottom-0.5 right-1.5 text-[10px] text-muted/80 select-none">
                       {fmtTime(m.created_at)}

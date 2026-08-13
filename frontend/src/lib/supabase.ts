@@ -73,6 +73,7 @@ export interface ConversationMessage {
   role: 'user' | 'assistant'
   content: string
   agent_model: string | null
+  sender_display_name?: string | null
   created_at: string
 }
 
