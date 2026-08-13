@@ -205,7 +205,7 @@ export default function App() {
   }
 
   const navPrimary: { key: Tab; label: string; icon: typeof MessageSquareText }[] = [
-    { key: 'chat', label: 'Chat', icon: MessageSquareText },
+    { key: 'chat', label: 'Assistente', icon: MessageSquareText },
   ]
   const navMiddle: { key: Tab; label: string; icon: typeof HomeIcon }[] = [
     { key: 'hoje', label: 'Hoje', icon: HomeIcon },

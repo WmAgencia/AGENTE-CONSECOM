@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { Play, Pause, Bot, WifiOff, AudioLines } from 'lucide-react'
-import { sendMessage, loadHistory, saveHistory, getConversationId, type ChatMessage } from '../services/aiChat'
+import { Play, Pause, Sparkles, WifiOff, AudioLines, Trash2 } from 'lucide-react'
+import { sendMessage, loadHistory, saveHistory, getConversationId, resetConversation, clearHistory, type ChatMessage } from '../services/aiChat'
 import { newChatId, formatAudioDuration, formatChatTimestamp } from '../lib/chat'
 import { VoiceInput, type VoiceAudio } from '../components/VoiceInput'
 
 // =====================================================================
-// Chat com a IA do painel VYNTRA — simples, mobile-first.
-// Envio de texto e mensagem de voz (gravação real + transcrição no
-// aparelho). Histórico persistido localmente.
+// ASSISTENTE PESSOAL da VYNTRA — simples, mobile-first.
+// Executa ações REAIS (agenda, campanhas, leads) sob o comando do
+// operador. Usa o endpoint dedicado /api/personal/chat — NUNCA o agente
+// comercial (/api/ai/chat).
 // =====================================================================
 
 export function ChatScreen() {
@@ -18,6 +19,7 @@ export function ChatScreen() {
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [playingId, setPlayingId] = useState<string | null>(null)
+  const [clearing, setClearing] = useState(false)
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const conversationIdRef = useRef<string | null>(null)
@@ -32,6 +34,8 @@ export function ChatScreen() {
       }
       const history = await loadHistory()
       if (!alive) return
+      // Apenas a nova sessão (v1 do histórico pessoal); ignora o histórico
+      // antigo do agente comercial se ainda houver (as chaves diferem).
       setMessages(history)
       setLoaded(true)
     })()
@@ -39,6 +43,21 @@ export function ChatScreen() {
       alive = false
     }
   }, [])
+
+  async function handleClearConversation() {
+    if (clearing) return
+    setClearing(true)
+    try {
+      await resetConversation()
+      await clearHistory()
+      setMessages([])
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao limpar a conversa')
+    } finally {
+      setClearing(false)
+    }
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -146,14 +165,23 @@ export function ChatScreen() {
     <div className="flex flex-col h-full">
       <header className="flex items-center gap-2.5 px-1 pt-1 pb-3">
         <div className="w-9 h-9 rounded-xl bg-indigo-500/20 flex items-center justify-center">
-          <Bot className="w-5 h-5 text-indigo-300" />
+          <Sparkles className="w-5 h-5 text-indigo-300" />
         </div>
         <div className="flex-1">
-          <h1 className="text-lg font-semibold leading-tight">IA do Vyntra</h1>
+          <h1 className="text-lg font-semibold leading-tight">Assistente Pessoal</h1>
           <p className="text-[11px] text-slate-400">
-            O que está acontecendo na sua operação e o que fazer agora.
+            Agenda, campanhas e leads — sob seu comando.
           </p>
         </div>
+        <button
+          onClick={() => void handleClearConversation()}
+          disabled={clearing || messages.length === 0}
+          className="w-9 h-9 rounded-xl bg-white/[0.06] flex items-center justify-center text-slate-400 hover:text-rose-300 disabled:opacity-30"
+          aria-label="Limpar conversa"
+          title="Limpar conversa"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
       </header>
 
       {error && (
@@ -172,10 +200,11 @@ export function ChatScreen() {
               <AudioLines className="w-6 h-6 text-indigo-300" />
             </div>
             <p className="text-sm text-slate-400">
-              Pergunte ou grave uma mensagem de voz.
+              Peça, consulte ou dê comandos por texto ou voz.
             </p>
             <p className="text-xs text-slate-500 px-6">
-              Ex.: "Quantas reuniões tenho hoje?" ou "Tem lead novo precisando de atenção?"
+              Ex.: "Quais reuniões tenho amanhã?" ou "Pausa a campanha da
+              loja física".
             </p>
           </div>
         ) : (
@@ -241,7 +270,7 @@ export function ChatScreen() {
         {typing && (
           <div className="flex justify-start">
             <div className="bg-white/[0.06] rounded-2xl rounded-bl-md px-4 py-3 flex items-center gap-1.5">
-              <Bot className="w-4 h-4 text-indigo-300" />
+              <Sparkles className="w-4 h-4 text-indigo-300" />
               <span className="flex gap-1">
                 {[0, 150, 300].map((d, i) => (
                   <span
@@ -270,7 +299,7 @@ export function ChatScreen() {
               }
             }}
             rows={1}
-            placeholder="Pergunte à IA do Vyntra…"
+            placeholder="Comande seu assistente pessoal…"
             className="flex-1 resize-none rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-indigo-500 max-h-32"
           />
           {text.trim() ? (

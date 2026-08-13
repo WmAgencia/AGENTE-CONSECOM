@@ -3,8 +3,10 @@ import { Preferences } from '@capacitor/preferences'
 import { supabase } from '../lib/supabase'
 
 // =====================================================================
-// Chat com a IA do painel VYNTRA.
-//   - Mesmo backend do painel: POST /api/ai/chat (auth = token Supabase).
+// Chat com o ASSISTENTE PESSOAL da VYNTRA.
+//   - Backend dedicado: POST /api/personal/chat (auth = token Supabase).
+//   - Endpoint SEPARADO do agente comercial (/api/ai/chat) — o chat do app
+//     NUNCA aciona o agente de atendimento dos clientes.
 //   - HTTP nativo via CapacitorHttp (sem CORS no Android).
 //   - Histórico da conversa persistido localmente (Capacitor Preferences)
 //     para sobreviver a fechar/abrir o app.
@@ -14,7 +16,7 @@ const BACKEND_URL =
   (import.meta.env.VITE_BACKEND_URL as string | undefined) ??
   'https://consecom-backend-production.up.railway.app'
 
-const HISTORY_KEY = 'vyntra.chat.history.v1'
+const HISTORY_KEY = 'vyntra.personal.chat.v1'
 
 export interface ChatMessage {
   id: string
@@ -37,7 +39,7 @@ export async function getConversationId(): Promise<string> {
   const { data } = await supabase.auth.getSession()
   const userId = data.session?.user?.id
   if (!userId) throw new Error('Sessão expirada. Conecte o app pelo painel.')
-  return `mobile:${userId}`
+  return `personal:${userId}`
 }
 
 async function sessionToken(): Promise<string> {
@@ -53,7 +55,7 @@ export async function sendMessage(
 ): Promise<AiChatResponse> {
   const token = await sessionToken()
   const res = await CapacitorHttp.post({
-    url: `${BACKEND_URL}/api/ai/chat`,
+    url: `${BACKEND_URL}/api/personal/chat`,
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -75,7 +77,7 @@ export async function sendMessage(
 
   if (res.status !== 200 || !body.response) {
     throw new Error(
-      body?.message ?? `Erro ao falar com a IA (HTTP ${res.status})`,
+      body?.message ?? `Erro ao falar com o assistente (HTTP ${res.status})`,
     )
   }
 
@@ -85,6 +87,24 @@ export async function sendMessage(
     model: body.model ?? null,
     provider: body.provider ?? '',
     latencyMs: body.latencyMs ?? null,
+  }
+}
+
+/** Apaga a memória da conversa pessoal no backend (POST /api/personal/reset). */
+export async function resetConversation(): Promise<void> {
+  const token = await sessionToken()
+  const res = await CapacitorHttp.post({
+    url: `${BACKEND_URL}/api/personal/reset`,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    data: {},
+    connectTimeout: 30000,
+    readTimeout: 30000,
+  })
+  if (res.status !== 200) {
+    throw new Error(`Falha ao limpar a conversa (HTTP ${res.status})`)
   }
 }
 

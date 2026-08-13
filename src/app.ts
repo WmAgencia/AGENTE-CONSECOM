@@ -25,6 +25,7 @@ import { registerCommercialRoutes } from './routes/commercial.js';
 import { registerUiRoutes } from './routes/ui.js';
 import { registerExtensionRoutes } from './routes/extension.js';
 import { registerAiRoutes } from './routes/ai.js';
+import { registerPersonalRoutes } from './routes/personal.js';
 import { registerContactsRoutes } from './routes/contacts.js';
 import { registerMemoryRoutes } from './routes/memory.js';
 import { registerAgendaRoutes } from './routes/agenda.js';
@@ -207,6 +208,7 @@ export function buildApp(): BuiltApp {
   registerUiRoutes(app);
   registerExtensionRoutes(app);
   registerAiRoutes(app);
+  registerPersonalRoutes(app);
   registerContactsRoutes(app);
   registerMemoryRoutes(app);
   registerAgendaRoutes(app);

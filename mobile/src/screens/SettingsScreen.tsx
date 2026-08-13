@@ -1,15 +1,16 @@
-import { useMemo, useState } from 'react'
-import { LogOut, RotateCcw, Info, BellRing, AlarmClock, Clock } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { LogOut, RotateCcw, Info, BellRing, AlarmClock, Clock, ShieldAlert, RefreshCw } from 'lucide-react'
+import { LocalNotifications } from '@capacitor/local-notifications'
 import { supabase } from '../lib/supabase'
 import type { ReminderPrefs } from '../lib/types'
 import { formatReminder } from '../lib/format'
-import { syncAlarms } from '../services/alarms'
+import { syncAlarms, areNotificationsEnabled } from '../services/alarms'
 import {
   sendTestNotification,
   scheduleTestEvent,
   scheduleTestAlarm,
 } from '../services/alarms'
-import { isNativeAlarmAvailable } from '../native/vyntraAlarm'
+import VyntraAlarm, { isNativeAlarmAvailable } from '../native/vyntraAlarm'
 import { AlarmSoundPicker } from '../components/AlarmSoundPicker'
 import { VoiceSettings } from '../components/VoiceSettings'
 
@@ -22,11 +23,63 @@ interface Props {
 
 const OPTIONS = [5, 10, 15, 30, 60, 120]
 
+interface NotifStatus {
+  enabled: boolean | null
+  pendingCount: number
+  nextAlarm: string | null
+}
+
 export function SettingsScreen({ reminder, onReminderChange, onSoundChanged, lastSync }: Props) {
   const [confirming, setConfirming] = useState(false)
   const [rebuilt, setRebuilt] = useState(false)
+  const [notifStatus, setNotifStatus] = useState<NotifStatus>({
+    enabled: null,
+    pendingCount: 0,
+    nextAlarm: null,
+  })
+  const [loadingStatus, setLoadingStatus] = useState(true)
 
   const version = useMemo(() => '1.0.0', [])
+
+  useEffect(() => {
+    void loadNotifStatus()
+  }, [])
+
+  async function loadNotifStatus() {
+    setLoadingStatus(true)
+    try {
+      let enabled: boolean | null = null
+      try {
+        enabled = await areNotificationsEnabled()
+      } catch {
+        enabled = null
+      }
+      let pendingCount: number[] = []
+      let nextAlarm: string | null = null
+      try {
+        if (isNativeAlarmAvailable()) {
+          const { alarms } = await VyntraAlarm.getPending()
+          const list = (alarms ?? []) as Array<{ fireAt?: string }>
+          pendingCount = list.map((a) => Date.parse(a.fireAt ?? ''))
+        } else {
+          const { notifications } = await LocalNotifications.getPending()
+          pendingCount = (notifications ?? [])
+            .map((n) => Date.parse(n.schedule?.at ? new Date(n.schedule.at).toISOString() : ''))
+        }
+        const valid = pendingCount.filter((t) => Number.isFinite(t)).sort((a, b) => a - b)
+        if (valid.length > 0) nextAlarm = new Date(valid[0]).toISOString()
+      } catch {
+        // provider de alarmes indisponível no ambiente atual
+      }
+      setNotifStatus({
+        enabled,
+        pendingCount: pendingCount.filter((t) => Number.isFinite(t)).length,
+        nextAlarm,
+      })
+    } finally {
+      setLoadingStatus(false)
+    }
+  }
 
   async function rebuild() {
     setRebuilt(false)
@@ -42,6 +95,88 @@ export function SettingsScreen({ reminder, onReminderChange, onSoundChanged, las
       <header>
         <h1 className="text-2xl font-semibold">Ajustes</h1>
       </header>
+
+      {/* Status das notificações */}
+      <section>
+        <h2 className="text-sm font-semibold text-slate-300 mb-2">Status das notificações</h2>
+        <div className="rounded-xl border border-white/5 bg-white/[0.03] p-3 space-y-2">
+          {loadingStatus ? (
+            <p className="text-xs text-slate-500">Consultando…</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <BellRing className="w-3.5 h-3.5 text-indigo-300" />
+                  Permissão de notificação
+                </span>
+                {notifStatus.enabled === true ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200">
+                    Concedida
+                  </span>
+                ) : notifStatus.enabled === false ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-200">
+                    Negada — alarmes não tocarão
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200">
+                    Indisponível
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                  <AlarmClock className="w-3.5 h-3.5 text-indigo-300" />
+                  Alarme nativo (app fechado)
+                </span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full ${
+                    isNativeAlarmAvailable()
+                      ? 'bg-emerald-500/20 text-emerald-200'
+                      : 'bg-amber-500/20 text-amber-200'
+                  }`}
+                >
+                  {isNativeAlarmAvailable() ? 'Ativo' : 'Fallback local'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">Alarmes pendentes</span>
+                <span className="text-xs text-slate-200">{notifStatus.pendingCount}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">Próximo alarme</span>
+                <span className="text-xs text-slate-200">
+                  {notifStatus.nextAlarm
+                    ? new Date(notifStatus.nextAlarm).toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : '—'}
+                </span>
+              </div>
+
+              {notifStatus.enabled === false && (
+                <p className="text-[11px] text-rose-300 flex items-start gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  Permita as notificações nas configurações do Android para o app conseguir disparar os
+                  lembretes de reunião.
+                </p>
+              )}
+            </>
+          )}
+          <button
+            onClick={() => void loadNotifStatus()}
+            className="w-full rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs py-2 flex items-center justify-center gap-1.5 transition"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Atualizar status
+          </button>
+        </div>
+      </section>
 
       {/* Antecedência padrão */}
       <section>
