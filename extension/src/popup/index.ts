@@ -4,21 +4,24 @@ async function prefill(): Promise<void> {
   const cfg = await getStoredConfig()
   const urlInput = document.getElementById('url') as HTMLInputElement
   const keyInput = document.getElementById('key') as HTMLInputElement
+  const tokenInput = document.getElementById('token') as HTMLInputElement
   if (!urlInput.value || !keyInput.value) {
     urlInput.value = cfg.supabaseUrl || DEFAULT_CONFIG.supabaseUrl
     keyInput.value = cfg.anonKey || DEFAULT_CONFIG.anonKey
+    tokenInput.value = cfg.accessToken || ''
   }
 }
 
 document.getElementById('save')?.addEventListener('click', async () => {
   const url = (document.getElementById('url') as HTMLInputElement).value.replace(/\/+$/, '')
   const key = (document.getElementById('key') as HTMLInputElement).value.trim()
+  const accessToken = (document.getElementById('token') as HTMLInputElement).value.trim()
   if (!url || !key) {
     const s = document.getElementById('status')
     if (s) s.textContent = 'Informe a URL e a chave anon.'
     return
   }
-  await saveConfig({ supabaseUrl: url, anonKey: key })
+  await saveConfig({ supabaseUrl: url, anonKey: key, accessToken: accessToken || undefined })
   const s = document.getElementById('status')
   if (s) s.textContent = 'Salvo ✓'
 })

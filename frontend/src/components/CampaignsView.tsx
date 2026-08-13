@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { supabase, type Campaign, type QueueMessage, type Lead, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
+import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
+import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDateTime } from '../lib/month'
 
 export function CampaignsView({ leads }: { leads: Lead[] }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
@@ -9,6 +11,45 @@ export function CampaignsView({ leads }: { leads: Lead[] }) {
   const [runs, setRuns] = useState<SendRun[]>([])
   const [enqueueOpen, setEnqueueOpen] = useState<Campaign | null>(null)
   const [connections, setConnections] = useState<WhatsAppConnection[]>([])
+  const [scheduleFor, setScheduleFor] = useState<Campaign | null>(null)
+  const [schedulePicker, setSchedulePicker] = useState(false)
+  const [scheduleConfig, setScheduleConfig] = useState<CampaignScheduleConfig | null>(null)
+  const [calAnchor, setCalAnchor] = useState(() => {
+    const d = new Date(Date.now() - 3 * 3600_000)
+    return { year: d.getUTCFullYear(), month0: d.getUTCMonth() }
+  })
+  const [calItems, setCalItems] = useState<CampaignCalendarItem[]>([])
+
+  useEffect(() => {
+    campaignSchedule.getConfig().then((r) => setScheduleConfig(r.config)).catch(() => {})
+  }, [])
+
+  const calCells = useMemo(() => buildMonthCells(calAnchor.year, calAnchor.month0), [calAnchor])
+  useEffect(() => {
+    let alive = true
+    campaignSchedule
+      .calendar(calCells[0].key, calCells[41].key)
+      .then((r) => {
+        if (alive) setCalItems(r.items)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [calCells])
+
+  const calByDay = useMemo(() => {
+    const map = new Map<string, CampaignCalendarItem[]>()
+    for (const it of calItems) {
+      const ms = Date.parse(it.startIso)
+      if (Number.isNaN(ms)) continue
+      const key = saLocalDay(ms)
+      const arr = map.get(key) ?? []
+      arr.push(it)
+      map.set(key, arr)
+    }
+    return map
+  }, [calItems])
 
   useEffect(() => {
     load()
@@ -89,6 +130,14 @@ export function CampaignsView({ leads }: { leads: Lead[] }) {
     if (!error) await load()
   }
 
+  async function setCampaignConnections(c: Campaign, ids: string[]) {
+    const { error } = await supabase
+      .from('campaigns')
+      .update({ connection_ids: ids })
+      .eq('id', c.id)
+    if (!error) await load()
+  }
+
 async function loadRuns() {
     const { data, error } = await supabase
       .from('send_runs')
@@ -111,13 +160,19 @@ async function loadRuns() {
       return
     }
     if (!window.confirm(`Enfileirar todos os ${leads.length} leads na campanha "${c.name}"?`)) return
-    const rows = leads.map((lead) => ({
-      campaign_id: c.id,
-      lead_id: lead.id,
-      status: 'pending',
-      current_position: 0,
-      next_send_at: new Date().toISOString(),
-    }))
+    const selectedConnections = c.connection_ids ?? []
+    const rows = leads.map((lead, index) => {
+      const connectionId = selectedConnections.length > 0 ? selectedConnections[index % selectedConnections.length] : null
+      return {
+        campaign_id: c.id,
+        lead_id: lead.id,
+        status: 'pending',
+        current_position: 0,
+        next_send_at: new Date().toISOString(),
+        connection_id: connectionId,
+        connection_instance: connections.find((connection) => connection.id === connectionId)?.instance_name ?? null,
+      }
+    })
     const { error } = await supabase.from('send_runs').upsert(rows, {
       onConflict: 'campaign_id,lead_id',
       ignoreDuplicates: true,
@@ -172,6 +227,14 @@ async function loadRuns() {
     await load()
   }
 
+  /** Cancela o agendamento de uma campanha (volta para 'cancelada'). */
+  async function cancelScheduleCampaign(c: Campaign) {
+    if (!window.confirm(`Cancelar o agendamento de "${c.name}"?`)) return
+    const r = await campaignSchedule.cancel(c.id)
+    if (!r.ok) window.alert(r.message ?? 'Não foi possível cancelar o agendamento.')
+    await load()
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 py-4 border-b border-line flex items-center justify-between">
@@ -181,10 +244,18 @@ async function loadRuns() {
             Monte a sequência, enfileire leads e acompanhe o envio (WhatsApp)
           </p>
         </div>
-        <button onClick={load}
-          className="px-3 py-1.5 text-xs bg-subtle hover:bg-subtle-2 rounded-lg transition">
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSchedulePicker(true)}
+            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 rounded-lg transition"
+          >
+            📅 Agendar campanha
+          </button>
+          <button onClick={load}
+            className="px-3 py-1.5 text-xs bg-subtle hover:bg-subtle-2 rounded-lg transition">
+            Atualizar
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto px-6 py-5 space-y-8">
@@ -199,11 +270,14 @@ async function loadRuns() {
                 connections={connections}
                 onChanged={load}
                 onSetInstance={(n) => void setCampaignInstance(c, n)}
+                onSetConnections={(ids) => void setCampaignConnections(c, ids)}
                 onEnqueue={() => setEnqueueOpen(c)}
                 onAutoEnqueue={() => void autoEnqueue(c)}
                 onFire={() => void fireCampaign(c)}
                 onPause={() => void pauseCampaign(c)}
                 onResume={() => void resumeCampaign(c)}
+                onSchedule={() => setScheduleFor(c)}
+                onCancelSchedule={() => void cancelScheduleCampaign(c)}
                 onDelete={() => void deleteCampaign(c)}
               />
             ))}
@@ -213,6 +287,78 @@ async function loadRuns() {
               </p>
             )}
           </div>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              Calendário de campanhas
+            </h2>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCalAnchor((a) => addMonths(a.year, a.month0, -1))}
+                className="p-1.5 rounded-lg border border-line-2 hover:bg-subtle text-secondary text-xs"
+              >
+                ←
+              </button>
+              <span className="px-2 py-1 text-xs text-secondary border border-line-2 rounded-lg min-w-28 text-center">
+                {monthTitle(calAnchor.year, calAnchor.month0)}
+              </span>
+              <button
+                onClick={() => setCalAnchor((a) => addMonths(a.year, a.month0, 1))}
+                className="p-1.5 rounded-lg border border-line-2 hover:bg-subtle text-secondary text-xs"
+              >
+                →
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-px bg-line-2 rounded-lg overflow-hidden border border-line-2">
+            {DAY_SHORT.map((d) => (
+              <div
+                key={d}
+                className="bg-subtle px-1 py-1 text-center text-[10px] font-medium uppercase tracking-wide text-muted"
+              >
+                {d}
+              </div>
+            ))}
+            {calCells.map((cell) => {
+              const dayItems = calByDay.get(cell.key) ?? []
+              return (
+                <div
+                  key={cell.key}
+                  className={`min-h-16 p-1 text-left align-top ${cell.inMonth ? 'bg-subtle' : 'bg-subtle-2/60'}`}
+                >
+                  <div className={`text-[11px] px-1 ${cell.inMonth ? 'text-fg' : 'text-faint'}`}>{cell.day}</div>
+                  <div className="mt-0.5 space-y-0.5">
+                    {dayItems.slice(0, 2).map((it) => (
+                      <div
+                        key={it.campaignId}
+                        title={`${it.name} · ${humanDateTime(Date.parse(it.startIso))} até ${humanDateTime(Date.parse(it.endIso))}`}
+                        className={`truncate rounded px-1 py-0.5 text-[9px] leading-tight ${
+                          it.status === 'em_progresso'
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : it.status === 'pausada'
+                              ? 'bg-amber-500/20 text-amber-300'
+                              : 'bg-indigo-500/20 text-indigo-300'
+                        }`}
+                      >
+                        {saLocalTime(Date.parse(it.startIso))} {it.name}
+                      </div>
+                    ))}
+                    {dayItems.length > 2 && (
+                      <div className="px-1 text-[9px] text-faint">+{dayItems.length - 2}</div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {scheduleConfig && (
+            <p className="text-[11px] text-faint mt-2">
+              Intervalo mínimo entre campanhas: {scheduleConfig.interval_min} min. A campanha seguinte
+              só pode começar depois do fim + intervalo da anterior.
+            </p>
+          )}
         </section>
 
         <section>
@@ -229,10 +375,37 @@ async function loadRuns() {
         <EnqueueModal
           campaign={enqueueOpen}
           leads={leads}
+          connections={connections}
           onClose={() => setEnqueueOpen(null)}
           onEnrolled={() => {
             setEnqueueOpen(null)
             void loadRuns()
+          }}
+        />
+      )}
+
+      {scheduleFor && (
+        <ScheduleModal
+          initial={scheduleFor}
+          campaigns={campaigns}
+          config={scheduleConfig}
+          onClose={() => setScheduleFor(null)}
+          onSaved={() => {
+            setScheduleFor(null)
+            void load()
+          }}
+        />
+      )}
+
+      {schedulePicker && (
+        <ScheduleModal
+          initial={null}
+          campaigns={campaigns}
+          config={scheduleConfig}
+          onClose={() => setSchedulePicker(false)}
+          onSaved={() => {
+            setSchedulePicker(false)
+            void load()
           }}
         />
       )}
@@ -297,11 +470,14 @@ function CampaignCard({
   connections,
   onChanged,
   onSetInstance,
+  onSetConnections,
   onEnqueue,
   onAutoEnqueue,
   onFire,
   onPause,
   onResume,
+  onSchedule,
+  onCancelSchedule,
   onDelete,
 }: {
   campaign: Campaign
@@ -309,11 +485,14 @@ function CampaignCard({
   connections: WhatsAppConnection[]
   onChanged: () => void
   onSetInstance: (instanceName: string | null) => void
+  onSetConnections: (ids: string[]) => void
   onEnqueue: () => void
   onAutoEnqueue: () => void
   onFire: () => void
   onPause: () => void
   onResume: () => void
+  onSchedule: () => void
+  onCancelSchedule: () => void
   onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -364,22 +543,27 @@ function CampaignCard({
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300">{campaign.fail_count} falhas</span>
       </div>
 
-      <div className="flex items-center gap-2 mb-3">
-        <label className="text-[11px] text-muted shrink-0">
-          Enviar por WhatsApp:
-        </label>
+      <div className="mb-3 space-y-2">
+        <label className="text-[11px] text-muted block">Conexões WhatsApp (round-robin por lead):</label>
+        <div className="flex flex-wrap gap-2">
+          {activeConnections.map((connection) => {
+            const checked = (campaign.connection_ids ?? []).includes(connection.id)
+            return (
+              <label key={connection.id} className="flex items-center gap-1.5 rounded border border-line-2 px-2 py-1 text-[11px] text-secondary">
+                <input type="checkbox" checked={checked} onChange={() => onSetConnections(checked ? (campaign.connection_ids ?? []).filter((id) => id !== connection.id) : [...(campaign.connection_ids ?? []), connection.id])} />
+                {connection.whatsapp_name ?? connection.phone_number ?? connection.instance_name}
+              </label>
+            )
+          })}
+        </div>
         <select
           value={campaign.whatsapp_instance ?? ''}
           onChange={(e) => onSetInstance(e.target.value || null)}
           disabled={activeConnections.length === 0}
-          className="flex-1 min-w-0 bg-field border border-line-2 rounded-lg px-2 py-1 text-xs text-fg outline-none focus:border-indigo-500"
+          className="w-full bg-field border border-line-2 rounded-lg px-2 py-1 text-xs text-fg outline-none focus:border-indigo-500"
         >
-          <option value="">Padrão (configuração do backend)</option>
-          {activeConnections.map((c) => (
-            <option key={c.id} value={c.instance_name}>
-              {c.whatsapp_name ?? c.phone_number ?? c.instance_name}
-            </option>
-          ))}
+          <option value="">Fallback legado (conexão padrão)</option>
+          {activeConnections.map((c) => <option key={c.id} value={c.instance_name}>{c.whatsapp_name ?? c.phone_number ?? c.instance_name}</option>)}
         </select>
         {activeConnections.length === 0 && (
           <span className="text-[11px] text-amber-400/80 shrink-0">
@@ -388,12 +572,27 @@ function CampaignCard({
         )}
       </div>
 
-      <CampaignStatusBanner status={campaign.status} />
+      <CampaignStatusBanner status={campaign.status} scheduledAt={campaign.scheduled_at} />
 
       {campaign.status === 'pronta' && (
-        <button onClick={onFire} className="w-full mb-3 text-sm py-2 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg font-medium">
-          ▶ Iniciar campanha
-        </button>
+        <div className="space-y-2 mb-3">
+          <button onClick={onFire} className="w-full text-sm py-2 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg font-medium">
+            ▶ Iniciar campanha agora
+          </button>
+          <button onClick={onSchedule} className="w-full text-sm py-2 bg-indigo-600/70 hover:bg-indigo-500 rounded-lg font-medium">
+            📅 Agendar início
+          </button>
+        </div>
+      )}
+      {campaign.status === 'agendada' && (
+        <div className="space-y-2 mb-3">
+          <button onClick={onSchedule} className="w-full text-sm py-2 bg-indigo-600/70 hover:bg-indigo-500 rounded-lg font-medium">
+            📅 Reagendar início
+          </button>
+          <button onClick={onCancelSchedule} className="w-full text-sm py-2 bg-rose-600/60 hover:bg-rose-500 rounded-lg font-medium">
+            ✕ Cancelar agendamento
+          </button>
+        </div>
       )}
       {campaign.status === 'em_progresso' && (
         <button onClick={onPause} className="w-full mb-3 text-sm py-2 bg-amber-600/70 hover:bg-amber-500 rounded-lg font-medium">
@@ -436,11 +635,13 @@ function CampaignCard({
 function EnqueueModal({
   campaign,
   leads,
+  connections,
   onClose,
   onEnrolled,
 }: {
   campaign: Campaign
   leads: Lead[]
+  connections: WhatsAppConnection[]
   onClose: () => void
   onEnrolled: () => void
 }) {
@@ -464,13 +665,19 @@ function EnqueueModal({
     }
     setBusy(true)
     setError('')
-    const rows = Array.from(selected).map((lead_id) => ({
-      campaign_id: campaign.id,
-      lead_id,
-      status: 'pending',
-      current_position: 0,
-      next_send_at: new Date().toISOString(),
-    }))
+    const selectedConnections = campaign.connection_ids ?? []
+    const rows = Array.from(selected).map((lead_id, index) => {
+      const connectionId = selectedConnections.length > 0 ? selectedConnections[index % selectedConnections.length] : null
+      return {
+        campaign_id: campaign.id,
+        lead_id,
+        status: 'pending',
+        current_position: 0,
+        next_send_at: new Date().toISOString(),
+        connection_id: connectionId,
+        connection_instance: connections.find((connection) => connection.id === connectionId)?.instance_name ?? null,
+      }
+    })
     const { error: err } = await supabase.from('send_runs').upsert(rows, {
       onConflict: 'campaign_id,lead_id',
       ignoreDuplicates: true,
@@ -540,8 +747,183 @@ function EnqueueModal({
   )
 }
 
+/** Modal de agendamento: escolhe campanha, data/hora e valida conflito. */
+function ScheduleModal({
+  initial,
+  campaigns,
+  config,
+  onClose,
+  onSaved,
+}: {
+  initial: Campaign | null
+  campaigns: Campaign[]
+  config: CampaignScheduleConfig | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const schedulable = useMemo(
+    () => campaigns.filter((c) => c.status === 'pronta' || c.status === 'agendada'),
+    [campaigns],
+  )
+  const [campaignId, setCampaignId] = useState<string>(initial?.id ?? '')
+  const [local, setLocal] = useState<string>(() => defaultLocal())
+  const [info, setInfo] = useState<{ durationMin: number; nextAvailableStart: string } | null>(null)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const selected = campaigns.find((c) => c.id === campaignId)
+
+  useEffect(() => {
+    if (!campaignId) return
+    let alive = true
+    campaignSchedule
+      .next({ campaignId, afterMs: Date.now() })
+      .then((r) => {
+        if (alive) setInfo({ durationMin: r.durationMin, nextAvailableStart: r.nextAvailableStart })
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [campaignId])
+
+  function defaultLocal(): string {
+    const d = new Date(Date.now() - 3 * 3600_000)
+    const hh = String(d.getUTCHours() + 1).padStart(2, '0')
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}T${hh}:00`
+  }
+
+  function localToIso(value: string): string {
+    return new Date(`${value}:00-03:00`).toISOString()
+  }
+
+  async function submit() {
+    setError('')
+    if (!campaignId) {
+      setError('Selecione a campanha.')
+      return
+    }
+    if (!local) {
+      setError('Informe a data e o horário do início.')
+      return
+    }
+    setSaving(true)
+    try {
+      const r = await campaignSchedule.schedule(campaignId, localToIso(local))
+      if (!r.ok) {
+        setError(r.message ?? 'Não foi possível agendar.')
+        return
+      }
+      onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao agendar.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="font-semibold">
+              {initial ? 'Reagendar campanha' : 'Agendar campanha'}
+            </div>
+            <div className="text-xs text-muted">
+              A campanha inicia automaticamente no horário escolhido.
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">
+            ×
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <label className="block text-xs text-muted">
+            Campanha
+            {initial ? (
+              <div className="mt-1 text-sm text-fg bg-subtle rounded-lg px-3 py-2">
+                {initial.name}
+              </div>
+            ) : (
+              <select
+                value={campaignId}
+                onChange={(e) => setCampaignId(e.target.value)}
+                className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+              >
+                <option value="">Selecione a campanha...</option>
+                {schedulable.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.status === 'agendada' ? ' (já agendada)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+
+          <label className="block text-xs text-muted">
+            Início (America/Sao_Paulo)
+            <input
+              type="datetime-local"
+              value={local}
+              onChange={(e) => setLocal(e.target.value)}
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+            />
+          </label>
+
+          {info && selected && (
+            <div className="rounded-lg border border-line bg-subtle-2 px-3 py-2 text-xs text-secondary space-y-1">
+              <div>
+                Duração estimada da campanha:{' '}
+                <span className="text-fg font-medium">{info.durationMin} min</span>
+                {' '}({selected.lead_count ?? 0} leads)
+              </div>
+              <div>
+                Próximo início livre:{' '}
+                <button
+                  onClick={() => setLocal(`${saLocalDay(Date.parse(info.nextAvailableStart))}T${saLocalTime(Date.parse(info.nextAvailableStart))}`)}
+                  className="text-indigo-300 hover:underline"
+                >
+                  {humanDateTime(Date.parse(info.nextAvailableStart))}
+                </button>
+              </div>
+              {config && (
+                <div className="text-faint">
+                  Intervalo mínimo entre campanhas: {config.interval_min} min
+                </div>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <div className="text-sm text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
+              Cancelar
+            </button>
+            <button
+              onClick={() => void submit()}
+              disabled={saving || !campaignId}
+              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium"
+            >
+              {saving ? 'Agendando...' : 'Agendar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const CAMPAIGN_STATUS: Record<Campaign['status'], { label: string; cls: string }> = {
   pronta: { label: 'Pronta', cls: 'bg-subtle text-secondary' },
+  agendada: { label: 'Agendada', cls: 'bg-indigo-500/15 text-indigo-300' },
   em_progresso: { label: 'Em andamento', cls: 'bg-emerald-500/15 text-emerald-300' },
   pausada: { label: 'Pausada', cls: 'bg-amber-500/15 text-amber-300' },
   finalizada: { label: 'Concluída', cls: 'bg-sky-500/15 text-sky-300' },
@@ -558,7 +940,15 @@ function CampaignStatusBadge({ status }: { status: Campaign['status'] }) {
 }
 
 /** Banner de status da campanha (Reflete o estado real vindo do banco). */
-function CampaignStatusBanner({ status }: { status: Campaign['status'] }) {
+function CampaignStatusBanner({ status, scheduledAt }: { status: Campaign['status']; scheduledAt?: string | null }) {
+  if (status === 'agendada') {
+    return (
+      <div className="mb-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 text-sm text-indigo-300 flex items-center gap-2">
+        🕐 Campanha agendada para {scheduledAt ? humanDateTime(Date.parse(scheduledAt)) : '—'}.
+        O disparo começa automaticamente no horário.
+      </div>
+    )
+  }
   if (status === 'em_progresso') {
     return (
       <div className="mb-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-sm text-emerald-300 flex items-center gap-2">

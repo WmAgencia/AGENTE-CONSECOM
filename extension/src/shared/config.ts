@@ -3,6 +3,8 @@
 export interface StoredConfig {
   supabaseUrl: string
   anonKey: string
+  /** Access token da sessão autenticada no painel Vyntra. */
+  accessToken?: string
 }
 
 const CONFIG_KEY = 'consecom-config-v2'
@@ -19,6 +21,7 @@ export async function getStoredConfig(): Promise<StoredConfig> {
   const result: StoredConfig = {
     supabaseUrl: cfg.supabaseUrl || DEFAULT_CONFIG.supabaseUrl,
     anonKey: cfg.anonKey || DEFAULT_CONFIG.anonKey,
+    accessToken: cfg.accessToken || undefined,
   }
   console.log('[consecom] config usada -> url:', result.supabaseUrl, '| key tail:', result.anonKey.slice(-16))
   return result
@@ -37,7 +40,9 @@ export function getClient(cfg: StoredConfig): SupabaseClient | null {
   if (cachedClient && cachedUrl === cfg.supabaseUrl && cachedKey === cfg.anonKey) {
     return cachedClient
   }
-  cachedClient = createClient(cfg.supabaseUrl, cfg.anonKey)
+  cachedClient = createClient(cfg.supabaseUrl, cfg.anonKey, cfg.accessToken
+    ? { global: { headers: { Authorization: `Bearer ${cfg.accessToken}` } } }
+    : undefined)
   cachedUrl = cfg.supabaseUrl
   cachedKey = cfg.anonKey
   return cachedClient

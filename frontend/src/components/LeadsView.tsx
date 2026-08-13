@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase, type Lead, type LeadStatus, type Campaign, type CaptureSession } from '../lib/supabase'
+import { useSearchParams } from 'react-router-dom'
+import { supabase, type Lead, type LeadStatus, type Campaign } from '../lib/supabase'
 import { leadsApi, ApiRequestError } from '../lib/api'
+
+const CAMPAIGN_NONE = '__none__'
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
   novo: 'Novo',
@@ -30,18 +33,31 @@ const STATUS_COLOR: Record<LeadStatus, string> = {
   para_ligacao: 'bg-cyan-400/15 text-cyan-300',
 }
 
-export function LeadsView({ leads }: { leads: Lead[] }) {
+export function LeadsView({ leads, campaigns }: { leads: Lead[]; campaigns?: Campaign[] }) {
+  const [searchParams] = useSearchParams()
+  const focusId = searchParams.get('focus')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [sessions, setSessions] = useState<CaptureSession[]>([])
   const [clearOpen, setClearOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [sendOpen, setSendOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [participating, setParticipating] = useState<Set<string>>(new Set())
+  const [highlighted, setHighlighted] = useState<string | null>(null)
+
+  // Foco vindo de outro lugar (ex: "Abrir lead" no calendário de reuniões):
+  // rola até a linha do lead e a destaca por alguns segundos.
+  useEffect(() => {
+    if (!focusId) return
+    const el = document.getElementById(`lead-row-${focusId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlighted(focusId)
+    const t = window.setTimeout(() => setHighlighted(null), 3000)
+    return () => window.clearTimeout(t)
+  }, [focusId])
 
   useEffect(() => {
-    loadSessions()
     loadParticipation()
   }, [])
 
@@ -57,29 +73,26 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
     }
   }, [])
 
-  async function loadSessions() {
-    const { data, error } = await supabase.from('capture_sessions').select('*').order('created_at', { ascending: false })
-    if (!error && data) setSessions(data)
-  }
-
   async function loadParticipation() {
     const { data, error } = await supabase.from('send_runs').select('lead_id')
     if (error || !data) return
     setParticipating(new Set(data.map((r) => r.lead_id)))
   }
 
-  const bySession = useMemo(() => {
+  const byCampaign = useMemo(() => {
     const map = new Map<string, Lead[]>()
     for (const l of leads) {
-      const key = l.session_id ?? '__none__'
+      const key = l.campaign_id ?? CAMPAIGN_NONE
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(l)
     }
     return Array.from(map.entries())
   }, [leads])
 
-  const sessionDate = (id: string | null): CaptureSession | undefined =>
-    sessions.find((s) => s.id === id)
+  const campaignName = (id: string | null): string => {
+    if (!id) return 'Sem campanha'
+    return campaigns?.find((c) => c.id === id)?.name ?? 'Campanha removida'
+  }
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -189,14 +202,13 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
       </div>
 
       <div className="flex-1 overflow-auto px-6 py-5 space-y-8">
-        {bySession.map(([sid, list]) => {
-          const session = sessionDate(sid)
+        {byCampaign.map(([cid, list]) => {
           const allSelected = list.every((l) => selected.has(l.id))
           return (
-            <section key={sid}>
+            <section key={cid}>
               <div className="flex items-center gap-3 mb-3">
                 <h2 className="text-sm font-semibold text-secondary">
-                  {session ? new Date(session.created_at).toLocaleString('pt-BR') : 'Sem sessão'}
+                  {campaignName(cid === CAMPAIGN_NONE ? null : cid)}
                 </h2>
                 <span className="text-xs text-faint bg-subtle rounded-full px-2 py-0.5">{list.length}</span>
                 <div className="ml-auto flex items-center gap-2">
@@ -233,7 +245,7 @@ export function LeadsView({ leads }: { leads: Lead[] }) {
                   </thead>
                   <tbody className="divide-y divide-line">
                     {list.map((lead) => (
-                      <tr key={lead.id} className="hover:bg-subtle">
+                      <tr key={lead.id} id={`lead-row-${lead.id}`} className={`hover:bg-subtle ${highlighted === lead.id ? 'bg-indigo-500/10' : ''}`}>
                         <td className="px-3 py-2.5">
                           <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggle(lead.id)} className="accent-indigo-500" />
                         </td>

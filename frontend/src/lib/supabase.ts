@@ -55,7 +55,14 @@ export interface Lead {
   score?: number | null
   score_factors?: unknown
   strategy_id?: string | null
+  source?: string | null
+  source_detail?: string | null
   is_active_in_prospecting?: boolean
+  owner_user_id?: string | null
+  import_state?: 'imported' | 'distributed' | 'blocked'
+  phone_normalized?: string | null
+  imported_at?: string | null
+  distributed_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -74,13 +81,16 @@ export interface Campaign {
   name: string
   description: string | null
   is_active: boolean
-  status: 'pronta' | 'em_progresso' | 'pausada' | 'finalizada' | 'cancelada'
+  status: 'pronta' | 'em_progresso' | 'pausada' | 'finalizada' | 'cancelada' | 'agendada'
+  scheduled_at: string | null
   started_at: string | null
   finished_at: string | null
   lead_count: number
   success_count: number
   fail_count: number
   whatsapp_instance: string | null
+  connection_ids?: string[] | null
+  owner_user_id?: string | null
   created_at: string
 }
 
@@ -138,4 +148,6 @@ export interface SendRun {
   created_at: string
   campaign?: Pick<Campaign, 'id' | 'name'>
   lead?: Pick<Lead, 'id' | 'name' | 'phone' | 'status'>
+  connection_id?: string | null
+  connection_instance?: string | null
 }

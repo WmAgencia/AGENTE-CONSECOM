@@ -72,6 +72,8 @@ interface SendRunRow {
   status: 'pending' | 'running' | 'done' | 'failed';
   current_position: number;
   next_send_at: string | null;
+  connection_id?: string | null;
+  connection_instance?: string | null;
 }
 
 interface QueueMessageRow {
@@ -159,7 +161,7 @@ export class SendWorker {
     // (mais antigo) é o próximo a iniciar. current_position/next_send_at são
     // por-lead e não mais usados para intercalar rodadas.
     const r = await fetch(
-      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at&campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.("pending","running")&order=created_at.asc,id.asc`,
+      `${this.url}/rest/v1/send_runs?select=id,campaign_id,lead_id,status,current_position,next_send_at,connection_id,connection_instance&campaign_id=eq.${encodeURIComponent(campaignId)}&status=in.("pending","running")&order=created_at.asc,id.asc`,
       { headers: this.headers() },
     );
     if (!r.ok) return [];
@@ -174,6 +176,17 @@ export class SendWorker {
     if (!r.ok) return null;
     const rows = (await r.json()) as Array<{ whatsapp_instance: string | null }>;
     return rows[0]?.whatsapp_instance ?? null;
+  }
+
+  private async getConnectionInstance(connectionId?: string | null): Promise<string | null> {
+    if (!connectionId) return null;
+    const r = await fetch(
+      `${this.url}/rest/v1/whatsapp_connections?select=instance_name&id=eq.${encodeURIComponent(connectionId)}&limit=1`,
+      { headers: this.headers() },
+    );
+    if (!r.ok) return null;
+    const rows = (await r.json()) as Array<{ instance_name: string | null }>;
+    return rows[0]?.instance_name ?? null;
   }
 
   /** Encerra de verdade a campanha (status finalizada + finished_at). */
@@ -348,8 +361,9 @@ export class SendWorker {
       return;
     }
 
+    const assignedInstance = run.connection_instance || await this.getConnectionInstance(run.connection_id);
     const campaignInstance = await this.getCampaignInstance(run.campaign_id);
-    const sendInstance = campaignInstance || undefined;
+    const sendInstance = assignedInstance || campaignInstance || undefined;
 
     const position = run.current_position;
     const next = msgs[position];

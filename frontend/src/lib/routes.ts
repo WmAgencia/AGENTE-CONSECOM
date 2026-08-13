@@ -20,6 +20,7 @@ export type Tab =
   | 'campanhas'
   | 'agenda'
   | 'leads'
+  | 'importados'
   | 'contatos'
   | 'ia'
   | 'conexoes'
@@ -42,6 +43,7 @@ export const TAB_PATHS: Record<Tab, string> = {
   campanhas: '/campanhas',
   agenda: '/agenda',
   leads: '/leads',
+  importados: '/importados',
   contatos: '/contatos',
   ia: '/central-ia',
   conexoes: '/conexoes',
@@ -57,6 +59,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'campanhas', label: 'Campanhas', icon: Megaphone, path: TAB_PATHS.campanhas },
   { key: 'agenda', label: 'Agenda', icon: CalendarDays, path: TAB_PATHS.agenda },
   { key: 'leads', label: 'Leads', icon: Users, path: TAB_PATHS.leads },
+  { key: 'importados', label: 'Importados', icon: Users, path: TAB_PATHS.importados },
   { key: 'contatos', label: 'Contatos', icon: ContactRound, path: TAB_PATHS.contatos },
   { key: 'ia', label: 'Central da IA', icon: Bot, path: TAB_PATHS.ia },
   { key: 'conexoes', label: 'Conexões', icon: Plug, path: TAB_PATHS.conexoes },

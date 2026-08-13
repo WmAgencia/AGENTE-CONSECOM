@@ -119,6 +119,10 @@ export async function importLeads(
 ): Promise<ImportResult> {
   const client = getClient(cfg)
   if (!client) return { ok: 0, failed: leads.length, firstError: 'Configure a URL e a chave anon do Supabase.', errors: [] }
+  const { data: authData, error: authError } = await client.auth.getUser()
+  if (authError || !authData.user) {
+    return { ok: 0, failed: leads.length, firstError: 'Cole um access token válido da sessão Vyntra.', errors: [] }
+  }
 
   // Detecta compatibilidade de schema (v6+v8 aplicadas vs. apenas base).
   // Se as colunas v8 (source, facebook, instagram, tags, ...) não existirem,
@@ -139,7 +143,7 @@ export async function importLeads(
   let sessionId: string | null = null
   if (leads.length > 0) {
     const sessInsert: Record<string, unknown> = { imported_by: 'extension' }
-    if (supportsV8) sessInsert.user_id = opts?.userId ?? null
+      if (supportsV8) sessInsert.user_id = opts?.userId ?? authData.user.id
     const { data, error } = await client.from('capture_sessions').insert(sessInsert).select('id').single()
     if (error) {
       console.log('[IMPORT] capture_sessions INSERT best-effort failed (continuing without session):', error.code, error.message)
@@ -182,6 +186,10 @@ export async function importLeads(
       place_id: lead.place_id || null,
       niche: 'maps',
       session_id: sessionId,
+      owner_user_id: authData.user.id,
+      import_state: 'imported',
+      imported_at: prospectedAt,
+      phone_normalized: normalizeBrazilianPhone(lead.phone) ?? null,
     }
 
     if (supportsV8) {

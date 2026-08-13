@@ -1,24 +1,11 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Puzzle, Download } from 'lucide-react'
-
-// =====================================================================
-// Extensão Chrome — download do build atual.
-//
-// Estratégia de duas fontes (robustez):
-//   1) Principal: arquivo estático versionado no próprio repo do frontend
-//      (public/downloads/consecom-extension.zip), sempre disponível.
-//   2) Metadados (versão) via backend /api/extension/download — opcional;
-//      se o backend não responder, o botão continua funcionando usando a
-//      fonte estática.
-// =====================================================================
+import { supabase } from '../lib/supabase'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL as string | undefined
 const API = BACKEND ?? 'https://consecom-backend-production.up.railway.app'
 
-// Versão estática do build publicado (deve ser mantida em sync com vite.config /
-// manifest da extensão).
 export const EXTENSION_VERSION = '1.3.0'
-
 export const EXTENSION_ZIP_URL = '/downloads/consecom-extension.zip'
 
 interface ExtensionDownload {
@@ -31,6 +18,7 @@ interface ExtensionDownload {
 export function ExtensionView() {
   const [backendVersion, setBackendVersion] = useState<string | null>(null)
   const [backendError, setBackendError] = useState<string | null>(null)
+  const [tokenStatus, setTokenStatus] = useState('')
 
   useEffect(() => {
     let alive = true
@@ -40,8 +28,6 @@ export function ExtensionView() {
         if (alive) setBackendVersion(d.version)
       })
       .catch((e: unknown) => {
-        // Backend indisponível: não é fatal. A fonte estática (zip versionado no
-        // repo) garante que o botão de download sempre funcione.
         if (alive) setBackendError(e instanceof Error ? e.message : 'indisponível')
       })
     return () => {
@@ -51,6 +37,17 @@ export function ExtensionView() {
 
   const version = backendVersion ?? EXTENSION_VERSION
   const href = EXTENSION_ZIP_URL
+
+  async function copySessionToken() {
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    if (!token) {
+      setTokenStatus('Sessão expirada. Entre novamente no Vyntra.')
+      return
+    }
+    await navigator.clipboard.writeText(token)
+    setTokenStatus('Token copiado. Cole-o na configuração da extensão.')
+  }
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -78,6 +75,14 @@ export function ExtensionView() {
           Baixar extensão (.zip)
         </a>
 
+        <button
+          onClick={() => void copySessionToken()}
+          className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border border-line-2 text-secondary hover:bg-subtle transition"
+        >
+          Copiar token da sessão para a extensão
+        </button>
+        {tokenStatus && <p className="mt-2 text-xs text-emerald-300">{tokenStatus}</p>}
+
         {backendError && (
           <p className="mt-3 text-xs text-faint">
             Metadados via backend {backendError}. Usando build estático versionado (v{EXTENSION_VERSION}).
@@ -86,12 +91,10 @@ export function ExtensionView() {
 
         <ol className="mt-6 space-y-2 text-sm text-muted">
           <li>1. Baixe e descompacte o arquivo.</li>
-          <li>
-            2. Abra <span className="text-fg">chrome://extensions</span> e ative o{' '}
-            <span className="text-fg">modo de desenvolvedor</span>.
-          </li>
+          <li>2. Abra <span className="text-fg">chrome://extensions</span> e ative o <span className="text-fg">modo de desenvolvedor</span>.</li>
           <li>3. Clique em "Carregar sem compactação" e selecione a pasta descompactada.</li>
-          <li>4. Abra o Google Maps, faça uma busca, clique em <span className="text-fg">PROSPECTAR</span>, ajuste os filtros e importe.</li>
+          <li>4. Clique em "Copiar token da sessão" acima e cole no popup da extensão (campo <span className="text-fg">Access token</span>).</li>
+          <li>5. Abra o Google Maps, faça uma busca, clique em <span className="text-fg">PROSPECTAR</span>, ajuste os filtros e importe.</li>
         </ol>
       </div>
     </div>

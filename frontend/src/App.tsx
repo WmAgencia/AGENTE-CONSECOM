@@ -6,6 +6,7 @@ import { LoginScreen } from './components/LoginScreen'
 import { KanbanBoard } from './components/KanbanBoard'
 import { CampaignsView } from './components/CampaignsView'
 import { LeadsView } from './components/LeadsView'
+import { ImportedLeadsView } from './components/ImportedLeadsView'
 import { DashboardView } from './components/DashboardView'
 import { AgentConfig } from './components/AgentConfig'
 import { ConnectionsPage } from './components/ConnectionsPage'
@@ -25,12 +26,14 @@ const APP_VERSION = '2.1.0'
 interface ShellProps {
   leads: Lead[]
   activeLeads: Lead[]
+  importedLeads: Lead[]
   campaigns: Campaign[]
   onMeeting: (id: string, meeting_at: string, notes: string) => Promise<boolean>
   onCloseLead: (id: string, closed: boolean, motivo: string, valor: number | null) => Promise<boolean>
+  onLeadsChanged: () => Promise<void>
 }
 
-function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellProps) {
+function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onCloseLead, onLeadsChanged }: ShellProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -154,7 +157,8 @@ function Shell({ leads, activeLeads, campaigns, onMeeting, onCloseLead }: ShellP
         <Routes>
           <Route path="/" element={<Navigate to="/kanban" replace />} />
           <Route path="/kanban" element={<KanbanBoard leads={leads} campaigns={campaigns} onMeeting={onMeeting} onClose={onCloseLead} />} />
-          <Route path="/leads" element={<LeadsView leads={activeLeads} />} />
+          <Route path="/leads" element={<LeadsView leads={activeLeads} campaigns={campaigns} />} />
+          <Route path="/importados" element={<ImportedLeadsView leads={importedLeads} campaigns={campaigns} onChanged={onLeadsChanged} />} />
           <Route path="/campanhas" element={<CampaignsView leads={activeLeads} />} />
           <Route path="/agenda" element={<AgendaView />} />
           <Route path="/dashboard" element={<DashboardView leads={leads} />} />
@@ -184,6 +188,8 @@ export default function App() {
   // Leads ativos na prospecção (/leads). Leads arquivados ("limpar lista")
   // seguem no estado `leads` (total) para dashboard/Kanban da campanha.
   const activeLeads = leads.filter((l) => l.is_active_in_prospecting !== false)
+  const importedLeads = activeLeads.filter((l) => l.import_state === 'imported')
+  const permanentLeads = activeLeads.filter((l) => l.import_state !== 'imported')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(!!data.session))
@@ -298,5 +304,5 @@ export default function App() {
     return <LoginScreen />
   }
 
-  return <Shell leads={leads} activeLeads={activeLeads} campaigns={campaigns} onMeeting={markMeeting} onCloseLead={closeLead} />
+  return <Shell leads={leads} activeLeads={permanentLeads} importedLeads={importedLeads} campaigns={campaigns} onMeeting={markMeeting} onCloseLead={closeLead} onLeadsChanged={loadLeads} />
 }

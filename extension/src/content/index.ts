@@ -1505,12 +1505,14 @@ export class MapsScanner {
     if (url === null) return
     const key = prompt('Chave anon (publishable):', this.cfg?.anonKey || '')
     if (key === null) return
-    if (!url || !key) {
-      alert('Informe URL e chave anon.')
+    const accessToken = prompt('Access token da sessão Vyntra:', this.cfg?.accessToken || '')
+    if (accessToken === null) return
+    if (!url || !key || !accessToken) {
+      alert('Informe URL, chave anon e access token da sessão Vyntra.')
       return
     }
-    await saveConfig({ supabaseUrl: url.replace(/\/+$/, ''), anonKey: key })
-    this.cfg = { supabaseUrl: url.replace(/\/+$/, ''), anonKey: key }
+    await saveConfig({ supabaseUrl: url.replace(/\/+$/, ''), anonKey: key, accessToken })
+    this.cfg = { supabaseUrl: url.replace(/\/+$/, ''), anonKey: key, accessToken }
     this.subscribeRealtime()
   }
 
