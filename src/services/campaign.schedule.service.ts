@@ -96,6 +96,8 @@ interface CampaignRow {
   scheduled_at: string | null;
   created_at: string | null;
   lead_count: number | null;
+  connection_ids: string[] | null;
+  whatsapp_instance: string | null;
 }
 
 interface QueueRow {
@@ -202,11 +204,30 @@ export async function saveScheduleConfig(patch: Partial<CampaignScheduleConfig>)
 // Dados das campanhas (janelas ocupadas + duração estimada)
 // ---------------------------------------------------------------------------
 
+async function countSendRuns(campaignId: string): Promise<number> {
+  const s = supabase();
+  if (!s) return 0;
+  try {
+    const res = await fetch(
+      `${s.url}/rest/v1/send_runs?select=id&campaign_id=eq.${encodeURIComponent(campaignId)}`,
+      { headers: { ...headers(), Prefer: 'count=exact' } },
+    );
+    if (res.ok) {
+      const count = res.headers.get('content-range')?.split('/')[1];
+      const n = Number(count);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  } catch {
+    // mantém 0 -> usa o agregado da campanha
+  }
+  return 0;
+}
+
 async function fetchCampaign(campaignId: string): Promise<CampaignRow | null> {
   const s = supabase();
   if (!s) return null;
   const res = await fetch(
-    `${s.url}/rest/v1/campaigns?select=id,name,status,started_at,scheduled_at,created_at,lead_count&id=eq.${encodeURIComponent(campaignId)}`,
+    `${s.url}/rest/v1/campaigns?select=id,name,status,started_at,scheduled_at,created_at,lead_count,connection_ids,whatsapp_instance&id=eq.${encodeURIComponent(campaignId)}`,
     { headers: headers() },
   );
   if (!res.ok) return null;
@@ -229,31 +250,21 @@ async function fetchMessagesDelays(campaignId: string): Promise<QueueRow[]> {
  * Duração estimada de uma campanha (min): (soma delay_seconds + nº msgs ×
  * avg_seconds_per_msg) × nº leads, com piso min_duration_min. É uma ESTIMATIVA
  * de reserva de agenda — o fim real é quando o último run conclui.
+ *
+ * Fonte única de duração: os send_runs são a fonte de verdade do nº de leads
+ * que realmente serão disparados (o `campaigns.lead_count` é um agregado que
+ * pode ficar defasado). Usamos a contagem real de send_runs quando existir;
+ * fallback para lead_count apenas se a campanha ainda não tem fila montada.
  */
 export async function estimateDurationMinutes(campaignId: string): Promise<number> {
   const config = await loadScheduleConfig();
   const camp = await fetchCampaign(campaignId);
   const msgs = await fetchMessagesDelays(campaignId);
 
-  let leadCount = camp?.lead_count && camp.lead_count > 0 ? camp.lead_count : 0;
+  let leadCount = await countSendRuns(campaignId);
   if (leadCount === 0) {
-    // fallback: conta os send_runs da campanha
-    try {
-      const s = supabase();
-      if (s) {
-        const res = await fetch(
-          `${s.url}/rest/v1/send_runs?select=id&campaign_id=eq.${encodeURIComponent(campaignId)}`,
-          { headers: { ...headers(), Prefer: 'count=exact' } },
-        );
-        if (res.ok) {
-          const count = res.headers.get('content-range')?.split('/')[1];
-          const n = Number(count);
-          if (Number.isFinite(n) && n > 0) leadCount = n;
-        }
-      }
-    } catch {
-      // mantém 0 -> ao menos 1 lead na conta abaixo
-    }
+    // Sem fila montada ainda: usa o agregado de leads da campanha.
+    leadCount = camp?.lead_count && camp.lead_count > 0 ? camp.lead_count : 0;
   }
   leadCount = Math.max(1, leadCount);
 
@@ -268,7 +279,7 @@ async function fetchActiveCampaigns(): Promise<CampaignRow[]> {
   const s = supabase();
   if (!s) return [];
   const res = await fetch(
-    `${s.url}/rest/v1/campaigns?select=id,name,status,started_at,scheduled_at,created_at,lead_count&status=in.("agendada","em_progresso","pausada")`,
+    `${s.url}/rest/v1/campaigns?select=id,name,status,started_at,scheduled_at,created_at,lead_count,connection_ids,whatsapp_instance&status=in.("agendada","em_progresso","pausada")`,
     { headers: headers() },
   );
   if (!res.ok) return [];
@@ -408,6 +419,19 @@ export async function validateSchedule(input: ValidateScheduleInput): Promise<Va
   const config = await loadScheduleConfig();
   const windows = await listTimeWindows();
   const durationMin = await estimateDurationMinutes(input.campaignId);
+
+  const camp = await fetchCampaign(input.campaignId);
+  if (!camp) {
+    return { ok: false, reason: 'invalid_args', message: 'Campanha não encontrada.' };
+  }
+  const hasConnection = (camp.connection_ids ?? []).length > 0 || !!camp.whatsapp_instance;
+  if (!hasConnection) {
+    return {
+      ok: false,
+      reason: 'fora_do_horario',
+      message: 'Selecione ao menos uma conexão do WhatsApp na campanha antes de agendar — sem conexão o envio não acontece.',
+    };
+  }
 
   const conflicts = findConflicts({ startMs, durationMin, excludeCampaignId: input.campaignId, config, windows });
   if (conflicts.length > 0) {
@@ -570,6 +594,8 @@ export async function getCampaignCalendar(startDate: string, endDate: string): P
     const end = start + durationMin * 60_000;
     // janela que toca o intervalo consultado (span de 7 dias p/ lateral)
     if (end + WEEK_MS < startMs || start > endMs) continue;
+    let leadCount = c.lead_count ?? 0;
+    if (leadCount === 0) leadCount = await countSendRuns(c.id);
     items.push({
       campaignId: c.id,
       name: c.name ?? 'Campanha',
@@ -578,7 +604,7 @@ export async function getCampaignCalendar(startDate: string, endDate: string): P
       endIso: new Date(end).toISOString(),
       durationMin,
       scheduledAt: c.scheduled_at,
-      leadCount: c.lead_count ?? 0,
+      leadCount,
     });
   }
   return items.sort((a, b) => a.startIso.localeCompare(b.startIso));

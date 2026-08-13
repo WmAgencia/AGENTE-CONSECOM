@@ -10,7 +10,11 @@ export function ImportedLeadsView({
   campaigns: Campaign[]
   onChanged: () => Promise<void>
 }) {
-  const imported = useMemo(() => leads.filter((lead) => lead.import_state === 'imported'), [leads])
+  const imported = useMemo(
+    () => leads.filter((lead) => lead.import_state === 'imported')
+      .sort((a, b) => (b.imported_at ?? '').localeCompare(a.imported_at ?? '')),
+    [leads],
+  )
   const blocked = useMemo(() => leads.filter((lead) => lead.import_state === 'blocked'), [leads])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [campaignId, setCampaignId] = useState('')

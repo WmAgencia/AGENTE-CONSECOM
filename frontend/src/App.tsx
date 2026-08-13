@@ -159,7 +159,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           <Route path="/kanban" element={<KanbanBoard leads={leads} campaigns={campaigns} onMeeting={onMeeting} onClose={onCloseLead} />} />
           <Route path="/leads" element={<LeadsView leads={activeLeads} campaigns={campaigns} />} />
           <Route path="/importados" element={<ImportedLeadsView leads={importedLeads} campaigns={campaigns} onChanged={onLeadsChanged} />} />
-          <Route path="/campanhas" element={<CampaignsView leads={activeLeads} />} />
+          <Route path="/campanhas" element={<CampaignsView />} />
           <Route path="/agenda" element={<AgendaView />} />
           <Route path="/dashboard" element={<DashboardView leads={leads} />} />
           <Route path="/agente" element={<AgentConfig />} />

@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { supabase, type Campaign, type QueueMessage, type Lead, type SendRun, type WhatsAppConnection } from '../lib/supabase'
+import { supabase, type Campaign, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
 import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDateTime } from '../lib/month'
 import { subscribeConnectionAlerts } from '../lib/connectionAlerts'
 
-export function CampaignsView({ leads }: { leads: Lead[] }) {
+export function CampaignsView() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [messagesByCampaign, setMessagesByCampaign] = useState<Record<string, QueueMessage[]>>({})
-  const [runs, setRuns] = useState<SendRun[]>([])
-  const [enqueueOpen, setEnqueueOpen] = useState<Campaign | null>(null)
+  const [runsByCampaign, setRunsByCampaign] = useState<Record<string, SendRun[]>>({})
+  const [queueFor, setQueueFor] = useState<Campaign | null>(null)
   const [connections, setConnections] = useState<WhatsAppConnection[]>([])
   const [scheduleFor, setScheduleFor] = useState<Campaign | null>(null)
   const [schedulePicker, setSchedulePicker] = useState(false)
@@ -129,14 +129,6 @@ export function CampaignsView({ leads }: { leads: Lead[] }) {
     return stop
   }, [connections])
 
-  async function setCampaignInstance(c: Campaign, instanceName: string | null) {
-    const { error } = await supabase
-      .from('campaigns')
-      .update({ whatsapp_instance: instanceName })
-      .eq('id', c.id)
-    if (!error) await load()
-  }
-
   async function setCampaignConnections(c: Campaign, ids: string[]) {
     const { error } = await supabase
       .from('campaigns')
@@ -150,48 +142,35 @@ async function loadRuns() {
       .from('send_runs')
       .select('*, campaign:campaigns(name), lead:leads(id,name,phone,status)')
       .order('created_at', { ascending: false })
-      .limit(200)
-    if (!error && data) setRuns(data)
+      .limit(500)
+    if (!error && data) {
+      setRunsByCampaign(groupRunsByCampaign(data))
+    }
+  }
+
+  function groupRunsByCampaign(rows: SendRun[]): Record<string, SendRun[]> {
+    const map: Record<string, SendRun[]> = {}
+    for (const r of rows) {
+      const arr = map[r.campaign_id] ?? []
+      arr.push(r)
+      map[r.campaign_id] = arr
+    }
+    return map
   }
 
   async function removeRun(r: SendRun) {
     if (!window.confirm(`Desenfileirar "${r.lead?.name ?? 'este lead'}" da campanha "${r.campaign?.name ?? ''}"?`)) return
     const { error } = await supabase.from('send_runs').delete().eq('id', r.id)
-    if (!error) setRuns((rs) => rs.filter((x) => x.id !== r.id))
+    if (!error) {
+      setRunsByCampaign((byCampaign) => {
+        const next = { ...byCampaign }
+        next[r.campaign_id] = (next[r.campaign_id] ?? []).filter((x) => x.id !== r.id)
+        return next
+      })
+    }
   }
 
-  /** Enfileira TODOS os leads de uma vez (fluxo atual de send_runs, sem modal). */
-  async function autoEnqueue(c: Campaign) {
-    if (leads.length === 0) {
-      window.alert('Nenhum lead cadastrado para enfileirar.')
-      return
-    }
-    if (!window.confirm(`Enfileirar todos os ${leads.length} leads na campanha "${c.name}"?`)) return
-    const selectedConnections = c.connection_ids ?? []
-    const rows = leads.map((lead, index) => {
-      const connectionId = selectedConnections.length > 0 ? selectedConnections[index % selectedConnections.length] : null
-      return {
-        campaign_id: c.id,
-        lead_id: lead.id,
-        status: 'pending',
-        current_position: 0,
-        next_send_at: new Date().toISOString(),
-        connection_id: connectionId,
-        connection_instance: connections.find((connection) => connection.id === connectionId)?.instance_name ?? null,
-      }
-    })
-    const { error } = await supabase.from('send_runs').upsert(rows, {
-      onConflict: 'campaign_id,lead_id',
-      ignoreDuplicates: true,
-    })
-    if (error) {
-      window.alert(`Não foi possível enfileirar: ${error.message}`)
-      return
-    }
-    await load()
-  }
-
-  async function fireCampaign(c: Campaign) {
+async function fireCampaign(c: Campaign) {
     const running = campaigns.filter((x) => x.status === 'em_progresso' && x.id !== c.id)
     if (running.length > 0) {
       if (!window.confirm(`A campanha "${running[0].name}" está em progresso. O worker só dispara uma por vez. Enfileirar mesmo assim?`)) return
@@ -222,7 +201,7 @@ async function loadRuns() {
   }
 
   async function deleteCampaign(c: Campaign) {
-    const active = runs.filter((r) => r.campaign_id === c.id && r.status !== 'done').length
+    const active = (runsByCampaign[c.id] ?? []).filter((r) => r.status !== 'done').length
     let msg = `Excluir a campanha "${c.name}"?\n\nIsso apaga a sequência e o histórico de envios desta campanha. Os leads permanecem cadastrados (apenas desvinculados dela).`
     if (active > 0) msg += `\n\nAtenção: ${active} envio(s) pendente(s)/em andamento serão cancelados.`
     if (!window.confirm(msg)) return
@@ -244,17 +223,19 @@ async function loadRuns() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-line flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-gradient-to-r from-transparent via-subtle-2/40 to-transparent">
         <div>
-          <h1 className="text-lg font-semibold">Campanhas &amp; fila de envio</h1>
+          <h1 className="text-lg font-semibold bg-gradient-to-r from-indigo-300 to-emerald-300 bg-clip-text text-transparent">
+            Campanhas &amp; disparo
+          </h1>
           <p className="text-sm text-muted">
-            Monte a sequência, enfileire leads e acompanhe o envio (WhatsApp)
+            Monte a sequência, agende o início e acompanhe a fila por campanha (WhatsApp)
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSchedulePicker(true)}
-            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 rounded-lg transition"
+            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 rounded-lg transition shadow-sm shadow-indigo-600/30"
           >
             📅 Agendar campanha
           </button>
@@ -275,11 +256,10 @@ async function loadRuns() {
                 campaign={c}
                 messages={messagesByCampaign[c.id] ?? []}
                 connections={connections}
+                runs={runsByCampaign[c.id] ?? []}
                 onChanged={load}
-                onSetInstance={(n) => void setCampaignInstance(c, n)}
                 onSetConnections={(ids) => void setCampaignConnections(c, ids)}
-                onEnqueue={() => setEnqueueOpen(c)}
-                onAutoEnqueue={() => void autoEnqueue(c)}
+                onShowQueue={() => setQueueFor(c)}
                 onFire={() => void fireCampaign(c)}
                 onPause={() => void pauseCampaign(c)}
                 onResume={() => void resumeCampaign(c)}
@@ -335,13 +315,24 @@ async function loadRuns() {
                   key={cell.key}
                   className={`min-h-16 p-1 text-left align-top ${cell.inMonth ? 'bg-subtle' : 'bg-subtle-2/60'}`}
                 >
-                  <div className={`text-[11px] px-1 ${cell.inMonth ? 'text-fg' : 'text-faint'}`}>{cell.day}</div>
+                  <div className={`text-[11px] px-1 flex items-center justify-between ${cell.inMonth ? 'text-fg' : 'text-faint'}`}>
+                    <span>{cell.day}</span>
+                    {dayItems.length > 0 && (
+                      <span className="text-[9px] px-1 rounded-full bg-indigo-500/15 text-indigo-300">
+                        {dayItems.length}
+                      </span>
+                    )}
+                  </div>
                   <div className="mt-0.5 space-y-0.5">
                     {dayItems.slice(0, 2).map((it) => (
-                      <div
+                      <button
                         key={it.campaignId}
-                        title={`${it.name} · ${humanDateTime(Date.parse(it.startIso))} até ${humanDateTime(Date.parse(it.endIso))}`}
-                        className={`truncate rounded px-1 py-0.5 text-[9px] leading-tight ${
+                        onClick={() => {
+                          const c = campaigns.find((x) => x.id === it.campaignId)
+                          if (c) setScheduleFor(c)
+                        }}
+                        title={`${it.name} · ${humanDateTime(Date.parse(it.startIso))} até ${humanDateTime(Date.parse(it.endIso))} · ${it.leadCount} leads — clique para reagendar`}
+                        className={`w-full truncate rounded px-1 py-0.5 text-[9px] leading-tight text-left ${
                           it.status === 'em_progresso'
                             ? 'bg-emerald-500/20 text-emerald-300'
                             : it.status === 'pausada'
@@ -350,10 +341,10 @@ async function loadRuns() {
                         }`}
                       >
                         {saLocalTime(Date.parse(it.startIso))} {it.name}
-                      </div>
+                      </button>
                     ))}
                     {dayItems.length > 2 && (
-                      <div className="px-1 text-[9px] text-faint">+{dayItems.length - 2}</div>
+                      <div className="px-1 text-[9px] text-faint">+{dayItems.length - 2} mais</div>
                     )}
                   </div>
                 </div>
@@ -362,8 +353,9 @@ async function loadRuns() {
           </div>
           {scheduleConfig && (
             <p className="text-[11px] text-faint mt-2">
-              Intervalo mínimo entre campanhas: {scheduleConfig.interval_min} min. A campanha seguinte
-              só pode começar depois do fim + intervalo da anterior.
+              Intervalo mínimo entre campanhas: {scheduleConfig.interval_min} min. Clique em uma
+              campanha no calendário para reagendar. A campanha seguinte só pode começar depois do
+              fim + intervalo da anterior.
             </p>
           )}
         </section>
@@ -371,23 +363,63 @@ async function loadRuns() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-              Fila de envio ({runs.filter((r) => r.status === 'pending' || r.status === 'running').length} ativos)
+              Fila de envio
             </h2>
+            <span className="text-[11px] text-faint">
+              {Object.values(runsByCampaign).reduce((acc, rs) => acc + rs.filter((r) => r.status === 'pending' || r.status === 'running').length, 0)} ativo(s) em espera
+            </span>
           </div>
-          <RunsTable runs={runs} onRemove={removeRun} />
+          <div className="rounded-xl border border-line overflow-hidden">
+            {campaigns.filter((c) => (runsByCampaign[c.id] ?? []).length > 0).length === 0 ? (
+              <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-6 text-center m-2">
+                Nenhuma execução de envio ainda. Distribua leads para uma campanha para começar.
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <tbody>
+                  {campaigns
+                    .filter((c) => (runsByCampaign[c.id] ?? []).length > 0)
+                    .map((c) => {
+                      const rs = runsByCampaign[c.id] ?? []
+                      const active = rs.filter((r) => r.status === 'pending' || r.status === 'running').length
+                      const done = rs.filter((r) => r.status === 'done').length
+                      const failed = rs.filter((r) => r.status === 'failed').length
+                      return (
+                        <tr key={c.id} className="border-b border-line last:border-0">
+                          <td className="px-4 py-2.5">
+                            <div className="font-medium">{c.name}</div>
+                          </td>
+                          <td className="px-4 py-2.5 text-secondary">
+                            <span className="text-emerald-300">{active} ativo</span>
+                            {' · '}
+                            <span className="text-sky-300">{done} concluído</span>
+                            {failed > 0 && <> · <span className="text-rose-300">{failed} falhou</span></>}
+                          </td>
+                          <td className="px-4 py-2.5 text-right">
+                            <button
+                              onClick={() => setQueueFor(c)}
+                              className="text-[11px] px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30"
+                            >
+                              Fila de leads ({rs.length})
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </section>
       </div>
 
-      {enqueueOpen && (
-        <EnqueueModal
-          campaign={enqueueOpen}
-          leads={leads}
-          connections={connections}
-          onClose={() => setEnqueueOpen(null)}
-          onEnrolled={() => {
-            setEnqueueOpen(null)
-            void loadRuns()
-          }}
+{queueFor && (
+        <QueueModal
+          campaign={queueFor}
+          runs={runsByCampaign[queueFor.id] ?? []}
+          onClose={() => setQueueFor(null)}
+          onRemove={removeRun}
+          onChanged={() => void loadRuns()}
         />
       )}
 
@@ -396,6 +428,7 @@ async function loadRuns() {
           initial={scheduleFor}
           campaigns={campaigns}
           config={scheduleConfig}
+          connections={connections}
           onClose={() => setScheduleFor(null)}
           onSaved={() => {
             setScheduleFor(null)
@@ -409,6 +442,7 @@ async function loadRuns() {
           initial={null}
           campaigns={campaigns}
           config={scheduleConfig}
+          connections={connections}
           onClose={() => setSchedulePicker(false)}
           onSaved={() => {
             setSchedulePicker(false)
@@ -475,11 +509,10 @@ function CampaignCard({
   campaign,
   messages,
   connections,
+  runs,
   onChanged,
-  onSetInstance,
   onSetConnections,
-  onEnqueue,
-  onAutoEnqueue,
+  onShowQueue,
   onFire,
   onPause,
   onResume,
@@ -490,11 +523,10 @@ function CampaignCard({
   campaign: Campaign
   messages: QueueMessage[]
   connections: WhatsAppConnection[]
+  runs: SendRun[]
   onChanged: () => void
-  onSetInstance: (instanceName: string | null) => void
   onSetConnections: (ids: string[]) => void
-  onEnqueue: () => void
-  onAutoEnqueue: () => void
+  onShowQueue: () => void
   onFire: () => void
   onPause: () => void
   onResume: () => void
@@ -504,29 +536,24 @@ function CampaignCard({
 }) {
   const [open, setOpen] = useState(false)
   const activeConnections = connections.filter((c) => c.status === 'connected')
+  const runActive = runs.filter((r) => r.status === 'pending' || r.status === 'running').length
   return (
-    <div className="rounded-xl border border-line bg-subtle p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <div className="font-medium">{campaign.name}</div>
+    <div className="rounded-xl border border-line bg-subtle p-4 shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between mb-3">
+        <div className="min-w-0">
+          <div className="font-semibold truncate">{campaign.name}</div>
           <div className="text-[11px] text-muted">
-            {messages.length} mensagens na sequência
+            {messages.length} mensagem(ns) na sequência · {runs.length} lead(s) na fila
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <CampaignStatusBadge status={campaign.status} />
           <button
-            onClick={onEnqueue}
+            onClick={onShowQueue}
+            title="Ver fila de leads desta campanha"
             className="text-[11px] px-2 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30"
           >
-            Enfileirar leads
-          </button>
-          <button
-            onClick={onAutoEnqueue}
-            title="Enfileirar todos os leads de uma vez"
-            className="text-[11px] px-2 py-1 rounded-lg bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"
-          >
-            ⚡ Enfileirar automaticamente
+            Fila de leads
           </button>
           <button
             onClick={() => setOpen((o) => !o)}
@@ -548,6 +575,9 @@ function CampaignCard({
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-subtle text-secondary">{campaign.lead_count} leads</span>
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{campaign.success_count} sucessos</span>
         <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300">{campaign.fail_count} falhas</span>
+        {runActive > 0 && (
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">{runActive} em fila</span>
+        )}
       </div>
 
       <div className="mb-3 space-y-2">
@@ -556,25 +586,17 @@ function CampaignCard({
           {activeConnections.map((connection) => {
             const checked = (campaign.connection_ids ?? []).includes(connection.id)
             return (
-              <label key={connection.id} className="flex items-center gap-1.5 rounded border border-line-2 px-2 py-1 text-[11px] text-secondary">
+              <label key={connection.id} className="flex items-center gap-1.5 rounded border border-line-2 px-2 py-1 text-[11px] text-secondary cursor-pointer">
                 <input type="checkbox" checked={checked} onChange={() => onSetConnections(checked ? (campaign.connection_ids ?? []).filter((id) => id !== connection.id) : [...(campaign.connection_ids ?? []), connection.id])} />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 {connection.whatsapp_name ?? connection.phone_number ?? connection.instance_name}
               </label>
             )
           })}
         </div>
-        <select
-          value={campaign.whatsapp_instance ?? ''}
-          onChange={(e) => onSetInstance(e.target.value || null)}
-          disabled={activeConnections.length === 0}
-          className="w-full bg-field border border-line-2 rounded-lg px-2 py-1 text-xs text-fg outline-none focus:border-indigo-500"
-        >
-          <option value="">Fallback legado (conexão padrão)</option>
-          {activeConnections.map((c) => <option key={c.id} value={c.instance_name}>{c.whatsapp_name ?? c.phone_number ?? c.instance_name}</option>)}
-        </select>
         {activeConnections.length === 0 && (
-          <span className="text-[11px] text-amber-400/80 shrink-0">
-            Nenhum WhatsApp conectado
+          <span className="text-[11px] text-amber-400/80 block">
+            Nenhum WhatsApp conectado — conecte ao menos um para a campanha disparar.
           </span>
         )}
       </div>
@@ -639,115 +661,163 @@ function CampaignCard({
   )
 }
 
-function EnqueueModal({
+/** Fila de leads de uma campanha específica (fonte de verdade: send_runs). */
+function QueueModal({
   campaign,
-  leads,
-  connections,
+  runs,
   onClose,
-  onEnrolled,
+  onRemove,
+  onChanged,
 }: {
   campaign: Campaign
-  leads: Lead[]
-  connections: WhatsAppConnection[]
+  runs: SendRun[]
   onClose: () => void
-  onEnrolled: () => void
+  onRemove: (r: SendRun) => void
+  onChanged: () => void
 }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  function toggle(id: string) {
-    setSelected((s) => {
-      const n = new Set(s)
-      if (n.has(id)) n.delete(id)
-      else n.add(id)
-      return n
-    })
+  const [detail, setDetail] = useState<SendRun | null>(null)
+  if (runs.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="w-full max-w-lg rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="font-semibold">Fila de leads</div>
+              <div className="text-xs text-muted">Campanha: {campaign.name}</div>
+            </div>
+            <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
+          </div>
+          <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-6 text-center">
+            Esta campanha ainda não tem leads na fila. Distribua leads para ela na guia Importados
+            ou no painel de leads para começar.
+          </p>
+          <div className="flex justify-end mt-4">
+            <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Fechar</button>
+          </div>
+        </div>
+      </div>
+    )
   }
-
-  async function submit() {
-    if (selected.size === 0) {
-      setError('Selecione ao menos um lead.')
-      return
-    }
-    setBusy(true)
-    setError('')
-    const selectedConnections = campaign.connection_ids ?? []
-    const rows = Array.from(selected).map((lead_id, index) => {
-      const connectionId = selectedConnections.length > 0 ? selectedConnections[index % selectedConnections.length] : null
-      return {
-        campaign_id: campaign.id,
-        lead_id,
-        status: 'pending',
-        current_position: 0,
-        next_send_at: new Date().toISOString(),
-        connection_id: connectionId,
-        connection_instance: connections.find((connection) => connection.id === connectionId)?.instance_name ?? null,
-      }
-    })
-    const { error: err } = await supabase.from('send_runs').upsert(rows, {
-      onConflict: 'campaign_id,lead_id',
-      ignoreDuplicates: true,
-    })
-    setBusy(false)
-    if (err) {
-      setError(err.message)
-      return
-    }
-    onEnrolled()
-  }
-
+  const activeCount = runs.filter((r) => r.status === 'pending' || r.status === 'running').length
+  const doneCount = runs.filter((r) => r.status === 'done').length
+  const failedCount = runs.filter((r) => r.status === 'failed').length
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
+      <div className="w-full max-w-2xl rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="font-semibold">Enfileirar leads</div>
-            <div className="text-xs text-muted">Campanha: {campaign.name}</div>
+            <div className="font-semibold">Fila de leads</div>
+            <div className="text-xs text-muted">
+              Campanha: {campaign.name} · {runs.length} lead(s) na fila
+            </div>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">
-            ×
-          </button>
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
         </div>
 
-        <div className="max-h-72 overflow-y-auto space-y-1.5 mb-4">
-          {leads.length === 0 && (
-            <p className="text-sm text-faint">Nenhum lead cadastrado ainda.</p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{activeCount} ativo(s)</span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300">{doneCount} concluído(s)</span>
+          {failedCount > 0 && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300">{failedCount} falhou(s)</span>
           )}
-          {leads.map((lead) => (
-            <label
-              key={lead.id}
-              className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 cursor-pointer hover:bg-subtle"
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(lead.id)}
-                onChange={() => toggle(lead.id)}
-                className="accent-indigo-500"
-              />
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm truncate">{lead.name || 'Sem nome'}</span>
-                {lead.phone && <span className="block text-[11px] text-faint">{lead.phone}</span>}
-              </span>
-              <span className="text-[10px] text-faint shrink-0">{lead.status}</span>
-            </label>
-          ))}
         </div>
 
-        {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
-
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted">{selected.size} selecionado(s)</span>
-          <div className="flex gap-2">
-            <button onClick={onClose}
-              className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
-              Cancelar
-            </button>
-            <button onClick={() => void submit()} disabled={busy}
-              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
-              {busy ? 'Enfileirando...' : 'Enfileirar'}
-            </button>
+        {detail ? (
+          <div className="rounded-lg border border-line-2 bg-subtle-2 p-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-medium text-sm">{detail.lead?.name ?? '—'} <span className="text-faint font-normal">{detail.lead?.phone ?? ''}</span></div>
+              <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${(RUN_STATUS[detail.status] ?? RUN_STATUS.pending).cls}`}>
+                {(RUN_STATUS[detail.status] ?? RUN_STATUS.pending).label}
+              </span>
+            </div>
+            <dl className="grid grid-cols-2 gap-2 text-xs text-secondary">
+              <div>
+                <dt className="text-faint">Etapa</dt>
+                <dd>#{(detail.current_position ?? 0) + 1}</dd>
+              </div>
+              <div>
+                <dt className="text-faint">Próximo envio</dt>
+                <dd>{detail.next_send_at ? new Date(detail.next_send_at).toLocaleString('pt-BR') : '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-faint">Último envio</dt>
+                <dd>{detail.last_sent_at ? new Date(detail.last_sent_at).toLocaleString('pt-BR') : '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-faint">Conexão</dt>
+                <dd>{detail.connection_instance ?? 'padrão'}</dd>
+              </div>
+              {detail.status === 'failed' && detail.fail_reason && (
+                <div className="col-span-2">
+                  <dt className="text-faint">Motivo da falha</dt>
+                  <dd className="text-rose-300">{FAIL_REASON_LABEL[detail.fail_reason] ?? detail.fail_reason}</dd>
+                </div>
+              )}
+            </dl>
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setDetail(null)} className="px-3 py-1.5 text-xs bg-subtle hover:bg-subtle-2 rounded-lg">Voltar</button>
+              {detail.status !== 'done' && (
+                <button onClick={() => { void onRemove(detail); setDetail(null) }} className="px-3 py-1.5 text-xs bg-rose-600/70 hover:bg-rose-500 rounded-lg text-white">
+                  Desenfileirar
+                </button>
+              )}
+            </div>
           </div>
+        ) : (
+          <div className="max-h-80 overflow-y-auto rounded-lg border border-line">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-faint border-b border-line bg-subtle">
+                  <th className="px-3 py-2 font-medium">Lead</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Conexão</th>
+                  <th className="px-3 py-2 font-medium text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.slice(0, 100).map((r) => {
+                  const st = RUN_STATUS[r.status]
+                  return (
+                    <tr key={r.id} className="border-b border-line last:border-0 hover:bg-subtle cursor-pointer" onClick={() => setDetail(r)}>
+                      <td className="px-3 py-2">
+                        <div className="font-medium truncate max-w-[220px]">{r.lead?.name ?? '—'}</div>
+                        {r.lead?.phone && <div className="text-[11px] text-faint">{r.lead.phone}</div>}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`${st.cls} px-2 py-0.5 rounded text-[11px] font-medium`}>{st.label}</span>
+                      </td>
+                      <td className="px-3 py-2 text-faint text-[11px]">{r.connection_instance ?? 'padrão'}</td>
+                      <td className="px-3 py-2 text-right">
+                        {r.status !== 'done' && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); void onRemove(r) }}
+                            title="Desenfileirar"
+                            className="text-faint hover:text-rose-400 text-lg leading-none"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            {runs.length > 100 && (
+              <div className="px-3 py-2 text-[11px] text-faint border-t border-line">
+                Exibindo 100 de {runs.length} — use a coluna de status para filtrar.
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end mt-4 gap-2">
+          <button onClick={() => void onChanged()} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
+            Atualizar
+          </button>
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium">
+            Fechar
+          </button>
         </div>
       </div>
     </div>
@@ -759,12 +829,14 @@ function ScheduleModal({
   initial,
   campaigns,
   config,
+  connections,
   onClose,
   onSaved,
 }: {
   initial: Campaign | null
   campaigns: Campaign[]
   config: CampaignScheduleConfig | null
+  connections: WhatsAppConnection[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -901,6 +973,20 @@ function ScheduleModal({
                   Intervalo mínimo entre campanhas: {config.interval_min} min
                 </div>
               )}
+              {(() => {
+                const sel = (selected.connection_ids ?? []).filter((id) =>
+                  connections.some((conn) => conn.id === id && conn.status === 'connected'),
+                )
+                if (sel.length === 0) {
+                  return (
+                    <div className="text-amber-300">
+                      ⚠️ Nenhuma conexão do WhatsApp conectada nesta campanha. O envio não acontecerá
+                      até você selecionar ao menos uma conexão.
+                    </div>
+                  )
+                }
+                return <div className="text-faint">Conexões prontas para envio: {sel.length}</div>
+              })()}
             </div>
           )}
 
@@ -995,71 +1081,6 @@ const FAIL_REASON_LABEL: Record<string, string> = {
   sem_telefone: 'Lead sem telefone',
   send_failed: 'Falha de envio (retries esgotados)',
   lead_nao_encontrado: 'Lead não encontrado',
-}
-
-function RunsTable({ runs, onRemove }: { runs: SendRun[]; onRemove: (r: SendRun) => void }) {
-  if (runs.length === 0) {
-    return (
-      <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-6 text-center">
-        Nenhuma execução de envio ainda. Enfileire leads em uma campanha para começar.
-      </p>
-    )
-  }
-  return (
-    <div className="rounded-xl border border-line overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wide text-faint border-b border-line">
-            <th className="px-4 py-2.5 font-medium">Lead</th>
-            <th className="px-4 py-2.5 font-medium">Campanha</th>
-            <th className="px-4 py-2.5 font-medium">Etapa</th>
-            <th className="px-4 py-2.5 font-medium">Status</th>
-            <th className="px-4 py-2.5 font-medium">Próximo envio</th>
-            <th className="px-4 py-2.5 font-medium text-right">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => {
-            const st = RUN_STATUS[r.status]
-            return (
-              <tr key={r.id} className="border-b border-line last:border-0 hover:bg-subtle">
-                <td className="px-4 py-2.5">
-                  <div className="font-medium truncate max-w-[200px]">{r.lead?.name ?? '—'}</div>
-                  {r.lead?.phone && <div className="text-[11px] text-faint">{r.lead.phone}</div>}
-                </td>
-                <td className="px-4 py-2.5 text-secondary">{r.campaign?.name ?? '—'}</td>
-                <td className="px-4 py-2.5 text-muted">#{(r.current_position ?? 0) + 1}</td>
-                <td className="px-4 py-2.5">
-                  <span className={`${st.cls} px-2 py-0.5 rounded text-[11px] font-medium`}>
-                    {st.label}
-                  </span>
-                  {r.status === 'failed' && r.fail_reason && (
-                    <div className="text-[11px] text-rose-300/80 mt-1 max-w-[220px] leading-tight">
-                      {FAIL_REASON_LABEL[r.fail_reason] ?? r.fail_reason}
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-faint">
-                  {r.next_send_at ? new Date(r.next_send_at).toLocaleString('pt-BR') : '—'}
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  {r.status !== 'done' && (
-                    <button
-                      onClick={() => onRemove(r)}
-                      title="Desenfileirar"
-                      className="text-faint hover:text-rose-400 text-lg leading-none"
-                    >
-                      ×
-                    </button>
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
 }
 
 const KIND_META: Record<QueueMessage['kind'], { label: string; cls: string }> = {
