@@ -28,11 +28,19 @@ document.getElementById('save')?.addEventListener('click', async () => {
 
 document.getElementById('sync-session')?.addEventListener('click', async () => {
   const status = document.getElementById('status')
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  if (!tab?.id) return
-  const result = await chrome.tabs.sendMessage(tab.id, { type: 'consecom:request-session' }).catch(() => null) as { accessToken?: string; refreshToken?: string; error?: string } | null
+  if (status) status.textContent = 'Procurando aba do Vyntra...'
+  const tabs = await chrome.tabs.query({})
+  const vyntraTab = tabs.find((tab) => {
+    const url = tab.url ?? ''
+    return url.includes('frontend-seven-sooty-78.vercel.app') || url.includes('frontend-consecom.vercel.app')
+  })
+  if (!vyntraTab?.id) {
+    if (status) status.textContent = 'Abra o Vyntra em uma aba do navegador.'
+    return
+  }
+  const result = await chrome.tabs.sendMessage(vyntraTab.id, { type: 'consecom:request-session' }).catch(() => null) as { accessToken?: string; refreshToken?: string; error?: string } | null
   if (!result?.accessToken || !result.refreshToken) {
-    if (status) status.textContent = 'Abra o Vyntra em uma aba e tente novamente.'
+    if (status) status.textContent = 'Faça login no Vyntra e tente novamente.'
     return
   }
   const cfg = await getStoredConfig()

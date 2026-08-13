@@ -17,7 +17,12 @@ export const DEFAULT_CONFIG: StoredConfig = {
 }
 
 export async function getStoredConfig(): Promise<StoredConfig> {
-  const stored = (await chrome.storage.sync.get(CONFIG_KEY)) as Record<string, Partial<StoredConfig> | undefined>
+  let stored: Record<string, Partial<StoredConfig> | undefined> = {}
+  try {
+    stored = (await chrome.storage.sync.get(CONFIG_KEY)) as Record<string, Partial<StoredConfig> | undefined>
+  } catch {
+    // Extension context invalidated (extension recarregada). Usa defaults.
+  }
   const cfg = stored[CONFIG_KEY] ?? {}
   const result: StoredConfig = {
     supabaseUrl: cfg.supabaseUrl || DEFAULT_CONFIG.supabaseUrl,
@@ -25,12 +30,15 @@ export async function getStoredConfig(): Promise<StoredConfig> {
     accessToken: cfg.accessToken || undefined,
     refreshToken: cfg.refreshToken || undefined,
   }
-  console.log('[consecom] config usada -> url:', result.supabaseUrl, '| key tail:', result.anonKey.slice(-16))
   return result
 }
 
 export async function saveConfig(cfg: StoredConfig): Promise<void> {
-  await chrome.storage.sync.set({ [CONFIG_KEY]: cfg })
+  try {
+    await chrome.storage.sync.set({ [CONFIG_KEY]: cfg })
+  } catch {
+    // Extension context invalidated — a próxima sessão salva normalmente.
+  }
 }
 
 let cachedClient: SupabaseClient | null = null
