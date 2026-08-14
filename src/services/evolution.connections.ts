@@ -12,6 +12,11 @@ import { getEvolutionConfig, getSupabaseProspeccaoConfig, getWebhookSecret } fro
 import { getLogger } from '../utils/logger.js';
 import { extractQrFromEvolution, isValidQrDataUri, toQrDataUri } from '../utils/qr.js';
 
+/** Instâncias que devem ser COMPLETAMENTE ignoradas pelo sistema.
+ *  Não aparecem em getConnections, não participam de envio, não são
+ *  reconciliadas. O efeito colateral de delete/refresh é bloqueado. */
+const IGNORED_INSTANCES = new Set<string>(['consecom-user-9a6d110f-9a7-5']);
+
 /**
  * Returns the public base URL of this backend (used to register the
  * webhook on the Evolution instance). Prefers RAILWAY_PUBLIC_DOMAIN
@@ -176,7 +181,7 @@ export async function getUserConnections(identifier: string): Promise<WhatsAppCo
     };
     await consume(`workspace_id=eq.${encodeURIComponent(identifier)}`);
     await consume(`user_id=eq.${encodeURIComponent(identifier)}`);
-    const all = [...seen.values()];
+    const all = [...seen.values()].filter((c) => !IGNORED_INSTANCES.has(c.instance_name));
     all.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
     return all;
   } catch (e) {
