@@ -33,9 +33,11 @@ import { registerCampaignScheduleRoutes } from './routes/campaigns.js';
 import { registerFollowUpRoutes } from './routes/followups.js';
 import { buildDefaultRegistry } from './tools/index.js';
 import { ensureSchema, isDbEnabled } from './services/db.js';
+import type { SendWorker } from './services/send.worker.js';
 
 export interface BuiltApp {
   app: FastifyInstance;
+  sendWorker?: SendWorker;
 }
 
 /**

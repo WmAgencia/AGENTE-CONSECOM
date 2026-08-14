@@ -12,7 +12,6 @@ async function bootstrap(): Promise<void> {
     env = getEnv();
   } catch (err) {
     const message = err instanceof Error ? err.message : 'env error';
-    // Logger may use default level here; still emit fatal then exit
     log.fatal({ errMessage: message }, 'server: environment configuration failed');
     process.exit(1);
   }
@@ -26,12 +25,16 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  // Start the auto-send worker (only if Supabase is configured for prospecting).
   let worker: SendWorker | null = null;
+  let workerStarted = false;
   if (hasSupabaseProspeccao()) {
     try {
       worker = new SendWorker();
       worker.start();
+      // Disponibiliza o worker para o webhook invalidar o cache de
+      // estado real das instâncias quando o estado muda (reconciliacao).
+      (app as any).sendWorker = worker;
+      workerStarted = true;
     } catch (err) {
       log.warn(
         { errMessage: err instanceof Error ? err.message : 'unknown' },
@@ -43,7 +46,7 @@ async function bootstrap(): Promise<void> {
   try {
     await app.listen({ port: env.PORT, host: '0.0.0.0' });
     log.info(
-      { port: env.PORT, service: env.SERVICE_NAME, version: env.SERVICE_VERSION },
+      { port: env.PORT, service: env.SERVICE_NAME },
       'server: listening',
     );
   } catch (err) {
@@ -52,15 +55,13 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  // Retoma lotes da Memória Comercial que ficaram 'processing' após um
-  // restart/redeploy (a fila em memória se perde). Fire-and-forget.
-  if (hasSupabaseProspeccao()) {
+  if (workerStarted) {
     try {
       void resumeStuckImports();
     } catch (err) {
       log.warn(
         { errMessage: err instanceof Error ? err.message : 'unknown' },
-        'memory: resume stuck imports failed',
+        'server: resume stuck imports failed',
       );
     }
   }

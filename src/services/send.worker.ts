@@ -224,6 +224,35 @@ export class SendWorker {
    * nunca fica presa esperando exatamente as instâncias antigas quando o
    * usuário reconectou com instâncias novas no meio da campanha.
    */
+  /** Invalida o cache de estado real de uma instância (chamado pelo webhook
+   *  quando a Evolution notifica mudança de estado, para não usar dado
+   *  obsoleto até o TTL expirar naturalmente). */
+  invalidateInstanceCache(instance: string): void {
+    this.liveInstanceState.delete(instance);
+  }
+
+  /** Filtra conexões do pool, mantendo apenas instâncias realmente disponíveis
+   *  na Evolution API (previne envio para instâncias fantasmas cujo status no
+   *  banco ficou desatualizado em relação ao estado real). */
+  private async filterLiveConnections(
+    conns: Array<{ id: string; instance_name: string }>,
+  ): Promise<Array<{ id: string; instance_name: string }>> {
+    if (!this.started) return conns;
+    const out: Array<{ id: string; instance_name: string }> = [];
+    for (const c of conns) {
+      const ok = await this.isInstanceAvailable(c.instance_name);
+      if (ok) {
+        out.push(c);
+      } else {
+        getLogger().warn(
+          { instance: c.instance_name, connectionId: c.id },
+          'send-worker: instancia fantasma removida do pool de envio (Evolution confirma desconectada)',
+        );
+      }
+    }
+    return out;
+  }
+
   private async getAvailableCampaignConnections(campaignId: string): Promise<Array<{ id: string; instance_name: string }>> {
     const cr = await fetch(
       `${this.url}/rest/v1/campaigns?select=connection_ids,owner_user_id&id=eq.${encodeURIComponent(campaignId)}`,
@@ -252,7 +281,8 @@ export class SendWorker {
 
     // 1) Pool oficial: as conexões selecionadas na campanha.
     const own = await fetchPool(ids);
-    if (own.length > 0) return own;
+    const ownLive = await this.filterLiveConnections(own);
+    if (ownLive.length > 0) return ownLive;
 
     // 2) Fallback: TODAS as conexões conectadas do dono da campanha.
     if (ownerUserId) {
@@ -264,11 +294,15 @@ export class SendWorker {
         if (r.ok) {
           const all = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
           if (all.length > 0) {
-            getLogger().warn(
-              { campaignId, ownerUserId, fallbackCount: all.length },
-              'send-worker: conexoes da campanha todas caidas — usando instancias CONECTADAS do dono como pool de fallback',
-            );
-            return all.map((c) => ({ id: c.id, instance_name: c.instance_name }));
+            const fallback = all.map((c) => ({ id: c.id, instance_name: c.instance_name }));
+            const fallbackLive = await this.filterLiveConnections(fallback);
+            if (fallbackLive.length > 0) {
+              getLogger().warn(
+                { campaignId, ownerUserId, fallbackCount: fallbackLive.length },
+                'send-worker: conexoes da campanha todas caidas — usando instancias CONECTADAS do dono como pool de fallback',
+              );
+              return fallbackLive;
+            }
           }
         }
       } catch (e) {
@@ -379,10 +413,30 @@ export class SendWorker {
   }
 
   /** Reatribui um run para outra conexão viva do pool (se existir). */
-  private async switchRunToAvailableConnection(run: SendRunRow): Promise<string | null> {
+  async switchRunToAvailableConnection(run: SendRunRow): Promise<string | null> {
     const live = await this.getAvailableCampaignConnections(run.campaign_id);
     if (live.length === 0) return null;
     const conn = this.pickAvailableConnection(run.campaign_id, live);
+    // Revalida a instância escolhida: o pool já foi filtrado por
+    // filterLiveConnections, mas uma nova checagem cobre janela de race
+    // entre o pool e a gravação em DB.
+    const stillOk = await this.isInstanceAvailable(conn.instance_name);
+    if (!stillOk) {
+      getLogger().warn(
+        { runId: run.id, instance: conn.instance_name },
+        'send-worker: conexao alternativa indisponivel — procurando outra',
+      );
+      // Tenta as outras conexões do pool uma por uma.
+      const alt = live.find((c) => c.id !== conn.id && this.liveInstanceState.get(c.instance_name)?.connected !== false);
+      if (!alt) {
+        // Último recurso: revalida a primeira da lista (pode ter voltado).
+        const rechecked = await this.isInstanceAvailable(conn.instance_name);
+        if (!rechecked) return null;
+      } else {
+        conn.id = alt.id;
+        conn.instance_name = alt.instance_name;
+      }
+    }
     run.connection_id = conn.id;
     run.connection_instance = conn.instance_name;
     await this.patchSendRun(run.id, { connection_id: conn.id, connection_instance: conn.instance_name });
@@ -632,7 +686,16 @@ export class SendWorker {
     const assignedInstance = run.connection_instance || await this.getConnectionInstance(run.connection_id);
     const hasSelectedConnections = await this.campaignHasConnections(run.campaign_id);
     const campaignInstance = hasSelectedConnections ? null : await this.getCampaignInstance(run.campaign_id);
-    const sendInstance = assignedInstance || campaignInstance || undefined;
+const sendInstance = assignedInstance || campaignInstance || undefined;
+
+    if (!sendInstance) {
+      log.error(
+        { runId: run.id, connectionId: run.connection_id, hasConns: hasSelectedConnections },
+        'send-worker: SEM instância disponível — run abortado (nenhuma conexão configurada ou resolvida)',
+      );
+      await this.abortRun(run, 0, 'sem_conexao');
+      return;
+    }
 
     // Disponibilidade da conexão atribuída: se caiu, NÃO aborta o lead —
     // apenas pula este tick (o run continua 'running' e será reprocessado

@@ -390,6 +390,17 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
           { instance: instanceName, event: payload.event, patch },
           'webhook: instance event processed',
         );
+        // Invalida o cache de estado real no worker (se estiver rodando)
+        // para a próxima checagem da Evolution não usar dado obsoleto.
+        try {
+          const wkr = (app as any).sendWorker as
+            | { invalidateInstanceCache: (instance: string) => void }
+            | undefined;
+          wkr?.invalidateInstanceCache(instanceName);
+        } catch {
+          // best-effort: se o worker não estiver acessível, o cache
+          // expira naturalmente pelo TTL (15s default).
+        }
         // Reconcilia rotação/reconexão agora que a conexão está conectada.
         if (shouldReconcile) {
           void reconcileConnectionOnConnect(instanceName).catch((err) => {
