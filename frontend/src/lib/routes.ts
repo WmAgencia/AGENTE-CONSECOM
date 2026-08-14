@@ -12,6 +12,7 @@ import {
   Bot,
   ContactRound,
   CalendarDays,
+  UserPlus,
 } from 'lucide-react'
 
 export type Tab =
@@ -28,6 +29,7 @@ export type Tab =
   | 'voz'
   | 'extensao'
   | 'app-mobile'
+  | 'prospeccao-manual'
 
 export interface NavItem {
   key: Tab
@@ -51,6 +53,7 @@ export const TAB_PATHS: Record<Tab, string> = {
   voz: '/voz',
   extensao: '/extensao',
   'app-mobile': '/app-mobile',
+  'prospeccao-manual': '/prospeccao-manual',
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -67,6 +70,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'voz', label: 'Voz', icon: BellRing, path: TAB_PATHS.voz },
   { key: 'extensao', label: 'Extensão', icon: Puzzle, path: TAB_PATHS.extensao },
   { key: 'app-mobile', label: 'App mobile', icon: Smartphone, path: TAB_PATHS['app-mobile'] },
+  { key: 'prospeccao-manual', label: 'Prospecção Manual', icon: UserPlus, path: '/prospeccao-manual' },
 ]
 
 export const DEFAULT_TAB: Tab = 'kanban'

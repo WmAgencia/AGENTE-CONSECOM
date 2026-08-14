@@ -18,6 +18,7 @@ import {
   getUserConnection,
   getWorkspaceAndUser,
 } from '../services/evolution.connections.js';
+import { classifyBrazilianPhone } from '../lib/phone.js';
 
 interface LeadRow {
   id: string;
@@ -360,6 +361,85 @@ export function registerLeadsRoutes(app: FastifyInstance): void {
       log.error({ errMessage: em }, 'leads: permanent-delete handler failed');
       return reply.status(502).send({ error: 'delete_failed' });
     }
+  });
+
+  app.post('/api/leads/manual', async (req, reply) => {
+    const { workspaceId, userId } = getWorkspaceAndUser(req);
+    const identifier = workspaceId ?? userId;
+    if (!identifier) return reply.status(401).send({ error: 'unauthorized' });
+
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const name = typeof b.name === 'string' ? b.name.trim() : '';
+    const phone = typeof b.phone === 'string' ? b.phone.trim() : '';
+    if (!name) return reply.status(400).send({ error: 'name_required' });
+    if (!phone) return reply.status(400).send({ error: 'phone_required' });
+
+    const pinfo = classifyBrazilianPhone(phone);
+    if (pinfo.class !== 'MOBILE') {
+      return reply.status(400).send({
+        error: 'invalid_phone',
+        message:
+          pinfo.class === 'LANDLINE'
+            ? 'Telefone fixo não é aceito para prospecção manual.'
+            : 'Número inválido. Use o formato (DD) 99999-9999.',
+      });
+    }
+
+    const s = sup();
+    if (!s) return reply.status(503).send({ error: 'server_misconfigured' });
+
+    // Deduplicação: mesmo telefone normalizado + mesmo dono = duplicado.
+    const dupUrl = `${s.url}/rest/v1/leads?select=id,name&phone_normalized=eq.${encodeURIComponent(pinfo.e164!)}&owner_user_id=eq.${encodeURIComponent(identifier)}&limit=1`;
+    const dupRes = await fetch(dupUrl, { headers: supHeaders(s.serviceRoleKey) });
+    if (dupRes.ok) {
+      const dupRows = (await dupRes.json()) as Array<{ id: string; name: string | null }>;
+      if (dupRows.length > 0) {
+        return reply.status(409).send({
+          error: 'duplicate_lead',
+          message: `Lead "${dupRows[0].name ?? 'sem nome'}" já existe com este telefone.`,
+        });
+      }
+    }
+
+    const lead: Record<string, unknown> = {
+      name,
+      phone,
+      phone_normalized: pinfo.e164,
+      city: typeof b.city === 'string' && b.city.trim() ? b.city.trim() : null,
+      state: typeof b.state === 'string' && b.state.trim() ? b.state.trim() : null,
+      instagram: typeof b.instagram === 'string' && b.instagram.trim() ? b.instagram.trim() : null,
+      website: typeof b.website === 'string' && b.website.trim() ? b.website.trim() : null,
+      niche: typeof b.specialty === 'string' && b.specialty.trim() ? b.specialty.trim() : null,
+      notes: typeof b.notes === 'string' && b.notes.trim() ? b.notes.trim() : null,
+      source: typeof b.source === 'string' && b.source.trim() ? b.source.trim() : 'manual',
+      tags: Array.isArray(b.tags)
+        ? b.tags.filter((t: unknown) => typeof t === 'string' && t.trim())
+        : [],
+      status: 'novo',
+      owner_user_id: identifier,
+      is_active_in_prospecting: true,
+    };
+
+    const createRes = await fetch(`${s.url}/rest/v1/leads`, {
+      method: 'POST',
+      headers: supHeaders(s.serviceRoleKey, true),
+      body: JSON.stringify(lead),
+    });
+    if (!createRes.ok) {
+      const txt = await createRes.text();
+      log.warn({ status: createRes.status, body: txt.slice(0, 200) }, 'leads: manual creation failed');
+      return reply.status(502).send({ error: 'lead_creation_failed' });
+    }
+
+    const created = (await createRes.json()) as Array<Record<string, unknown>>;
+    // Resposta mínima (sem dados sensíveis).
+    const out = {
+      id: created[0]?.id,
+      name: created[0]?.name,
+      phone: created[0]?.phone,
+      status: created[0]?.status,
+    };
+    return reply.send({ ok: true, lead: out });
   });
 
   log.info('leads: routes registered');

@@ -20,6 +20,7 @@ import { AgendaView } from './components/AgendaView'
 import { FollowUpsCalendarPanel } from './components/FollowUpsCalendarPanel'
 import { ThemeToggle } from './components/ThemeToggle'
 import { ConnectionQrOverlay } from './components/ConnectionQrOverlay'
+import { ManualProspection } from './components/ManualProspection'
 import { downloadPersonalizedExtension } from './lib/extensionDownload'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
 import { NAV_ITEMS, resolveTabFromPath, type Tab } from './lib/routes'
@@ -164,6 +165,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           <Route path="/" element={<Navigate to="/kanban" replace />} />
           <Route path="/kanban" element={<KanbanBoard leads={leads} campaigns={campaigns} onMeeting={onMeeting} onClose={onCloseLead} />} />
           <Route path="/leads" element={<LeadsView leads={activeLeads} campaigns={campaigns} />} />
+          <Route path="/prospeccao-manual" element={<ManualProspection />} />
           <Route path="/importados" element={<ImportedLeadsView leads={importedLeads} campaigns={campaigns} onChanged={onLeadsChanged} />} />
           <Route path="/campanhas" element={<CampaignsView />} />
           <Route path="/agenda" element={<div className="h-full overflow-auto"><AgendaView /><div className="max-w-6xl mx-auto px-4 pb-6"><FollowUpsCalendarPanel /></div></div>} />
