@@ -741,9 +741,12 @@ export class SendWorker {
     let ok = false;
     let sentText = '';
     let mediaValidationError: string | null = null;
+    let sendConnClosed = false;
     try {      if (strategyKind === 'text' && strategyText) {
         sentText = this.formatConnectionMessage(renderTemplate(strategyText, lead), connectionDisplayName);
-        ok = (await sendText({ to: sendPhone, text: sentText, instance: sendInstance })).ok;
+        const textRes = await sendText({ to: sendPhone, text: sentText, instance: sendInstance });
+        ok = textRes.ok;
+        if (textRes.connectionClosed) sendConnClosed = true;
       } else if (strategyMediaUrl) {
         const mediaUrl = strategyMediaUrl.startsWith('http')
           ? strategyMediaUrl
@@ -754,19 +757,19 @@ export class SendWorker {
             ? this.formatConnectionMessage(renderTemplate(strategyCaption, lead), connectionDisplayName)
             : `[${strategyKind}]`;
           sentText = captionText;
-          ok = (
-            await sendMedia({
-              to: sendPhone,
-              kind: strategyKind as MediaKind,
-              media: mediaUrl,
-              caption: strategyCaption
-                ? this.formatConnectionMessage(renderTemplate(strategyCaption, lead), connectionDisplayName)
-                : undefined,
-              mimetype: guessMimetype(mediaUrl, strategyKind),
-              filename: basename(mediaUrl),
-              instance: sendInstance,
-            })
-          ).ok;
+          const mediaRes = await sendMedia({
+            to: sendPhone,
+            kind: strategyKind as MediaKind,
+            media: mediaUrl,
+            caption: strategyCaption
+              ? this.formatConnectionMessage(renderTemplate(strategyCaption, lead), connectionDisplayName)
+              : undefined,
+            mimetype: guessMimetype(mediaUrl, strategyKind),
+            filename: basename(mediaUrl),
+            instance: sendInstance,
+          });
+          ok = mediaRes.ok;
+          if (mediaRes.connectionClosed) sendConnClosed = true;
           if (!strategyCaption) sentText = `${captionText} ${mediaUrl}`;
         }
       }
@@ -785,6 +788,30 @@ export class SendWorker {
     }
 
     if (!ok) {
+      // SESSAO WHATSAPP MORTA: a Evolution devolveu 500 "Connection Closed" —
+      // o socket Baileys está aberto (connectionState mente "open") mas a
+      // sessão WhatsApp foi invalidada (logout 401 por número duplicado,
+      // dispositivo removido, etc.). `isInstanceAvailable` não detectaria
+      // porque connectionState=open. Marcamos a conexao como disconnected no
+      // banco (realtime p/ UI), trocamos para uma instancia saudavel e
+      // re-agendamos o lead SEM contar tentativa — falha de infraestrutura.
+      if (sendConnClosed && sendInstance) {
+        this.onConnectionDown(sendInstance);
+        await this.patchConnectionStatus(sendInstance, 'disconnected');
+        const alt = await this.switchRunToAvailableConnection(run);
+        const retryAt = new Date(Date.now() + 20_000).toISOString();
+        await this.patchSendRun(run.id, {
+          status: 'running',
+          current_position: position,
+          next_send_at: retryAt,
+          fail_reason: 'connection_closed',
+        });
+        log.warn(
+          { runId: run.id, position, deadInstance: sendInstance, newInstance: alt ?? null },
+          'send-worker: sessão WhatsApp morta (Connection Closed) — conexao marcada disconnected, lead reatribuido',
+        );
+        return;
+      }
       // Falha de envio (Regra B): a sequência NÃO é considerada concluída.
       // O run permanece ativo com um retry agendado (backoff x tentativa),
       // mantendo sequence_active = true e a IA bloqueada. Ao esgotar as

@@ -36,6 +36,15 @@ export interface SendTextResult {
   messageId?: string;
   /** Non-fatal error message when ok=false. */
   error?: string;
+  /**
+   * Sinal definitivo de SESSAO MORTA: a Evolution responde HTTP 500 com body
+   * "Connection Closed" quando o socket Baileys existe (connectionState=open)
+   * mas a sessão WhatsApp foi invalidada (logout 401, número em outra instancia,
+   * etc.). Em vez de contar como falha do LEAD, o worker marca a conexao como
+   * disconnected e troca para uma instancia saudavel. Sem retry (retry numa
+   * sessao morta so perde tempo).
+   */
+  connectionClosed?: boolean;
 }
 
 export function isEvolutionMockMode(): boolean {
@@ -117,6 +126,20 @@ export async function checkEvolutionHealth(): Promise<EvolutionHealthResult> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Detecta se uma resposta da Evolution indica SESSAO MORTA (não falha
+ * transitória de rede). A Evolution retorna HTTP 500 com body contendo
+ * "Connection Closed" quando o socket Baileys aceitou a chamada mas a sessão
+ * WhatsApp foi invalidada (logout 401 por número duplicado, dispositivo
+ * removido, etc.). Nesse caso `connectionState` ainda mente "open" — só o
+ * sendText revela a verdade. Retornamos um sinal limpo em vez de retry.
+ */
+function isConnectionClosed(status: number, body: string): boolean {
+  if (status !== 500) return false;
+  const low = body.toLowerCase();
+  return low.includes('connection closed') || low.includes('connection_closed') || low.includes('session closed');
 }
 
 /** Estado REAL de UMA instância na Evolution API (não confia no status do banco).
@@ -211,6 +234,13 @@ export async function sendText(params: SendTextParams): Promise<SendTextResult> 
       });
 
       const raw = await response.text();
+
+      // Sessão MORTA (Base64 socket open mas WhatsApp invalidado): não
+      // adianta retry — retorna sinal para o worker trocar de instancia.
+      if (isConnectionClosed(response.status, raw)) {
+        log.warn({ status: response.status, to: maskJid(to), endpoint }, 'evolution: sendText — sessão WhatsApp morta (Connection Closed)');
+        return { ok: false, status: response.status, error: 'connection_closed', connectionClosed: true };
+      }
 
       // Retry on 5xx and 429 (transient). Never retry on 4xx (except 429)
       // because those are deterministic configuration errors.
@@ -434,6 +464,10 @@ export async function sendMedia(params: SendMediaParams): Promise<SendTextResult
         body: JSON.stringify(body),
       });
       const raw = await response.text();
+      if (isConnectionClosed(response.status, raw)) {
+        log.warn({ status: response.status, to: maskJid(to), endpoint }, 'evolution: sendMedia — sessão WhatsApp morta (Connection Closed)');
+        return { ok: false, status: response.status, error: 'connection_closed', connectionClosed: true };
+      }
       if (response.status >= 500 || response.status === 429) {
         log.warn({ status: response.status, attempt, endpoint }, 'evolution: sendMedia transient error');
         if (attempt < maxRetries) {
