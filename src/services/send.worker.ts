@@ -356,10 +356,11 @@ export class SendWorker {
   }
 
   /**
-   * Pool dinâmico + round-robin: índice rotativo POR CAMPANHA sobre as
-   * conexões disponíveis. Conexões que caem saem do pool automaticamente
-   * (o `% available.length` redistribui) e voltam quando reconectam — sem
-   * duplicar nem trocar lead no meio do envio (item 33/42).
+   * Pool dinâmico + rotação "um número por vez": índice rotativo POR CAMPANHA
+   * sobre as conexões disponíveis. A rotação NÃO avança aqui — ela só avança
+   * quando uma mensagem é enviada COM SUCESSO (advanceRotation). Se o número
+   * atual falhar (lead fixo, número inválido, recusa), ele permanece e tenta
+   * o próximo lead até conseguir enviar (Regra de rotação do disparo).
    */
   private readonly rotationIndex = new Map<string, number>();
 
@@ -369,8 +370,12 @@ export class SendWorker {
   ): { id: string; instance_name: string } {
     const rot = this.rotationIndex.get(campaignId) ?? 0;
     const conn = available[rot % available.length];
-    this.rotationIndex.set(campaignId, rot + 1);
     return conn;
+  }
+
+  /** Avança a rotação para o próximo número (chamado APÓS envio bem-sucedido). */
+  private advanceRotation(campaignId: string): void {
+    this.rotationIndex.set(campaignId, (this.rotationIndex.get(campaignId) ?? 0) + 1);
   }
 
   /** Reatribui um run para outra conexão viva do pool (se existir). */
@@ -858,6 +863,14 @@ export class SendWorker {
     // Envio confirmado: zera o contador de tentativas deste run.
     this.retryCounts.delete(run.id);
 
+    // Regra de rotação "um número por vez": a rotação avança somente quando um
+    // lead é enviado COM SUCESSO. Se o número atual falhou (fixo, inválido,
+    // recusa), a rotação permanece no MESMO número, que tentará o próximo
+    // lead até conseguir enviar — só então o próximo número do pool entra.
+    if (position === 0) {
+      this.advanceRotation(run.campaign_id);
+    }
+
     // Contexto da campanha no histórico do agente (assistant turn real).
     const recordedText = sentText || `[${next.kind}]`;
     await this.recordCampaignTurn(run.lead_id, sendPhone, recordedText, await this.getConnectionDisplayName(run.connection_id, sendInstance));
@@ -1010,7 +1023,11 @@ export class SendWorker {
     const rows = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
     const available = rows.filter((row) => row.status === 'connected');
     if (available.length === 0) return null;
-    return this.pickAvailableConnection('followups', available);
+    const conn = this.pickAvailableConnection('followups', available);
+    // Follow-ups preservam o comportamento round-robin antigo: avança a cada
+    // envio (não segue a regra "um número por vez" das campanhas).
+    this.advanceRotation('followups');
+    return conn;
   }
 
   async tick(): Promise<void> {
