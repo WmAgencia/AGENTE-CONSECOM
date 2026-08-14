@@ -688,14 +688,10 @@ export class SendWorker {
     const campaignInstance = hasSelectedConnections ? null : await this.getCampaignInstance(run.campaign_id);
 const sendInstance = assignedInstance || campaignInstance || undefined;
 
-    if (!sendInstance) {
-      log.error(
-        { runId: run.id, connectionId: run.connection_id, hasConns: hasSelectedConnections },
-        'send-worker: SEM instância disponível — run abortado (nenhuma conexão configurada ou resolvida)',
-      );
-      await this.abortRun(run, 0, 'sem_conexao');
-      return;
-    }
+    // Sem instância resolvida: se a campanha não tem connection_ids configuradas,
+    // o sistema usa o instance global (fallback legado) — segue adiante para
+    // o envio acontecer com o que estiver disponível. Se connection_ids existe,
+    // o problema já foi tratado pelo waiting_connection/fluxo normal.
 
     // Disponibilidade da conexão atribuída: se caiu, NÃO aborta o lead —
     // apenas pula este tick (o run continua 'running' e será reprocessado
