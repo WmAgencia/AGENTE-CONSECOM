@@ -103,7 +103,7 @@ export function registerContactsRoutes(app: FastifyInstance): void {
   app.post('/api/contacts/refresh-session', async (req, reply) => {
     const s = sup();
     const refreshToken = (req.body as { refreshToken?: unknown } | null)?.refreshToken;
-    if (!s || typeof refreshToken !== 'string' || refreshToken.length < 20) {
+    if (!s || typeof refreshToken !== 'string' || refreshToken.length < 6) {
       return reply.status(400).send({ error: 'refresh_token_required' });
     }
     const r = await fetch(`${s.url}/auth/v1/token?grant_type=refresh_token`, {
