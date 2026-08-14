@@ -48,7 +48,7 @@
  */
 import { getSupabaseProspeccaoConfig, getEnv } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
-import { sendText, sendMedia, type MediaKind } from './evolution.service.js';
+import { sendText, sendMedia, getEvolutionInstanceState, type MediaKind } from './evolution.service.js';
 import { validateVideoSize } from './media.limits.js';
 import { SpamProtection } from './spam-protection.js';
 import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js';
@@ -64,6 +64,10 @@ import {
 } from './strategy.service.js';
 
 const TICK_MS = Number(getEnv().CONSECOM_WORKER_TICK_MS ?? 5000);
+
+// TTL do cache de estado real das instâncias (Evolution API). Evita chamar a
+// Evolution a cada mensagem — o estado só é revalidado a cada X ms por instância.
+const INSTANCE_STATE_TTL_MS = Number(getEnv().EVOLUTION_CONNECTION_STATE_TTL_MS ?? 15000);
 
 interface SendRunRow {
   id: string;
@@ -127,6 +131,16 @@ export class SendWorker {
   // Conexões atualmente indisponíveis (instance_name): o worker pula envios
   // por essas conexões sem abortar o lead, e remove daqui quando voltam.
   private readonly downConnections = new Map<string, number>();
+
+  // Estado REAL das instâncias (verificado na Evolution API) com TTL, para
+  // não confiar cegamente no status do banco (que pode ficar obsoleto quando
+  // um WhatsApp desconecta sozinho sem o webhook atualizar a tempo).
+  private readonly liveInstanceState = new Map<string, { connected: boolean; at: number }>();
+
+  // Realtime do Supabase (dispara tick imediato em mudanças).
+  private realtimeClient: unknown = null;
+  private realtimeChannel: unknown = null;
+  private realtimePending = false;
 
   constructor() {
     const c = getSupabaseProspeccaoConfig();
@@ -202,34 +216,112 @@ export class SendWorker {
     return rows[0]?.instance_name ?? null;
   }
 
-  /** Lista as conexões disponíveis da campanha (connection_ids filtradas por status 'connected'). */
+  /**
+   * Lista as conexões disponíveis da campanha (connection_ids filtradas por
+   * status 'connected'). Se TODAS as conexões selecionadas da campanha caíram,
+   * PROCURA automaticamente qualquer instância CONECTADA do mesmo usuário
+   * (owner da campanha) e a usa como pool — assim uma campanha já iniciada
+   * nunca fica presa esperando exatamente as instâncias antigas quando o
+   * usuário reconectou com instâncias novas no meio da campanha.
+   */
   private async getAvailableCampaignConnections(campaignId: string): Promise<Array<{ id: string; instance_name: string }>> {
     const cr = await fetch(
-      `${this.url}/rest/v1/campaigns?select=connection_ids&id=eq.${encodeURIComponent(campaignId)}`,
+      `${this.url}/rest/v1/campaigns?select=connection_ids,owner_user_id&id=eq.${encodeURIComponent(campaignId)}`,
       { headers: this.headers() },
     );
     if (!cr.ok) return [];
-    const rows = (await cr.json()) as Array<{ connection_ids: string[] | null }>;
-    const ids = rows[0]?.connection_ids ?? [];
-    if (ids.length === 0) return [];
-    const orFilter = ids.map((id) => `id.eq.${id}`).join(',');
-    const r = await fetch(
-      `${this.url}/rest/v1/whatsapp_connections?select=id,instance_name,status&or=(${orFilter})`,
-      { headers: this.headers() },
-    );
-    if (!r.ok) return [];
-    const all = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
-    // Ordena na mesma ordem de `connection_ids` da campanha para que o
-    // round-robin percorra as conexões na ordem em que o usuário as escolheu
-    // (PostgREST não garante ordem no filtro `or`).
-    const order = new Map(ids.map((id, i) => [id, i]));
-    return all
-      .filter((c) => c.status === 'connected')
-      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    const rows = (await cr.json()) as Array<{ connection_ids: string[] | null; owner_user_id: string | null }>;
+    const row = rows[0];
+    const ids = row?.connection_ids ?? [];
+    const ownerUserId = row?.owner_user_id ?? null;
+
+    const fetchPool = async (poolIds: string[]): Promise<Array<{ id: string; instance_name: string }>> => {
+      if (poolIds.length === 0) return [];
+      const orFilter = poolIds.map((id) => `id.eq.${id}`).join(',');
+      const r = await fetch(
+        `${this.url}/rest/v1/whatsapp_connections?select=id,instance_name,status&or=(${orFilter})`,
+        { headers: this.headers() },
+      );
+      if (!r.ok) return [];
+      const all = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
+      const order = new Map(poolIds.map((id, i) => [id, i]));
+      return all
+        .filter((c) => c.status === 'connected')
+        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    };
+
+    // 1) Pool oficial: as conexões selecionadas na campanha.
+    const own = await fetchPool(ids);
+    if (own.length > 0) return own;
+
+    // 2) Fallback: TODAS as conexões conectadas do dono da campanha.
+    if (ownerUserId) {
+      try {
+        const r = await fetch(
+          `${this.url}/rest/v1/whatsapp_connections?select=id,instance_name,status&user_id=eq.${encodeURIComponent(ownerUserId)}&status=eq.connected`,
+          { headers: this.headers() },
+        );
+        if (r.ok) {
+          const all = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
+          if (all.length > 0) {
+            getLogger().warn(
+              { campaignId, ownerUserId, fallbackCount: all.length },
+              'send-worker: conexoes da campanha todas caidas — usando instancias CONECTADAS do dono como pool de fallback',
+            );
+            return all.map((c) => ({ id: c.id, instance_name: c.instance_name }));
+          }
+        }
+      } catch (e) {
+        getLogger().warn(
+          { campaignId, err: e instanceof Error ? e.message : 'unknown' },
+          'send-worker: fallback de instancias do dono falhou',
+        );
+      }
+    }
+
+    return [];
   }
 
-  /** Verifica se a instância está 'connected' agora. */
+  /** Verifica se a instância está 'connected' agora (status do banco + estado
+   *  REAL na Evolution API com TTL cache). Se a Evolution confirma que a
+   *  instância NÃO está aberta, sincroniza o status no banco (realtime para o
+   *  frontend) e retorna false — assim uma instância morta nunca é usada para
+   *  enviar, mesmo que o banco ainda diga 'connected'. */
   private async isInstanceAvailable(instance: string): Promise<boolean> {
+    const now = Date.now();
+    const cached = this.liveInstanceState.get(instance);
+    if (cached && now - cached.at < INSTANCE_STATE_TTL_MS) return cached.connected;
+
+    // 1) Status do banco (rápido, primeiro filtro).
+    const dbConnected = await this.dbInstanceConnected(instance);
+
+    // 2) Estado REAL na Evolution (autoritativo). Se a Evolution está
+    //    inacessível, cai no status do banco para não travar o disparo.
+    const live = await getEvolutionInstanceState(instance);
+    let connected: boolean;
+    if (live.ok) {
+      connected = live.connected;
+      if (live.state === 'close') {
+        // Instância morta de verdade: sincroniza o banco para a UI reagir.
+        if (dbConnected) {
+          getLogger().warn({ instance }, 'send-worker: Evolution confirma instancia DESCONECTADA — sincronizando banco');
+          await this.patchConnectionStatus(instance, 'disconnected');
+        }
+      } else if (live.state === 'open' && !dbConnected) {
+        // Instância realmente aberta mas banco desatualizado: corrige também.
+        getLogger().info({ instance }, 'send-worker: Evolution confirma instancia CONECTADA — sincronizando banco');
+        await this.patchConnectionStatus(instance, 'connected');
+      }
+    } else {
+      connected = dbConnected;
+    }
+
+    this.liveInstanceState.set(instance, { connected, at: now });
+    return connected;
+  }
+
+  /** Checa o status 'connected' no banco (sem cache, usado pelo filtro rápido). */
+  private async dbInstanceConnected(instance: string): Promise<boolean> {
     const r = await fetch(
       `${this.url}/rest/v1/whatsapp_connections?select=status&instance_name=eq.${encodeURIComponent(instance)}&limit=1`,
       { headers: this.headers() },
@@ -237,6 +329,18 @@ export class SendWorker {
     if (!r.ok) return false;
     const rows = (await r.json()) as Array<{ status: string }>;
     return rows[0]?.status === 'connected';
+  }
+
+  /** Atualiza o status da conexão no banco (realtime para o frontend). */
+  private async patchConnectionStatus(instance: string, status: string): Promise<void> {
+    await fetch(
+      `${this.url}/rest/v1/whatsapp_connections?instance_name=eq.${encodeURIComponent(instance)}`,
+      {
+        method: 'PATCH',
+        headers: this.headers(true),
+        body: JSON.stringify({ status, last_sync_at: new Date().toISOString() }),
+      },
+    );
   }
 
   /** Reatribui a conexão de um run pendente entre as conexões disponíveis (round-robin). */
@@ -1013,6 +1117,46 @@ export class SendWorker {
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     // Check imediato na subida (scheduler persistente sobrevive a restarts).
     void this.tick();
+    // REALTIME: dispara o tick imediatamente quando algo relevante muda
+    // (send_runs, campanhas, conexões) — em vez de esperar o próximo poll.
+    this.startRealtime();
+  }
+
+  /** Assina mudanças realtime do Supabase e dispara o tick na hora.
+   *  Best-effort: se o realtime falhar, o polling continua funcionando. */
+  private startRealtime(): void {
+    const log = getLogger();
+    const cfg = getSupabaseProspeccaoConfig();
+    if (!cfg.url || !cfg.serviceRoleKey) return;
+    try {
+      // Import dinâmico: o worker não deve quebrar se o client faltar.
+      void import('@supabase/supabase-js')
+        .then(({ createClient }) => {
+          const client = createClient(cfg.url, cfg.serviceRoleKey);
+          const debounce = (): void => {
+            if (this.realtimePending) return;
+            this.realtimePending = true;
+            setTimeout(() => {
+              this.realtimePending = false;
+              void this.tick();
+            }, 250);
+          };
+          const channel = client
+            .channel('send-worker-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'send_runs' }, debounce)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'campaigns' }, debounce)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_connections' }, debounce);
+          channel.subscribe();
+          this.realtimeClient = client;
+          this.realtimeChannel = channel;
+          log.info('send-worker: realtime subscription started');
+        })
+        .catch((err) => {
+          log.warn({ errMessage: err instanceof Error ? err.message : 'unknown' }, 'send-worker: realtime subscription unavailable (polling segue ativo)');
+        });
+    } catch (err) {
+      log.warn({ errMessage: err instanceof Error ? err.message : 'unknown' }, 'send-worker: realtime setup failed');
+    }
   }
 
   stop(): void {
@@ -1021,6 +1165,19 @@ export class SendWorker {
       this.timer = null;
     }
     this.started = false;
+    if (this.realtimeClient && typeof this.realtimeClient === 'object' && 'removeChannel' in this.realtimeClient) {
+      // Encerra o canal realtime (melhor esforço; sem client salvo nada a fazer).
+      const client = this.realtimeClient as { removeChannel: (c: unknown) => void };
+      try {
+        const channel = this.realtimeChannel;
+        if (channel) {
+          void client.removeChannel(channel);
+          this.realtimeChannel = null;
+        }
+      } catch {
+        // ignora erros no teardown
+      }
+    }
   }
 }
 

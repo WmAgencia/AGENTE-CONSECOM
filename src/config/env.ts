@@ -340,6 +340,18 @@ const envSchema = z.object({
       message: 'EVOLUTION_SENDTEXT_MAX_RETRIES must be an integer 1..10',
     }),
 
+  // TTL (ms) do cache de estado real das instâncias no send.worker. Controla
+  // com que frequência o worker consulta a Evolution (connectionState) antes
+  // de enviar — um valor maior reduz chamadas à API, menor reage mais rápido.
+  EVOLUTION_CONNECTION_STATE_TTL_MS: z
+    .string()
+    .optional()
+    .default('15000')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isInteger(v) && v >= 1000 && v <= 300000, {
+      message: 'EVOLUTION_CONNECTION_STATE_TTL_MS must be an integer 1000..300000',
+    }),
+
   // Anti-spam do disparo de campanhas (SpamProtection no send.worker).
   // 0 desabilita o limite de mensagens por minuto.
   EVOLUTION_RATE_LIMIT_MAX_PER_MINUTE: z

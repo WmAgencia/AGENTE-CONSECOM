@@ -298,13 +298,23 @@ export function ConnectionsPage() {
     )
   }
 
-  // Polling: refresh status a cada 5s quando alguma conexão está aguardando QR.
+  // REALTIME: reage na hora a mudanças de status/QR das conexões
+  // (webhook da Evolution, reconexão, worker sincronizando status).
+  // O fallback de polling a cada 10s cobre mudanças que o realtime perder.
   useEffect(() => {
-    const hasConnecting = conns.some((c) => c.status === 'connecting' || c.status === 'pending')
-    if (!hasConnecting) return
-    const t = setInterval(loadConn, 5000)
-    return () => clearInterval(t)
-  }, [conns, loadConn])
+    if (!sessionUser) return
+    const channel = supabase
+      .channel('connections-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_connections' }, () => {
+        void loadConn()
+      })
+      .subscribe()
+    const fallback = setInterval(() => void loadConn(), 10000)
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(fallback)
+    }
+  }, [sessionUser, loadConn])
 
   const statusColor = (st: ConnStatus) =>
     st === 'connected' ? 'text-emerald-400'

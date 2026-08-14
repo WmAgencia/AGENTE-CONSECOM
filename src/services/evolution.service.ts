@@ -119,6 +119,45 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Estado REAL de UMA instância na Evolution API (não confia no status do banco).
+ *  GET /instance/connectionState/{instance} -> { instance: { state } }.
+ *  state: 'open' (conectada) | 'close' (desconectada) | 'connecting'.
+ *  Retorna connected=true apenas quando state === 'open'.
+ */
+export interface EvolutionInstanceStateResult {
+  ok: boolean;
+  state: string | null;
+  connected: boolean;
+  status?: number;
+}
+
+export async function getEvolutionInstanceState(instance: string): Promise<EvolutionInstanceStateResult> {
+  if (isEvolutionMockMode()) {
+    return { ok: true, state: 'open', connected: true };
+  }
+  const cfg = getEvolutionConfig();
+  try {
+    const response = await fetch(
+      `${cfg.apiUrl}/instance/connectionState/${encodeURIComponent(instance)}`,
+      { method: 'GET', headers: { Accept: 'application/json', apikey: cfg.apiKey } },
+    );
+    if (!response.ok) {
+      return { ok: false, state: null, connected: false, status: response.status };
+    }
+    const raw = await response.text();
+    let state: string | null = null;
+    try {
+      const parsed = JSON.parse(raw) as { instance?: { state?: string } };
+      state = (parsed.instance?.state ?? '').toLowerCase() || null;
+    } catch {
+      // resposta não-JSON: sem estado confirmado
+    }
+    return { ok: true, state, connected: state === 'open' };
+  } catch {
+    return { ok: false, state: null, connected: false };
+  }
+}
+
 export async function sendText(params: SendTextParams): Promise<SendTextResult> {
   const log = getLogger();
   const { to, text } = params;
