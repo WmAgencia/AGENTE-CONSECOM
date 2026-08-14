@@ -605,6 +605,9 @@ export async function disconnectInstance(
 ): Promise<{ ok: boolean; connection?: WhatsAppConnection; error?: string }> {
   const log = getLogger();
   try {
+    if (!target || (!target.id && !target.instanceName)) {
+      return { ok: false, error: 'target_required' };
+    }
     const conn = await resolveConnection(identifier, target);
     if (!conn) return { ok: false, error: 'no_connection' };
 
