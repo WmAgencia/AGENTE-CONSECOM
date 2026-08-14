@@ -116,7 +116,7 @@ export function ConnectionsPage() {
 
   const loadNotifGroup = useCallback(async () => {
     if (!sessionUser) return
-    const { data } = await supabase.from('notification_groups').select('*').eq('user_id', sessionUser).eq('enabled', true).limit(1).single()
+    const { data } = await supabase.from('notification_groups').select('*').eq('user_id', sessionUser).eq('enabled', true).limit(1).maybeSingle()
     if (data) setNotifGroup(data as NotifGroup)
   }, [sessionUser])
 
