@@ -631,15 +631,15 @@ export async function disconnectInstance(
         'connections: logout DELETE failed',
       );
     }
-    // Se DELETE não existir nesta build, registra o webhook que o
-    // CONNECTION_UPDATE (state=close) trará — o estado local será resolvido
-    // pelo webhook. Não forçamos "disconnected" local com resposta remota ruim.
+// Se DELETE não existir nesta build, ou a Evolution retornar erro (ex:
+    // sessão já morta com 500 "Connection Closed"), still mark local DB as
+    // disconnected — o estado real da Evolution é desconhecido/inacessível,
+    // então a conexão não pode ficar disponível para envio.
     if (!remoteOk) {
       log.warn(
         { instance: conn.instance_name },
-        'connections: logout remoto falhou; aguardando CONNECTION_UPDATE do webhook (estado local preservado)',
+        'connections: logout remoto falhou; marcando disconnected no banco local (sessao provavelmente morta)',
       );
-      return { ok: false, error: 'evolution_logout_failed' };
     }
 
     const patch = {
