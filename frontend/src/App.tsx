@@ -19,6 +19,7 @@ import { CommercialMemory } from './components/CommercialMemory'
 import { AgendaView } from './components/AgendaView'
 import { FollowUpsCalendarPanel } from './components/FollowUpsCalendarPanel'
 import { ThemeToggle } from './components/ThemeToggle'
+import { ConnectionQrOverlay } from './components/ConnectionQrOverlay'
 import { downloadPersonalizedExtension } from './lib/extensionDownload'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
 import { NAV_ITEMS, resolveTabFromPath, type Tab } from './lib/routes'
@@ -181,6 +182,8 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           <Route path="*" element={<Navigate to="/kanban" replace />} />
         </Routes>
       </main>
+
+      <ConnectionQrOverlay />
     </div>
   )
 }

@@ -15,6 +15,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getLogger } from '../utils/logger.js';
 import { getWorkspaceAndUser } from '../services/evolution.connections.js';
+import { prepareRotationForCampaign, skipRotation } from '../services/instance.rotation.js';
 import {
   loadScheduleConfig,
   saveScheduleConfig,
@@ -148,6 +149,33 @@ export function registerCampaignScheduleRoutes(app: FastifyInstance): void {
     }
     const items = await getCampaignCalendar(start, end);
     return reply.send({ items });
+  });
+
+  // ==== Rotação de instâncias (antes da campanha) ====
+  // Prepara instâncias novas para os WhatsApps da campanha: cria QR + conexão
+  // pendente para cada WhatsApp conectado. O frontend exibe o popup para
+  // escanear. Idempotente (não duplica rotação já pendente).
+  app.post('/api/campaigns/rotation/prepare', async (req, reply) => {
+    const id = requireIdentifier(req, reply);
+    if (!id) return;
+    const body = req.body as { campaignId?: unknown } | null;
+    if (typeof body?.campaignId !== 'string' || !body.campaignId) {
+      return reply.status(400).send({ error: 'invalid_body', message: 'campaignId é obrigatório.' });
+    }
+    const result = await prepareRotationForCampaign(body.campaignId);
+    return reply.status(result.ok ? 200 : 409).send(result);
+  });
+
+  // "Pular" a rotação de uma conexão: mantém a instância antiga e apaga a nova.
+  app.post('/api/campaigns/rotation/skip', async (req, reply) => {
+    const id = requireIdentifier(req, reply);
+    if (!id) return;
+    const body = req.body as { connectionId?: unknown } | null;
+    if (typeof body?.connectionId !== 'string' || !body.connectionId) {
+      return reply.status(400).send({ error: 'invalid_body', message: 'connectionId é obrigatório.' });
+    }
+    const result = await skipRotation(body.connectionId);
+    return reply.status(result.ok ? 200 : 409).send(result);
   });
 
   log.info('campaign-schedule: routes registered');

@@ -121,6 +121,8 @@ export interface WhatsAppConnection {
   last_sync_at: string | null;
   created_at: string;
   updated_at: string;
+  rotation_of: string | null;
+  superseded_by: string | null;
 }
 
 export interface WhatsAppGroup {
@@ -266,6 +268,16 @@ export async function resolveNotificationGroupJid(instanceName: string): Promise
   }
 }
 
+/** Opções de criação de instância. `rotationOf` indica que esta instância é
+ *  uma ROTAÇÃO: ela substitui a conexão antiga (que ainda está em uso pela
+ *  campanha) e, ao conectar, o fluxo de reconciliação troca as referências e
+ *  apaga a antiga. Herda display_name/whatsapp_name da conexão antiga para o
+ *  popup mostrar o nome cadastrado no WhatsApp.
+ */
+export interface CreateInstanceOptions {
+  rotationOf?: string;
+}
+
 /** Cria uma nova instância na Evolution API e persiste a conexão no Supabase.
  *  A connection passa a ser identificada pelo instance_name ÚNICO, permitindo
  *  múltiplos WhatsApps simultâneos sem reutilizar a mesma instância.
@@ -273,10 +285,18 @@ export async function resolveNotificationGroupJid(instanceName: string): Promise
 export async function createInstanceForUser(
   userId: string,
   workspaceId: string | null = null,
+  opts: CreateInstanceOptions = {},
 ): Promise<{ ok: boolean; connection?: WhatsAppConnection; qrCode?: string; error?: string }> {
   const log = getLogger();
   try {
     const cfg = getEvolutionConfig();
+
+    // Em caso de rotação, herda o nome cadastrado do WhatsApp da conexão antiga.
+    let inheritedName: string | null = null;
+    if (opts.rotationOf) {
+      const old = await fetchConnectionById(opts.rotationOf);
+      inheritedName = old?.display_name ?? old?.whatsapp_name ?? null;
+    }
 
     // Nomes já usados localmente (mesmo usuário) => garante que o 2º WhatsApp
     // receba um instance_name diferente do 1º (multi-instância).
@@ -365,20 +385,25 @@ export async function createInstanceForUser(
 
     // Persiste no Supabase
     const nowIso = new Date().toISOString();
+    const insertPayload: Record<string, unknown> = {
+      user_id: userId,
+      workspace_id: workspaceId,
+      instance_name: instanceName,
+      status: initialStatus,
+      qr_code: qrCode,
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+    if (opts.rotationOf) {
+      insertPayload.rotation_of = opts.rotationOf;
+      if (inheritedName) insertPayload.display_name = inheritedName;
+    }
     const insertRes = await fetch(`${supUrl()}/rest/v1/whatsapp_connections`, {
       method: 'POST',
       // Prefer: return=representation — sem ele o PostgREST responde 201 sem
       // corpo (`return=minimal`), o que quebra o `.json()` abaixo.
       headers: { ...supHeaders(), Prefer: 'return=representation' },
-      body: JSON.stringify({
-        user_id: userId,
-        workspace_id: workspaceId,
-        instance_name: instanceName,
-        status: initialStatus,
-        qr_code: qrCode,
-        created_at: nowIso,
-        updated_at: nowIso,
-      }),
+      body: JSON.stringify(insertPayload),
     });
     let connection: WhatsAppConnection | undefined;
     if (insertRes.ok) {
@@ -411,6 +436,47 @@ async function fetchList(col: 'workspace_id' | 'user_id', value: string): Promis
     return (await res.json()) as WhatsAppConnection[];
   } catch {
     return [];
+  }
+}
+
+/** Busca UMA conexão pelo id (usada para herdar nome na rotação e para
+ *  reconciliar referências). Retorna null se não existir ou em erro. */
+export async function fetchConnectionById(id: string): Promise<WhatsAppConnection | null> {
+  try {
+    const res = await fetch(
+      `${supUrl()}/rest/v1/whatsapp_connections?select=*&id=eq.${encodeURIComponent(id)}&limit=1`,
+      { headers: supHeaders() },
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as WhatsAppConnection[];
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Apaga DEFINITIVAMENTE uma instância da Evolution API (rotas usadas para
+ *  rotação: ao trocar a instância, a antiga é removida para não acumular
+ *  instâncias "mortas" no servidor). Best-effort: falha não é fatal. */
+export async function deleteInstanceFromEvolution(instanceName: string): Promise<boolean> {
+  const log = getLogger();
+  try {
+    const cfg = getEvolutionConfig();
+    const res = await fetch(
+      `${cfg.apiUrl}/instance/delete/${encodeURIComponent(instanceName)}`,
+      { method: 'DELETE', headers: { apikey: cfg.apiKey } },
+    );
+    log.info(
+      { instance: instanceName, status: res.status },
+      'connections: Evolution instance delete',
+    );
+    return res.ok || res.status === 404;
+  } catch (e) {
+    log.warn(
+      { instance: instanceName, err: e instanceof Error ? e.message : 'unknown' },
+      'connections: Evolution instance delete failed',
+    );
+    return false;
   }
 }
 

@@ -23,6 +23,7 @@
 import { getSupabaseProspeccaoConfig, hasSupabaseProspeccao } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { wallDateToMs, msToWallDate } from './agenda.service.js';
+import { prepareRotationForCampaign, cleanupPendingRotationsForCampaign } from './instance.rotation.js';
 
 // ---------------------------------------------------------------------------
 // Constantes e tipos
@@ -496,6 +497,15 @@ export async function scheduleCampaign(input: ValidateScheduleInput): Promise<Sc
     );
     return { ok: false, reason: 'io_error', message: 'Não foi possível agendar a campanha (banco rejeitou o status — confirme se a migração v16 foi aplicada).' };
   }
+  // Prepara a rotação de instâncias da campanha durante o tempo até o início
+  // (fire-and-forget): o popup com QR aparece para o usuário escanear. Não
+  // bloqueia a resposta — a preparação é idempotente e retomável.
+  void prepareRotationForCampaign(input.campaignId).catch((err) => {
+    getLogger().warn(
+      { campaignId: input.campaignId, errMessage: err instanceof Error ? err.message : 'unknown' },
+      'campaign-schedule: prepareRotationForCampaign falhou (não bloqueia o agendamento)',
+    );
+  });
   return {
     ok: true,
     message: 'Campanha agendada.',
@@ -519,6 +529,13 @@ export async function cancelScheduledCampaign(campaignId: string): Promise<{ ok:
     body: JSON.stringify({ status: 'cancelada', scheduled_at: null }),
   });
   if (!res.ok) return { ok: false, message: 'Falha ao cancelar o agendamento.' };
+  // Remove rotações pendentes que nunca foram escaneadas (instâncias órfãs).
+  void cleanupPendingRotationsForCampaign(campaignId).catch((err) => {
+    getLogger().warn(
+      { campaignId, errMessage: err instanceof Error ? err.message : 'unknown' },
+      'campaign-schedule: cleanupPendingRotationsForCampaign falhou (não bloqueia o cancelamento)',
+    );
+  });
   return { ok: true, message: 'Agendamento cancelado.' };
 }
 
@@ -548,6 +565,14 @@ export async function processDueScheduledCampaigns(): Promise<number> {
         method: 'PATCH',
         headers: headers(true),
         body: JSON.stringify({ status: 'em_progresso', started_at: now }),
+      });
+      // Limpa rotações pendentes que não foram escaneadas a tempo — a
+      // campanha segue com as instâncias atuais.
+      void cleanupPendingRotationsForCampaign(row.id).catch((err) => {
+        getLogger().warn(
+          { campaignId: row.id, errMessage: err instanceof Error ? err.message : 'unknown' },
+          'campaign-schedule: cleanupPendingRotationsForCampaign falhou no início da campanha',
+        );
       });
     }
     return rows.length;

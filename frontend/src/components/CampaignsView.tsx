@@ -6,6 +6,35 @@ import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfi
 import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDateTime } from '../lib/month'
 import { subscribeConnectionAlerts } from '../lib/connectionAlerts'
 
+/** Seções de campanhas: em andamento no topo, agendadas no meio, finalizadas embaixo. */
+const SECTIONS: Array<{ key: string; title: string; statuses: Campaign['status'][] }> = [
+  { key: 'em_andamento', title: 'Em andamento', statuses: ['em_progresso', 'waiting_connection', 'pausada'] },
+  { key: 'prontas', title: 'Prontas', statuses: ['pronta'] },
+  { key: 'agendadas', title: 'Agendadas', statuses: ['agendada'] },
+  { key: 'finalizadas', title: 'Finalizadas', statuses: ['finalizada', 'cancelada'] },
+]
+
+const SECTION_EMOJI: Record<string, string> = {
+  em_andamento: '🟢',
+  prontas: '⚡',
+  agendadas: '📅',
+  finalizadas: '🏁',
+}
+
+function sectionOf(c: Campaign): string {
+  for (const s of SECTIONS) if (s.statuses.includes(c.status)) return s.key
+  return 'finalizadas'
+}
+
+function sortCampaigns(items: Campaign[]): Campaign[] {
+  return [...items].sort((a, b) => {
+    const pa = a.position ?? Number.MAX_SAFE_INTEGER
+    const pb = b.position ?? Number.MAX_SAFE_INTEGER
+    if (pa !== pb) return pa - pb
+    return (a.created_at ?? '').localeCompare(b.created_at ?? '')
+  })
+}
+
 export function CampaignsView() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [messagesByCampaign, setMessagesByCampaign] = useState<Record<string, QueueMessage[]>>({})
@@ -20,6 +49,8 @@ export function CampaignsView() {
     return { year: d.getUTCFullYear(), month0: d.getUTCMonth() }
   })
   const [calItems, setCalItems] = useState<CampaignCalendarItem[]>([])
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState<string | null>(null)
 
   useEffect(() => {
     campaignSchedule.getConfig().then((r) => setScheduleConfig(r.config)).catch(() => {})
@@ -94,7 +125,7 @@ export function CampaignsView() {
   }, [])
 
   async function load() {
-    const { data, error } = await supabase.from('campaigns').select('*').order('created_at')
+    const { data, error } = await supabase.from('campaigns').select('*').order('position').order('created_at')
     if (error || !data) return
     setCampaigns(data)
     const grouped: Record<string, QueueMessage[]> = {}
@@ -135,6 +166,24 @@ export function CampaignsView() {
       .update({ connection_ids: ids })
       .eq('id', c.id)
     if (!error) await load()
+  }
+
+  /** Reordena campanhas da MESMA seção via drag & drop, persistindo `position`. */
+  async function reorderSection(sectionKey: string, fromId: string, toId: string) {
+    if (fromId === toId) return
+    const items = sortCampaigns(campaigns.filter((c) => sectionOf(c) === sectionKey))
+    const fromIdx = items.findIndex((c) => c.id === fromId)
+    const toIdx = items.findIndex((c) => c.id === toId)
+    if (fromIdx < 0 || toIdx < 0) return
+    const [moved] = items.splice(fromIdx, 1)
+    items.splice(toIdx, 0, moved)
+    const positions = items.map((c, i) => ({ id: c.id, position: i }))
+    setCampaigns((prev) =>
+      prev.map((c) => ({ ...c, position: positions.find((p) => p.id === c.id)?.position ?? c.position })),
+    )
+    for (const p of positions) {
+      await supabase.from('campaigns').update({ position: p.position }).eq('id', p.id)
+    }
   }
 
 async function loadRuns() {
@@ -250,30 +299,71 @@ async function fireCampaign(c: Campaign) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto px-6 py-5 space-y-8">
+      <div className="flex-1 overflow-auto px-6 py-5 space-y-10">
         <section>
           <CampaignButton onCreated={load} />
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 mt-5">
-            {campaigns.map((c) => (
-              <CampaignCard
-                key={c.id}
-                campaign={c}
-                messages={messagesByCampaign[c.id] ?? []}
-                connections={connections}
-                runs={runsByCampaign[c.id] ?? []}
-                onChanged={load}
-                onSetConnections={(ids) => void setCampaignConnections(c, ids)}
-                onShowQueue={() => setQueueFor(c)}
-                onFire={() => void fireCampaign(c)}
-                onPause={() => void pauseCampaign(c)}
-                onResume={() => void resumeCampaign(c)}
-                onSchedule={() => setScheduleFor(c)}
-                onCancelSchedule={() => void cancelScheduleCampaign(c)}
-                onDelete={() => void deleteCampaign(c)}
-              />
-            ))}
+          <div className="mt-5 space-y-10">
+            {SECTIONS.map((section) => {
+              const items = sortCampaigns(campaigns.filter((c) => sectionOf(c) === section.key))
+              if (items.length === 0) return null
+              return (
+                <div key={section.key}>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted mb-3 flex items-center gap-2">
+                    <span>{SECTION_EMOJI[section.key]}</span>
+                    {section.title}
+                    <span className="text-[11px] font-normal text-faint">({items.length})</span>
+                  </h2>
+                  <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                    {items.map((c) => (
+                      <div
+                        key={c.id}
+                        draggable
+                        onDragStart={() => setDragId(c.id)}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          setDragOver(c.id)
+                        }}
+                        onDragLeave={() => setDragOver((d) => (d === c.id ? null : d))}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          if (dragId) void reorderSection(section.key, dragId, c.id)
+                          setDragId(null)
+                          setDragOver(null)
+                        }}
+                        onDragEnd={() => {
+                          setDragId(null)
+                          setDragOver(null)
+                        }}
+                        className={`transition-shadow rounded-xl ${
+                          dragOver === c.id && dragId && dragId !== c.id
+                            ? 'ring-2 ring-indigo-400 ring-offset-1 ring-offset-panel'
+                            : ''
+                        } ${dragId === c.id ? 'opacity-50' : ''}`}
+                        title="Arraste para reordenar dentro desta seção"
+                      >
+                        <CampaignCard
+                          campaign={c}
+                          messages={messagesByCampaign[c.id] ?? []}
+                          connections={connections}
+                          runs={runsByCampaign[c.id] ?? []}
+                          onChanged={load}
+                          onSetConnections={(ids) => void setCampaignConnections(c, ids)}
+                          onShowQueue={() => setQueueFor(c)}
+                          onFire={() => void fireCampaign(c)}
+                          onPause={() => void pauseCampaign(c)}
+                          onResume={() => void resumeCampaign(c)}
+                          onSchedule={() => setScheduleFor(c)}
+                          onCancelSchedule={() => void cancelScheduleCampaign(c)}
+                          onDelete={() => void deleteCampaign(c)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
             {campaigns.length === 0 && (
-              <p className="col-span-full text-sm text-faint">
+              <p className="text-sm text-faint">
                 Nenhuma campanha criada ainda.
               </p>
             )}

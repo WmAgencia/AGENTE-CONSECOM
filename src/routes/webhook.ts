@@ -30,6 +30,7 @@ import {
 import { getEnv, getWebhookSecret, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { extractQrFromEvolution, isValidQrDataUri } from '../utils/qr.js';
+import { reconcileConnectionOnConnect } from '../services/instance.rotation.js';
 import { runAgentLoop } from '../services/agent.service.js';
 import {
   loadLearningsForPrompt,
@@ -297,6 +298,9 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     const patch: Record<string, unknown> = {
       last_sync_at: new Date().toISOString(),
     };
+    // Se a instância CONECTOU agora (state=open), dispara a reconciliação de
+    // rotação/reconexão DEPOIS de persistir o patch (fire-and-forget).
+    let shouldReconcile = false;
 
     // ----- CONNECTION_UPDATE -----
     // data.state pode ser "open" | "close" | "connecting"
@@ -312,6 +316,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         patch.qr_code = null;
         patch.phone_number = null;
         patch.whatsapp_name = null;
+        shouldReconcile = true;
       } else if (state === 'close') {
         patch.status = 'disconnected';
         patch.qr_code = null;
@@ -385,6 +390,15 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
           { instance: instanceName, event: payload.event, patch },
           'webhook: instance event processed',
         );
+        // Reconcilia rotação/reconexão agora que a conexão está conectada.
+        if (shouldReconcile) {
+          void reconcileConnectionOnConnect(instanceName).catch((err) => {
+            log.warn(
+              { instance: instanceName, errMessage: err instanceof Error ? err.message : 'unknown' },
+              'webhook: reconcileConnectionOnConnect crashed',
+            );
+          });
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown';

@@ -94,6 +94,7 @@ export interface Campaign {
   whatsapp_instance: string | null
   connection_ids?: string[] | null
   owner_user_id?: string | null
+  position?: number | null
   created_at: string
 }
 
@@ -118,6 +119,8 @@ export interface WhatsAppConnection {
   last_sync_at: string | null
   created_at: string
   updated_at: string
+  rotation_of?: string | null
+  superseded_by?: string | null
 }
 
 export interface QueueMessage {
