@@ -98,18 +98,15 @@ export function ConnectionsPage() {
     if (!sessionUser) return
     const r = await fetch(`${API}/api/connections/whatsapp`, { headers: { 'x-user-id': sessionUser } })
     if (r.ok) {
-      const data = await r.json()
+const data = await r.json()
       const raw: Conn[] = (data.connections && data.connections.length > 0)
         ? data.connections
         : data.connection
           ? [data.connection]
           : []
-      const ignored = new Set(['consecom-user-9a6d110f-9a7-5'])
-      const list = raw.filter((c) => !ignored.has(c.instance_name))
-      setConns(list)
+      setConns(raw)
       const qrMap: Record<string, string> = {}
-      for (const c of list) {
-        if (ignored.has(c.instance_name)) continue
+      for (const c of raw) {
         const n = normalizeQr(c.qr_code)
         if (n) qrMap[c.id] = n
       }
