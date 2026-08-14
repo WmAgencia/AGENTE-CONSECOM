@@ -1,6 +1,5 @@
-import { getStoredConfig, saveConfig, getClient, type StoredConfig } from '../shared/config'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { importLeads, deleteLeads, type ScrapedLead, type ImportOptions } from '../shared/leads'
+import { getStoredConfig, type StoredConfig } from '../shared/config'
+import { importLeads, deleteLeads, knownPlaceIds, type ScrapedLead, type ImportOptions } from '../shared/leads'
 import { computeVyntraScore, bandClass, bandEmoji } from '../shared/score'
 import {
   DEFAULT_FILTERS,
@@ -26,7 +25,6 @@ interface ParsedCard {
 
 export class MapsScanner {
   private cfg: StoredConfig | null = null
-  private rtChannel: ReturnType<SupabaseClient['channel']> | null = null
   private found: ParsedCard[] = []
   private selected = new Set<string>()
   private used = new Set<string>()
@@ -80,8 +78,6 @@ export class MapsScanner {
       if (this.floatBtn && document.body.contains(this.floatBtn)) this.clampElement(this.floatBtn)
     })
 
-    this.subscribeRealtime()
-
     // Estado inicial: nada aberto → mostra o launcher flutuante (botão "V")
     // sobre o Maps, garantindo que o usuário sempre tenha como abrir a sidebar.
     this.ensureLauncher()
@@ -101,29 +97,6 @@ export class MapsScanner {
     this.floatBtn.style.top = `${pos.top}px`
     requestAnimationFrame(() => this.floatBtn?.classList.add('open'))
   }
-
-  /** Assina mudanças na tabela leads p/ atualizar badges (usado/sem interesse) ao vivo. */
-  private subscribeRealtime(): void {
-    void this.rtChannel?.unsubscribe()
-    this.rtChannel = null
-    const client = this.cfg ? getClient(this.cfg) : null
-    if (!client) return
-    this.rtChannel = client
-      .channel('consecom-leads-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => this.debounceUsed())
-      .subscribe()
-  }
-
-  private debounceUsed = (() => {
-    let t: number | null = null
-    return () => {
-      if (t) return
-      t = window.setTimeout(() => {
-        t = null
-        void this.checkUsed()
-      }, 400)
-    }
-  })()
 
   private observeDom(): void {
     const obs = new MutationObserver(() => this.debounceScan())
@@ -1024,8 +997,8 @@ export class MapsScanner {
     _target: string,
   ): Promise<void> {
     this.cfg = this.cfg ?? (await getStoredConfig())
-    if (!this.cfg || !this.cfg.supabaseUrl || !this.cfg.anonKey) {
-      alert('Configure a URL do Supabase e a chave anon primeiro (⚙).')
+    if (!this.cfg || !this.cfg.extensionKey || !this.cfg.ownerUserId) {
+      alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
       return
     }
 
@@ -1452,27 +1425,21 @@ export class MapsScanner {
 
   private async checkUsed(): Promise<void> {
     const cfg = this.cfg ?? (await getStoredConfig())
-    if (!cfg.supabaseUrl || !cfg.anonKey) return
+    if (!cfg.extensionKey || !cfg.ownerUserId) return
     const ids = this.found.map((f) => f.lead.place_id).filter((x): x is string => !!x)
     if (ids.length === 0) return
     try {
-      const res = await fetch(
-        `${cfg.supabaseUrl}/rest/v1/leads?select=place_id,no_interest_until&place_id=in.(${ids.map(encodeURIComponent).join(',')})`,
-        { headers: { apikey: cfg.anonKey, Authorization: `Bearer ${cfg.anonKey}` } },
+      const res = await knownPlaceIds(cfg, ids)
+      this.used = new Set(res.used)
+      const now = Date.now()
+      this.noInterest = new Set(
+        Object.entries(res.noInterest)
+          .filter(([, until]) => until && new Date(until).getTime() > now)
+          .map(([placeId]) => placeId),
       )
-      if (res.ok) {
-        const rows = (await res.json()) as { place_id: string | null; no_interest_until: string | null }[]
-        this.used = new Set(rows.filter((r) => r.place_id).map((r) => r.place_id as string))
-        const now = Date.now()
-        this.noInterest = new Set(
-          rows
-            .filter((r) => r.place_id && r.no_interest_until && new Date(r.no_interest_until).getTime() > now)
-            .map((r) => r.place_id as string),
-        )
-        this.syncAll()
-      }
+      this.syncAll()
     } catch {
-      /* rede/RLS: segue sem rótulos de usado */
+      /* rede/erro: segue sem rótulos de usado */
     }
   }
 
@@ -1506,25 +1473,19 @@ export class MapsScanner {
 
   // --- configuração e importação ---
 
-private async promptConfig(): Promise<void> {
-    this.cfg = this.cfg ?? (await getStoredConfig())
-    const url = prompt('URL do projeto Supabase:', this.cfg?.supabaseUrl || '')
-    if (url === null) return
-    const key = prompt('Chave anon (publishable):', this.cfg?.anonKey || '')
-    if (key === null) return
-    if (!url || !key) {
-      alert('Informe a URL e a chave anon do Supabase.')
-      return
-    }
-    await saveConfig({ supabaseUrl: url.replace(/\/+$/, ''), anonKey: key, refreshToken: this.cfg?.refreshToken })
-    this.cfg = { supabaseUrl: url.replace(/\/+$/, ''), anonKey: key, refreshToken: this.cfg?.refreshToken }
-    this.subscribeRealtime()
+  private async promptConfig(): Promise<void> {
+    const cfg = this.cfg ?? (await getStoredConfig())
+    alert(
+      cfg.extensionKey && cfg.ownerUserId
+        ? 'Extensão vinculada à sua conta Vyntra ✓'
+        : 'Esta extensão não está vinculada a uma conta. Baixe novamente a extensão no painel Vyntra.',
+    )
   }
 
   private async doImport(btn: HTMLButtonElement): Promise<void> {
     this.cfg = this.cfg ?? (await getStoredConfig())
-    if (!this.cfg || !this.cfg.supabaseUrl || !this.cfg.anonKey) {
-      alert('Configure a URL do Supabase e a chave anon primeiro (⚙).')
+    if (!this.cfg || !this.cfg.extensionKey || !this.cfg.ownerUserId) {
+      alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
       return
     }
 
@@ -1578,8 +1539,8 @@ private async promptConfig(): Promise<void> {
 
   private async doDelete(btn: HTMLButtonElement): Promise<void> {
     this.cfg = this.cfg ?? (await getStoredConfig())
-    if (!this.cfg || !this.cfg.supabaseUrl || !this.cfg.anonKey) {
-      alert('Configure a URL do Supabase e a chave anon primeiro (⚙).')
+    if (!this.cfg || !this.cfg.extensionKey || !this.cfg.ownerUserId) {
+      alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
       return
     }
 

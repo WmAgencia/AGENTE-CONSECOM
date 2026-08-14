@@ -1,29 +1,35 @@
 /**
- * Extensão Vyntra Prospector — download PERSONALIZADO por conta.
+ * Extensão Vyntra Prospector — download e importação direta.
  *
- * GET  /api/extension/version
- *   Metadados mínimos: versão do manifesto + caminho do build publicado.
+ * Arquitetura: SEM login/token na extensão. O painel baixa um .zip
+ * PERSONALIZADO por conta: o backend injeta `auto-config.json` com
+ * `{ extensionKey, ownerUserId }`. A extensão chama os endpoints abaixo com o
+ * header `x-extension-key` e o backend grava/consulta com service role,
+ * associando tudo ao `ownerUserId` embutido. A lista de Importados (`/importados`)
+ * é `import_state = 'imported'`; ao distribuir para uma campanha o estado vira
+ * `'distributed'` e a lista é zerada — a extensão pode capturar de novo.
  *
- * POST /api/extension/download
- *   Autenticado (`Authorization: Bearer <SUPABASE_ACCESS_TOKEN>` + `refreshToken`
- *   no corpo). NÃO confia cegamente no token enviado: troca o refresh token no
- *   Supabase (`grant_type=refresh_token`) e injeta no `auto-config.json` o
- *   refresh token RENOVADO. Assim a extensão já chega conectada à conta — sem
- *   interface de token — e tokens antigos/corrompidos no navegador não quebram
- *   a geração (falham com 401 claro pedindo novo login, em vez de gerar zip
- *   inutilizável).
+ * GET  /api/extension/version          -> metadados do build
+ * POST /api/extension/download         -> zip personalizado (auth Supabase)
+ * POST /api/extension/import-leads     -> grava leads (x-extension-key)
+ * POST /api/extension/known            -> place_ids já existentes (x-extension-key)
+ * POST /api/extension/delete           -> remove leads por place_id (x-extension-key)
  */
 import AdmZip from 'adm-zip';
 import type { FastifyInstance } from 'fastify';
 import { getEnv, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { extractBearerToken } from '../utils/auth.js';
+import { z } from 'zod';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
-const VERSION = '1.4.4';
+const VERSION = '1.4.5';
 
 const DEFAULT_BASE_ZIP_URL =
   'https://frontend-seven-sooty-78.vercel.app/downloads/consecom-extension.zip';
+
+/** Se EXTENSION_API_KEY não estiver setada, usa este valor (dev/autoconfig). */
+const DEFAULT_EXTENSION_KEY = 'consecom-extension-v1';
 
 interface SupabaseMeta {
   url: string;
@@ -52,6 +58,62 @@ async function resolveSupabaseUser(
   } catch {
     return null;
   }
+}
+
+function headers(key: string, json = false): Record<string, string> {
+  return json
+    ? { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }
+    : { apikey: key, Authorization: `Bearer ${key}` };
+}
+
+/** Valida o header `x-extension-key` contra EXTENSION_API_KEY (ou default). */
+function extensionKeyOk(req: { headers: Record<string, string | string[] | undefined> }): boolean {
+  const env = getEnv();
+  const expected = env.EXTENSION_API_KEY || DEFAULT_EXTENSION_KEY;
+  const provided = req.headers['x-extension-key'];
+  return typeof provided === 'string' && provided === expected;
+}
+
+const leadSchema = z.object({
+  name: z.string().max(240).default(''),
+  phone: z.string().max(40),
+  category: z.string().nullable().optional(),
+  website: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  rating: z.number().nullable().optional(),
+  reviews: z.number().nullable().optional(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
+  place_id: z.string().nullable().optional(),
+  maps_url: z.string().nullable().optional(),
+  instagram: z.string().nullable().optional(),
+  facebook: z.string().nullable().optional(),
+  whatsapp: z.string().nullable().optional(),
+});
+
+const importLeadsSchema = z.object({
+  ownerUserId: z.string().min(1).max(64),
+  leads: z.array(leadSchema).min(1).max(50),
+  listName: z.string().min(1).max(120).optional(),
+  source: z.string().max(60).optional(),
+  sourceDetail: z.string().max(60).optional(),
+  tags: z.array(z.string().max(60)).max(12).optional(),
+  prospectFilters: z.record(z.unknown()).optional(),
+  score: z.number().min(0).max(100).optional(),
+  serviceInterest: z.string().nullable().optional(),
+  prospectedAt: z.string().optional(),
+});
+
+/** Normaliza telefone BR → dígitos para dedup e `phone_normalized`. */
+function normalizePhone(input: string): string | null {
+  const raw = (input ?? '').replace(/[^\d+]/g, '');
+  if (!raw) return null;
+  let digits = raw.replace(/[^\d]/g, '');
+  if (digits.length === 0) return null;
+  if (/^\+55/.test(raw) && digits.length >= 12) digits = digits.slice(2);
+  return digits.length >= 10 && digits.length <= 13 ? digits : null;
 }
 
 export function registerExtensionRoutes(app: FastifyInstance): void {
@@ -84,56 +146,8 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       return reply.status(401).send({ error: 'unauthorized', statusCode: 401 });
     }
 
-    // Renova a sessão no Supabase. O token enviado pelo painel NÃO vai direto
-    // para o zip: trocamos `grant_type=refresh_token` e embutimos o refresh
-    // token NOVO. Tokens antigos/corrompidos falham aqui com 401 claro, em vez
-    // de gerar um zip que a extensão não conseguiria renovar.
-    const raw = (req.body as { refreshToken?: unknown } | null)?.refreshToken;
-    if (typeof raw !== 'string' || raw.length === 0) {
-      return reply.status(400).send({
-        error: 'validation_error',
-        message: 'refreshToken inválido ou ausente',
-        statusCode: 400,
-      });
-    }
-    let renewedRefreshToken = raw;
-    try {
-      const tok = await fetch(`${s.url}/auth/v1/token?grant_type=refresh_token`, {
-        method: 'POST',
-        headers: {
-          apikey: s.key,
-          Authorization: `Bearer ${s.key}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refresh_token: raw }),
-      });
-      const tokBody = await tok.text();
-      if (!tok.ok) {
-        log.warn(
-          { status: tok.status, body: tokBody.slice(0, 300) },
-          'extension: download refresh token inválido',
-        );
-        return reply.status(401).send({
-          error: 'session_expired',
-          message: 'Sessão expirada. Entre novamente no Vyntra e tente baixar de novo.',
-          statusCode: 401,
-        });
-      }
-      const data = JSON.parse(tokBody) as { refresh_token?: string };
-      if (typeof data.refresh_token === 'string' && data.refresh_token.length > 0) {
-        renewedRefreshToken = data.refresh_token;
-      }
-    } catch (err) {
-      const em = err instanceof Error ? err.message : 'unknown';
-      log.warn({ errMessage: em }, 'extension: download refresh exchange failed');
-      return reply.status(502).send({
-        error: 'session_exchange_failed',
-        message: 'Não foi possível renovar a sessão. Tente novamente.',
-        statusCode: 502,
-      });
-    }
-
     const env = getEnv();
+    const extensionKey = env.EXTENSION_API_KEY || DEFAULT_EXTENSION_KEY;
     const baseUrl = env.EXTENSION_BASE_ZIP_URL || DEFAULT_BASE_ZIP_URL;
     try {
       const baseRes = await fetch(baseUrl);
@@ -145,7 +159,10 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       const zip = new AdmZip(baseBuf);
       zip.addFile(
         'auto-config.json',
-        Buffer.from(JSON.stringify({ refreshToken: renewedRefreshToken }), 'utf8'),
+        Buffer.from(
+          JSON.stringify({ extensionKey, ownerUserId: user.id }),
+          'utf8',
+        ),
       );
       const out = zip.toBuffer();
       reply.header('Content-Type', 'application/zip');
@@ -155,6 +172,185 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       const em = err instanceof Error ? err.message : 'unknown';
       log.error({ errMessage: em }, 'extension: falha ao gerar zip personalizado');
       return reply.status(502).send({ error: 'zip_generation_failed', message: em, statusCode: 502 });
+    }
+  });
+
+  app.post('/api/extension/import-leads', async (req, reply) => {
+    const s = sup();
+    if (!s) return reply.status(503).send({ error: 'server_misconfigured', statusCode: 503 });
+    if (!extensionKeyOk(req)) return reply.status(403).send({ error: 'forbidden', statusCode: 403 });
+
+    const parsed = importLeadsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'validation_error',
+        message: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+        statusCode: 400,
+      });
+    }
+
+    const { ownerUserId, leads, listName, source, sourceDetail, tags, prospectFilters, score, serviceInterest, prospectedAt } = parsed.data;
+    const logPrefix = `extension:import(${ownerUserId.slice(0, 8)})`;
+
+    try {
+      // Cria (ou reutiliza) a lista = capture_session.
+      const listLabel = `importacao:${(listName ?? 'Importação extensão').trim()}`;
+      const listRes = await fetch(`${s.url}/rest/v1/capture_sessions`, {
+        method: 'POST',
+        headers: { ...headers(s.key, true), Prefer: 'return=representation' },
+        body: JSON.stringify({ imported_by: listLabel }),
+      });
+      let listId: string | null = null;
+      if (listRes.ok) {
+        const data = (await listRes.json().catch(() => [])) as Array<{ id: string }>;
+        listId = data[0]?.id ?? null;
+      } else {
+        log.warn({ status: listRes.status }, `${logPrefix}: list create failed`);
+      }
+
+      // Dedup dentro da própria leva (place_id como chave primária).
+      const seen = new Set<string>();
+      const rows: Array<Record<string, unknown>> = [];
+      for (const lead of leads) {
+        const ph = normalizePhone(lead.phone);
+        const pid = lead.place_id ?? undefined;
+        if (pid && seen.has(pid)) continue;
+        if (pid) seen.add(pid);
+        rows.push({
+          name: lead.name.trim() || 'Sem nome',
+          phone: lead.phone ?? '',
+          phone_normalized: ph,
+          category: lead.category ?? null,
+          website: lead.website ?? null,
+          address: lead.address ?? null,
+          city: lead.city ?? null,
+          state: lead.state ?? null,
+          rating: lead.rating ?? null,
+          reviews: lead.reviews ?? null,
+          latitude: lead.latitude ?? null,
+          longitude: lead.longitude ?? null,
+          place_id: lead.place_id ?? null,
+          maps_url: lead.maps_url ?? null,
+          instagram: lead.instagram ?? null,
+          facebook: lead.facebook ?? null,
+          whatsapp: lead.whatsapp ?? null,
+          niche: 'maps',
+          status: 'novo',
+          session_id: listId,
+          owner_user_id: ownerUserId,
+          import_state: 'imported',
+          imported_at: prospectedAt ?? new Date().toISOString(),
+          source: source ?? 'google_maps',
+          source_detail: sourceDetail ?? 'vyntra_prospector',
+          has_website: !!lead.website,
+          tags: tags ?? [],
+          prospect_filters: prospectFilters ?? null,
+          score: score ?? null,
+          service_interest: serviceInterest ?? null,
+        });
+      }
+
+      let created = 0;
+      let failed = 0;
+      let firstError: { status: number; body: string } | null = null;
+      const BATCH = 50;
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const batch = rows.slice(i, i + BATCH);
+        const res = await fetch(`${s.url}/rest/v1/leads`, {
+          method: 'POST',
+          headers: { ...headers(s.key, true), Prefer: 'resolution=ignore-duplicates' },
+          body: JSON.stringify(batch),
+        });
+        if (res.ok) created += batch.length;
+        else {
+          const body = await res.text();
+          if (!firstError) firstError = { status: res.status, body: body.slice(0, 500) };
+          // Tenta upsert por linha (place_id) para capturar duplicados isolados.
+          const upsert = await fetch(`${s.url}/rest/v1/leads`, {
+            method: 'POST',
+            headers: { ...headers(s.key, true), Prefer: 'resolution=merge-duplicates' },
+            body: JSON.stringify(batch),
+          });
+          if (upsert.ok) created += batch.length;
+          else failed += batch.length;
+        }
+      }
+
+      log.info({ total: leads.length, created, failed, listId }, logPrefix);
+      return reply.send({
+        ok: failed === 0,
+        summary: { total: leads.length, created, errors: failed, duplicates: leads.length - rows.length },
+        listId,
+        firstError,
+      });
+    } catch (err) {
+      const em = err instanceof Error ? err.message : 'unknown';
+      log.error({ errMessage: em }, logPrefix);
+      return reply.status(502).send({ error: 'import_failed', message: em, statusCode: 502 });
+    }
+  });
+
+  app.post('/api/extension/known', async (req, reply) => {
+    const s = sup();
+    if (!s) return reply.status(503).send({ error: 'server_misconfigured', statusCode: 503 });
+    if (!extensionKeyOk(req)) return reply.status(403).send({ error: 'forbidden', statusCode: 403 });
+
+    const body = req.body as { placeIds?: unknown } | null;
+    const placeIds = Array.isArray(body?.placeIds)
+      ? body.placeIds.filter((x): x is string => typeof x === 'string').slice(0, 200)
+      : [];
+    if (placeIds.length === 0) return reply.send({ used: [], noInterest: {} });
+
+    try {
+      const res = await fetch(
+        `${s.url}/rest/v1/leads?select=place_id,no_interest_until&place_id=in.(${placeIds.map(encodeURIComponent).join(',')})`,
+        { headers: headers(s.key) },
+      );
+      if (!res.ok) return reply.status(502).send({ error: 'fetch_failed', statusCode: 502 });
+      const rows = (await res.json()) as Array<{ place_id: string | null; no_interest_until: string | null }>;
+      const used: string[] = [];
+      const noInterest: Record<string, string> = {};
+      for (const r of rows) {
+        if (!r.place_id) continue;
+        used.push(r.place_id);
+        if (r.no_interest_until) noInterest[r.place_id] = r.no_interest_until;
+      }
+      return reply.send({ used, noInterest });
+    } catch (err) {
+      const em = err instanceof Error ? err.message : 'unknown';
+      log.error({ errMessage: em }, 'extension: known failed');
+      return reply.status(502).send({ error: 'known_failed', message: em, statusCode: 502 });
+    }
+  });
+
+  app.post('/api/extension/delete', async (req, reply) => {
+    const s = sup();
+    if (!s) return reply.status(503).send({ error: 'server_misconfigured', statusCode: 503 });
+    if (!extensionKeyOk(req)) return reply.status(403).send({ error: 'forbidden', statusCode: 403 });
+
+    const body = req.body as { placeIds?: unknown; ownerUserId?: unknown } | null;
+    const placeIds = Array.isArray(body?.placeIds)
+      ? body.placeIds.filter((x): x is string => typeof x === 'string').slice(0, 200)
+      : [];
+    if (placeIds.length === 0) return reply.send({ ok: 0, failed: 0 });
+
+    try {
+      let ok = 0;
+      let failed = 0;
+      for (const id of placeIds) {
+        const owner = typeof body?.ownerUserId === 'string' ? body.ownerUserId : undefined;
+        const url = owner
+          ? `${s.url}/rest/v1/leads?place_id=eq.${encodeURIComponent(id)}&owner_user_id=eq.${encodeURIComponent(owner)}`
+          : `${s.url}/rest/v1/leads?place_id=eq.${encodeURIComponent(id)}`;
+        const res = await fetch(url, { method: 'DELETE', headers: headers(s.key) });
+        if (res.ok) ok++;
+        else failed++;
+      }
+      return reply.send({ ok, failed });
+    } catch (err) {
+      const em = err instanceof Error ? err.message : 'unknown';
+      log.error({ errMessage: em }, 'extension: delete failed');
+      return reply.status(502).send({ error: 'delete_failed', message: em, statusCode: 502 });
     }
   });
 }

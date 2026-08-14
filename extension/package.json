@@ -8,9 +8,7 @@
     "watch": "vite build --watch",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",
     "@types/chrome": "^0.2.5",

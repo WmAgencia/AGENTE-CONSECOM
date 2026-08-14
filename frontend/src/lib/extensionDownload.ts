@@ -10,8 +10,8 @@ export interface DownloadResult {
 
 /**
  * Baixa o .zip da extensão PERSONALIZADO para a conta logada no Vyntra.
- * O backend injeta `auto-config.json` com o refresh token da sessão, então a
- * extensão já nasce conectada — sem nenhuma interface de access token.
+ * O backend injeta `auto-config.json` com extensionKey + ownerUserId, então a
+ * extensão já nasce vinculada à conta — sem login nem token na extensão.
  */
 export async function downloadPersonalizedExtension(): Promise<DownloadResult> {
   // Tenta renovar a sessão primeiro (conserta refresh token velho/corrompido
@@ -20,7 +20,7 @@ export async function downloadPersonalizedExtension(): Promise<DownloadResult> {
   if (!session) {
     session = (await supabase.auth.getSession()).data.session
   }
-  if (!session?.access_token || !session.refresh_token) {
+  if (!session?.access_token) {
     return { ok: false, message: 'Sessão expirada. Entre novamente no Vyntra.' }
   }
 
@@ -30,7 +30,7 @@ export async function downloadPersonalizedExtension(): Promise<DownloadResult> {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({ refreshToken: session.refresh_token }),
+    body: JSON.stringify({}),
   })
 
   if (!res.ok) {
@@ -53,5 +53,5 @@ export async function downloadPersonalizedExtension(): Promise<DownloadResult> {
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
-  return { ok: true, message: 'Extensão baixada já conectada à sua conta.' }
+  return { ok: true, message: 'Extensão baixada já vinculada à sua conta.' }
 }
