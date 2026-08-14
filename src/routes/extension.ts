@@ -208,13 +208,13 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
 
       // Dedup dentro da própria leva (place_id como chave primária).
       const seen = new Set<string>();
-      const rows: Array<Record<string, unknown>> = [];
+      const candidateRows: Array<Record<string, unknown>> = [];
       for (const lead of leads) {
         const ph = normalizePhone(lead.phone);
         const pid = lead.place_id ?? undefined;
         if (pid && seen.has(pid)) continue;
         if (pid) seen.add(pid);
-        rows.push({
+        candidateRows.push({
           name: lead.name.trim() || 'Sem nome',
           phone: lead.phone ?? '',
           phone_normalized: ph,
@@ -246,36 +246,55 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
         });
       }
 
+      // Dedup contra o banco: busca place_ids já existentes (qualquer owner)
+      // e envia apenas os novos — não sobrescreve leads já distribuídos/processados.
+      const existingPlaceIds = new Set<string>();
+      {
+        const pids = candidateRows.map((r) => r.place_id).filter((x): x is string => typeof x === 'string');
+        if (pids.length > 0) {
+          const res = await fetch(
+            `${s.url}/rest/v1/leads?select=place_id&place_id=in.(${pids.map(encodeURIComponent).join(',')})`,
+            { headers: headers(s.key) },
+          );
+          if (res.ok) {
+            const rows = (await res.json()) as Array<{ place_id: string | null }>;
+            for (const r of rows) if (r.place_id) existingPlaceIds.add(r.place_id);
+          }
+        }
+      }
+
+      const rows = candidateRows.filter((r) => {
+        const pid = r.place_id;
+        return typeof pid !== 'string' || !existingPlaceIds.has(pid);
+      });
+      const duplicates = candidateRows.length - rows.length;
+
       let created = 0;
       let failed = 0;
       let firstError: { status: number; body: string } | null = null;
       const BATCH = 50;
       for (let i = 0; i < rows.length; i += BATCH) {
         const batch = rows.slice(i, i + BATCH);
-        const res = await fetch(`${s.url}/rest/v1/leads`, {
-          method: 'POST',
-          headers: { ...headers(s.key, true), Prefer: 'resolution=ignore-duplicates' },
-          body: JSON.stringify(batch),
-        });
+        const res = await fetch(
+          `${s.url}/rest/v1/leads?on_conflict=place_id`,
+          {
+            method: 'POST',
+            headers: { ...headers(s.key, true), Prefer: 'resolution=merge-duplicates' },
+            body: JSON.stringify(batch),
+          },
+        );
         if (res.ok) created += batch.length;
         else {
           const body = await res.text();
           if (!firstError) firstError = { status: res.status, body: body.slice(0, 500) };
-          // Tenta upsert por linha (place_id) para capturar duplicados isolados.
-          const upsert = await fetch(`${s.url}/rest/v1/leads`, {
-            method: 'POST',
-            headers: { ...headers(s.key, true), Prefer: 'resolution=merge-duplicates' },
-            body: JSON.stringify(batch),
-          });
-          if (upsert.ok) created += batch.length;
-          else failed += batch.length;
+          failed += batch.length;
         }
       }
 
-      log.info({ total: leads.length, created, failed, listId }, logPrefix);
+      log.info({ total: leads.length, created, duplicates, failed, listId }, logPrefix);
       return reply.send({
         ok: failed === 0,
-        summary: { total: leads.length, created, errors: failed, duplicates: leads.length - rows.length },
+        summary: { total: leads.length, created, duplicates, errors: failed },
         listId,
         firstError,
       });
