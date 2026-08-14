@@ -14,13 +14,10 @@ export interface ScrapedLead {
   latitude: number | null
   longitude: number | null
   place_id: string | null
-  maps_url: string | null
   /** URL do Instagram encontrada no card do Maps (heurística DOM). null se não achou. */
   instagram: string | null
   /** URL do Facebook encontrada no card do Maps (heurística DOM). null se não achou. */
   facebook: string | null
-  /** WhatsApp detectado (telefone com whatsapp). null se não achou. */
-  whatsapp: string | null
 }
 
 export interface ImportOptions {
@@ -123,10 +120,8 @@ export async function importLeads(
     latitude: lead.latitude,
     longitude: lead.longitude,
     place_id: lead.place_id,
-    maps_url: lead.maps_url,
     instagram: lead.instagram,
     facebook: lead.facebook,
-    whatsapp: lead.whatsapp,
   }))
 
   const res = await backend('/api/extension/import-leads', {

@@ -87,10 +87,8 @@ const leadSchema = z.object({
   latitude: z.number().nullable().optional(),
   longitude: z.number().nullable().optional(),
   place_id: z.string().nullable().optional(),
-  maps_url: z.string().nullable().optional(),
   instagram: z.string().nullable().optional(),
   facebook: z.string().nullable().optional(),
-  whatsapp: z.string().nullable().optional(),
 });
 
 const importLeadsSchema = z.object({
@@ -230,10 +228,8 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
           latitude: lead.latitude ?? null,
           longitude: lead.longitude ?? null,
           place_id: lead.place_id ?? null,
-          maps_url: lead.maps_url ?? null,
           instagram: lead.instagram ?? null,
           facebook: lead.facebook ?? null,
-          whatsapp: lead.whatsapp ?? null,
           niche: 'maps',
           status: 'novo',
           session_id: listId,

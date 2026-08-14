@@ -1464,10 +1464,8 @@ export class MapsScanner {
       latitude: coords ? parseFloat(coords[1]) : null,
       longitude: coords ? parseFloat(coords[2]) : null,
       place_id: placeId,
-      maps_url: href || null,
       instagram: extractInstagram(card),
       facebook: extractFacebook(card),
-      whatsapp: extractWhatsapp(card),
     }
   }
 
@@ -1768,27 +1766,6 @@ function extractFacebook(card: HTMLElement | null): string | null {
     const a = card.querySelector(sel) as HTMLAnchorElement | null
     const href = a?.href
     if (href && /facebook\.com|fb\.com/i.test(href)) return normalizeUrl(href)
-  }
-  return null
-}
-
-/** Heurística: procura no card do Maps um link/botão de WhatsApp. */
-function extractWhatsapp(card: HTMLElement | null): string | null {
-  if (!card) return null
-  const Sel = [
-    'a[data-tooltip*="WhatsApp" i]',
-    'a[aria-label*="WhatsApp" i]',
-    'a[href*="wa.me/"]',
-    'a[href*="api.whatsapp.com"]',
-    'a[href^="whatsapp:"]',
-  ]
-  for (const sel of Sel) {
-    const a = card.querySelector(sel) as HTMLAnchorElement | null
-    const href = a?.href
-    if (href && /wa\.me|whatsapp/i.test(href)) {
-      const m = href.match(/(?:wa\.me\/|phone=)(\d+)/)
-      return m ? `+${m[1]}` : href
-    }
   }
   return null
 }

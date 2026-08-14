@@ -187,7 +187,8 @@ function matchSiteCategory(lead: ScrapedLead, filters: SiteFilter[]): boolean {
 function matchDigitalCategory(lead: ScrapedLead, filters: DigitalFilter[]): boolean {
   const hasIg = !!lead.instagram
   const hasFb = !!lead.facebook
-  const hasWa = !!lead.whatsapp
+  // A tabela `leads` não tem coluna whatsapp; presença de telefone é o proxy.
+  const hasWa = !!lead.phone
   for (const filter of filters) {
     switch (filter) {
       case 'sem_instagram':
@@ -297,8 +298,8 @@ export function buildTagsForLead(lead: ScrapedLead, f: ProspectFilters): string[
   else tags.add('Tem Site')
   if (lead.instagram) tags.add('Instagram')
   if (lead.facebook) tags.add('Facebook')
-  if (lead.whatsapp) tags.add('WhatsApp')
-  if (!lead.instagram && !lead.facebook && !lead.whatsapp) tags.add('Presença Digital Fraca')
+  if (lead.phone) tags.add('WhatsApp')
+  if (!lead.instagram && !lead.facebook && !lead.phone) tags.add('Presença Digital Fraca')
   if (f.minRating != null && f.minRating >= 4.8 && lead.rating != null) {
     tags.add(`${lead.rating.toFixed(1)} Stars`)
   } else if (lead.rating != null) {
