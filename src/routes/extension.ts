@@ -7,7 +7,7 @@
  * POST /api/extension/download
  *   Autenticado (`Authorization: Bearer <SUPABASE_ACCESS_TOKEN>` + `refreshToken`
  *   no corpo). NÃO confia cegamente no token enviado: troca o refresh token no
- *   Supabase (`grant_type=refresh_token`) e injeta no `_auto-config.json` o
+ *   Supabase (`grant_type=refresh_token`) e injeta no `auto-config.json` o
  *   refresh token RENOVADO. Assim a extensão já chega conectada à conta — sem
  *   interface de token — e tokens antigos/corrompidos no navegador não quebram
  *   a geração (falham com 401 claro pedindo novo login, em vez de gerar zip
@@ -144,7 +144,7 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       const baseBuf = Buffer.from(await baseRes.arrayBuffer());
       const zip = new AdmZip(baseBuf);
       zip.addFile(
-        '_auto-config.json',
+        'auto-config.json',
         Buffer.from(JSON.stringify({ refreshToken: renewedRefreshToken }), 'utf8'),
       );
       const out = zip.toBuffer();

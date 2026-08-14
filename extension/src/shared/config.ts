@@ -42,10 +42,10 @@ export async function saveConfig(cfg: StoredConfig): Promise<void> {
 }
 
 /** Nome do arquivo embutido no .zip personalizado gerado pelo backend. */
-const AUTO_CONFIG_FILE = '_auto-config.json'
+const AUTO_CONFIG_FILE = 'auto-config.json'
 
 /**
- * Lê `_auto-config.json` (presente no .zip PERSONALIZADO baixado do painel) e
+ * Lê `auto-config.json` (presente no .zip PERSONALIZADO baixado do painel) e
  * faz merge na config salva. O arquivo contém o refresh token da sessão do
  * usuário logado no Vyntra — não há mais interface de access token.
  * Retorna true quando o arquivo existiu e foi aplicado.

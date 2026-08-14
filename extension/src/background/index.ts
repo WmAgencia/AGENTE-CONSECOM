@@ -1,7 +1,7 @@
 // Background service worker — mantém estado mínimo e escuta cliques no ícone.
 import { seedAutoConfig } from '../shared/config'
 
-// O .zip personalizado baixado do painel vem com `_auto-config.json` contendo o
+// O .zip personalizado baixado do painel vem com `auto-config.json` contendo o
 // refresh token da sessão. Semeia o chrome.storage para a extensão já nascer
 // conectada à conta do usuário — sem interface de access token.
 void seedAutoConfig()

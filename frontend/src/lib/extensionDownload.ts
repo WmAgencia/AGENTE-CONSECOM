@@ -10,7 +10,7 @@ export interface DownloadResult {
 
 /**
  * Baixa o .zip da extensão PERSONALIZADO para a conta logada no Vyntra.
- * O backend injeta `_auto-config.json` com o refresh token da sessão, então a
+ * O backend injeta `auto-config.json` com o refresh token da sessão, então a
  * extensão já nasce conectada — sem nenhuma interface de access token.
  */
 export async function downloadPersonalizedExtension(): Promise<DownloadResult> {
