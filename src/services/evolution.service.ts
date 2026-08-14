@@ -142,6 +142,14 @@ export async function getEvolutionInstanceState(instance: string): Promise<Evolu
       { method: 'GET', headers: { Accept: 'application/json', apikey: cfg.apiKey } },
     );
     if (!response.ok) {
+      // 404 = a instância NÃO EXISTE mais na Evolution (foi apagada, perdeu o
+      // banco, etc.). Isso é uma resposta DEFINITIVA (não um problema de rede):
+      // trata como 'close' para que o worker marque disconnected no banco e
+      // pare de mandar por uma instância fantasma. Só 5xx/0 (rede) indica que a
+      // Evolution está inacessível e o worker deve confiar no banco.
+      if (response.status === 404) {
+        return { ok: true, state: 'close', connected: false, status: 404 };
+      }
       return { ok: false, state: null, connected: false, status: response.status };
     }
     const raw = await response.text();
