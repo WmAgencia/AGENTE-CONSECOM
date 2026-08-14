@@ -114,7 +114,13 @@ export function ImportedLeadsView({
       <div className="flex-1 overflow-auto px-6 py-5">
         {imported.length === 0 ? <p className="text-sm text-faint">Nenhum lead importado pendente.</p> : (
           <div className="rounded-xl border border-line overflow-hidden">
-            <div className="px-4 py-3 border-b border-line text-sm font-medium">{imported.length} lead(s) importado(s)</div>
+            <div className="px-4 py-3 border-b border-line text-sm font-medium flex items-center justify-between">
+              <span>{imported.length} lead(s) importado(s)</span>
+              <span className="flex items-center gap-2">
+                <button type="button" onClick={() => setSelected(new Set(imported.map((l) => l.id)))} disabled={imported.length === 0} className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed">Selecionar todos ({imported.length})</button>
+                {selected.size > 0 && <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-muted hover:text-faint">Limpar</button>}
+              </span>
+            </div>
             {imported.map((lead) => (
               <label key={lead.id} className="flex items-center gap-3 px-4 py-3 border-b border-line last:border-0 hover:bg-subtle cursor-pointer">
                 <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggleLead(lead.id)} className="accent-indigo-500" />
