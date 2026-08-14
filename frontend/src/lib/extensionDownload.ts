@@ -14,8 +14,12 @@ export interface DownloadResult {
  * extensão já nasce conectada — sem nenhuma interface de access token.
  */
 export async function downloadPersonalizedExtension(): Promise<DownloadResult> {
-  const { data } = await supabase.auth.getSession()
-  const session = data.session
+  // Tenta renovar a sessão primeiro (conserta refresh token velho/corrompido
+  // gravado no localStorage). Sem sessão válida, cai no fluxo sem refresh.
+  let session = (await supabase.auth.refreshSession()).data.session
+  if (!session) {
+    session = (await supabase.auth.getSession()).data.session
+  }
   if (!session?.access_token || !session.refresh_token) {
     return { ok: false, message: 'Sessão expirada. Entre novamente no Vyntra.' }
   }
