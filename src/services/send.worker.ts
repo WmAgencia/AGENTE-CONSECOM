@@ -53,6 +53,11 @@ import { validateVideoSize } from './media.limits.js';
 import { SpamProtection } from './spam-protection.js';
 import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js';
 import { renderTemplate } from './template.service.js';
+
+/** Instâncias que devem ser COMPLETAMENTE ignoradas pelo worker e por
+   *  qualquer fluxo de envio. Não aparecem no pool, não são validadas,
+   *  não são reconciliadas. Equivale a "não existe" para o sistema. */
+const IGNORED_INSTANCES = new Set<string>(['consecom-user-9a6d110f-9a7-5']);
 import { getConversationStore } from './conversation.store.js';
 import { processDueScheduledCampaigns } from './campaign.schedule.service.js';
 import { claimDueFollowUp, getDueFollowUps, updateFollowUp, type FollowUpRow } from './followup.service.js';
@@ -275,7 +280,7 @@ export class SendWorker {
       const all = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
       const order = new Map(poolIds.map((id, i) => [id, i]));
       return all
-        .filter((c) => c.status === 'connected')
+        .filter((c) => c.status === 'connected' && !IGNORED_INSTANCES.has(c.instance_name))
         .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     };
 
@@ -293,8 +298,9 @@ export class SendWorker {
         );
         if (r.ok) {
           const all = (await r.json()) as Array<{ id: string; instance_name: string; status: string }>;
-          if (all.length > 0) {
-            const fallback = all.map((c) => ({ id: c.id, instance_name: c.instance_name }));
+          const filtered = all.filter((c) => !IGNORED_INSTANCES.has(c.instance_name));
+          if (filtered.length > 0) {
+            const fallback = filtered.map((c) => ({ id: c.id, instance_name: c.instance_name }));
             const fallbackLive = await this.filterLiveConnections(fallback);
             if (fallbackLive.length > 0) {
               getLogger().warn(
@@ -322,6 +328,7 @@ export class SendWorker {
    *  frontend) e retorna false — assim uma instância morta nunca é usada para
    *  enviar, mesmo que o banco ainda diga 'connected'. */
   private async isInstanceAvailable(instance: string): Promise<boolean> {
+    if (IGNORED_INSTANCES.has(instance)) return false;
     const now = Date.now();
     const cached = this.liveInstanceState.get(instance);
     if (cached && now - cached.at < INSTANCE_STATE_TTL_MS) return cached.connected;
