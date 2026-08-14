@@ -108,7 +108,6 @@ export function ConnectionsPage() {
       const list = raw.filter((c) => !ignored.has(c.instance_name))
       setConns(list)
       const qrMap: Record<string, string> = {}
-      const ignored = new Set(['consecom-user-9a6d110f-9a7-5'])
       for (const c of list) {
         if (ignored.has(c.instance_name)) continue
         const n = normalizeQr(c.qr_code)
