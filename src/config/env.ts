@@ -355,11 +355,11 @@ const envSchema = z.object({
   // Auto-limpeza de conexões novas: se uma conexão criada (status pending/
   // connecting) não CONECTAR em até EVOLUTION_CONNECTION_CONNECT_TIMEOUT_MS,
   // o worker apaga a instância na Evolution e fecha a conexão no banco.
-  // Default 60000 = 1 minuto.
+  // Default 300000 = 5 minutos (tempo razoável para escanear o QR).
   EVOLUTION_CONNECTION_CONNECT_TIMEOUT_MS: z
     .string()
     .optional()
-    .default('60000')
+    .default('300000')
     .transform((v) => Number(v))
     .refine((v) => Number.isInteger(v) && v >= 5000 && v <= 3_600_000, {
       message: 'EVOLUTION_CONNECTION_CONNECT_TIMEOUT_MS must be an integer 5000..3600000',
