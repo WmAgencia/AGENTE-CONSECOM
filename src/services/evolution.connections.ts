@@ -480,6 +480,75 @@ export async function deleteInstanceFromEvolution(instanceName: string): Promise
   }
 }
 
+/**
+ * Auto-limpeza de conexões novas: apaga da Evolution e fecha no banco toda
+ * conexão com status `pending`/`connecting` que NÃO conectou dentro de
+ * `timeoutMs` desde a criação. Evita acúmulo de instâncias mortas/órfãs
+ * (ex.: sessões com 401 device_removed) quando o usuário cria uma conexão
+ * e não completa o pareamento via QR.
+ *
+ * Retorna o número de conexões limpas. Best-effort: erros parciais não
+ * abortam a limpeza das demais.
+ */
+export async function cleanupStaleConnections(timeoutMs = 60_000): Promise<number> {
+  const log = getLogger();
+  try {
+    const cutoff = new Date(Date.now() - timeoutMs).toISOString();
+    const url = `${supUrl()}/rest/v1/whatsapp_connections?select=id,instance_name,status&or=(status.eq.pending,status.eq.connecting)&created_at=lt.${encodeURIComponent(cutoff)}`;
+    const res = await fetch(url, { headers: supHeaders() });
+    if (!res.ok) return 0;
+    const rows = (await res.json()) as Array<{ id: string; instance_name: string; status: string }>;
+    if (rows.length === 0) return 0;
+
+    log.info({ count: rows.length, cutoff }, 'connections: cleanupStaleConnections found stale connections');
+
+    let cleaned = 0;
+    for (const row of rows) {
+      // Apaga a instância da Evolution (best-effort; 404 já conta como ok).
+      const deleted = await deleteInstanceFromEvolution(row.instance_name);
+      if (deleted) {
+        // Instância removida de fato: apaga a linha — a conexão nunca
+        // conectou e não há sessão a preservar. O usuário recomeça limpo.
+        const delRes = await fetch(`${supUrl()}/rest/v1/whatsapp_connections?id=eq.${row.id}`, {
+          method: 'DELETE',
+          headers: supHeaders(),
+        });
+        if (delRes.ok) cleaned++;
+        log.info(
+          { instance: row.instance_name, status: row.status, deleted: delRes.ok },
+          'connections: cleanupStaleConnections removed connection',
+        );
+      } else {
+        // Falha ao apagar na Evolution (ex.: API instável): não deixa a linha
+        // órfã apontando para uma instância inexistente. Marca 'error' para o
+        // frontend mostrar e o usuário decidir; não fica mais 'connecting'
+        // (a próxima varredura não o pega de novo, evitando loop).
+        const patchRes = await fetch(`${supUrl()}/rest/v1/whatsapp_connections?id=eq.${row.id}`, {
+          method: 'PATCH',
+          headers: supHeaders(),
+          body: JSON.stringify({
+            status: 'error',
+            qr_code: null,
+            last_sync_at: new Date().toISOString(),
+          }),
+        });
+        if (patchRes.ok) cleaned++;
+        log.warn(
+          { instance: row.instance_name, patched: patchRes.ok },
+          'connections: cleanupStaleConnections instance delete failed; connection marked error',
+        );
+      }
+    }
+    return cleaned;
+  } catch (e) {
+    log.warn(
+      { err: e instanceof Error ? e.message : 'unknown' },
+      'connections: cleanupStaleConnections failed',
+    );
+    return 0;
+  }
+}
+
 /** Gera um novo QR Code para uma instância específica (ou a primária). */
 export async function regenerateQRCode(
   identifier: string,

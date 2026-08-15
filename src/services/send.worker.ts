@@ -62,8 +62,14 @@ import {
   loadStrategiesByIds,
   type Strategy,
 } from './strategy.service.js';
+import { cleanupStaleConnections } from './evolution.connections.js';
 
 const TICK_MS = Number(getEnv().CONSECOM_WORKER_TICK_MS ?? 5000);
+
+// Intervalo entre rodadas de auto-limpeza de conexões não conectadas
+// (ver cleanupStaleConnections). Default: a cada 30s o worker varre conexões
+// novas que não conectaram dentro do timeout.
+const CONNECTION_CLEANUP_INTERVAL_MS = Number(getEnv().EVOLUTION_CONNECTION_CLEANUP_INTERVAL_MS ?? 30000);
 
 // TTL do cache de estado real das instâncias (Evolution API). Evita chamar a
 // Evolution a cada mensagem — o estado só é revalidado a cada X ms por instância.
@@ -141,6 +147,9 @@ export class SendWorker {
   private realtimeClient: unknown = null;
   private realtimeChannel: unknown = null;
   private realtimePending = false;
+
+  // Próxima rodada de auto-limpeza de conexões não conectadas (epoch ms).
+  private nextConnectionCleanupAt = 0;
 
   constructor() {
     const c = getSupabaseProspeccaoConfig();
@@ -1121,6 +1130,19 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
     this.busy = true;
     const log = getLogger();
     try {
+      // Auto-limpeza periódica de conexões novas que não conectaram dentro do
+      // timeout (ver cleanupStaleConnections). Roda a cada
+      // CONNECTION_CLEANUP_INTERVAL_MS e também na subida (next=0).
+      if (Date.now() >= this.nextConnectionCleanupAt) {
+        this.nextConnectionCleanupAt = Date.now() + CONNECTION_CLEANUP_INTERVAL_MS;
+        const cleaned = await cleanupStaleConnections(
+          Number(getEnv().EVOLUTION_CONNECTION_CONNECT_TIMEOUT_MS ?? 60000),
+        );
+        if (cleaned > 0) {
+          log.info({ cleaned }, 'send-worker: conexões não conectadas removidas pela auto-limpeza');
+        }
+      }
+
       // Scheduler persistente: campanhas agendadas cuja hora chegou entram no
       // ar (agendada -> em_progresso). Corre a cada tick e também na subida.
       const activated = await processDueScheduledCampaigns();

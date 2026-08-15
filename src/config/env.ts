@@ -352,6 +352,30 @@ const envSchema = z.object({
       message: 'EVOLUTION_CONNECTION_STATE_TTL_MS must be an integer 1000..300000',
     }),
 
+  // Auto-limpeza de conexões novas: se uma conexão criada (status pending/
+  // connecting) não CONECTAR em até EVOLUTION_CONNECTION_CONNECT_TIMEOUT_MS,
+  // o worker apaga a instância na Evolution e fecha a conexão no banco.
+  // Default 60000 = 1 minuto.
+  EVOLUTION_CONNECTION_CONNECT_TIMEOUT_MS: z
+    .string()
+    .optional()
+    .default('60000')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isInteger(v) && v >= 5000 && v <= 3_600_000, {
+      message: 'EVOLUTION_CONNECTION_CONNECT_TIMEOUT_MS must be an integer 5000..3600000',
+    }),
+
+  // Intervalo entre varreduras de auto-limpeza de conexões não conectadas
+  // (ver cleanupStaleConnections no send.worker).
+  EVOLUTION_CONNECTION_CLEANUP_INTERVAL_MS: z
+    .string()
+    .optional()
+    .default('30000')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isInteger(v) && v >= 5000 && v <= 3_600_000, {
+      message: 'EVOLUTION_CONNECTION_CLEANUP_INTERVAL_MS must be an integer 5000..3600000',
+    }),
+
   // Anti-spam do disparo de campanhas (SpamProtection no send.worker).
   // 0 desabilita o limite de mensagens por minuto.
   EVOLUTION_RATE_LIMIT_MAX_PER_MINUTE: z
