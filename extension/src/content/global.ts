@@ -43,6 +43,8 @@ export class GlobalScanner {
   private countEl: HTMLElement | null = null
   private locEl: HTMLElement | null = null
   private importing = false
+  private imported = new Set<string>()
+  private importStop = false
   private isWepsy = false
   private wepsyProspecting = false
   private wepsyStop = { cancelled: false }
@@ -436,8 +438,27 @@ export class GlobalScanner {
     importBtn.title = 'Importar selecionados'
     importBtn.innerHTML = 'Importar' + downloadIcon
     importBtn.addEventListener('click', () => void this.doImport(importBtn))
-    row2.append(clearBtn, selectAllBtn, importBtn)
-    footer.append(countEl, row2)
+    // Importa todos automaticamente em lotes de 50 (50 → próximos 50 → ...).
+    const importAllBtn = document.createElement('button')
+    importAllBtn.type = 'button'
+    importAllBtn.className = 'cs-footer__btn cs-foot-config'
+    importAllBtn.style.background = 'rgba(99, 102, 241, .25)'
+    importAllBtn.title = 'Importa todos em lotes de 50, automaticamente'
+    importAllBtn.textContent = 'Importar todos (50 em 50)'
+    importAllBtn.addEventListener('click', () => void this.doImportBatches(importAllBtn))
+    const stopImportBtn = document.createElement('button')
+    stopImportBtn.type = 'button'
+    stopImportBtn.className = 'cs-footer__btn cs-foot-clear'
+    stopImportBtn.textContent = 'Parar'
+    stopImportBtn.style.display = 'none'
+    stopImportBtn.addEventListener('click', () => {
+      this.importStop = true
+    })
+    row2.append(clearBtn, selectAllBtn, importBtn, stopImportBtn)
+    const row3 = document.createElement('div')
+    row3.className = 'cs-footer__row'
+    row3.append(importAllBtn)
+    footer.append(countEl, row2, row3)
 
     balloon.append(header, body, footer)
     return balloon
@@ -491,6 +512,7 @@ export class GlobalScanner {
     leadBtn.className = 'cs-pcard__btn cs-pcard__lead'
     leadBtn.innerHTML = (this.selected.has(c.key) ? checkIcon : plusIcon) + '<span data-role="lead-label">Lead</span>'
     leadBtn.addEventListener('click', () => {
+      if (this.imported.has(c.key)) return
       if (this.selected.has(c.key)) this.selected.delete(c.key)
       else this.selected.add(c.key)
       this.renderList()
@@ -505,13 +527,27 @@ export class GlobalScanner {
   private updateRow(row: HTMLElement, c: Contact): void {
     const leadBtn = row.querySelector('.cs-pcard__lead') as HTMLButtonElement | null
     if (!leadBtn) return
+    const label = leadBtn.querySelector('[data-role="lead-label"]') as HTMLElement | null
+    if (this.imported.has(c.key)) {
+      leadBtn.classList.add('used')
+      leadBtn.classList.remove('on')
+      leadBtn.disabled = true
+      if (label) label.textContent = 'Importado'
+      row.style.opacity = '0.55'
+      return
+    }
+    row.style.opacity = ''
+    leadBtn.disabled = false
     leadBtn.classList.toggle('on', this.selected.has(c.key))
     leadBtn.innerHTML = (this.selected.has(c.key) ? checkIcon : plusIcon) + '<span data-role="lead-label">Lead</span>'
   }
 
   private updateCounts(): void {
     if (this.countEl) {
-      this.countEl.innerHTML = `<b>${this.contacts.length}</b> encontrados · <b>${this.selected.size}</b> selecionados`
+      const imp = this.imported.size
+      this.countEl.innerHTML =
+        `<b>${this.contacts.length}</b> encontrados · <b>${this.selected.size}</b> selecionados` +
+        (imp > 0 ? ` · <b>${imp}</b> importados` : '')
     }
   }
 
@@ -522,24 +558,10 @@ export class GlobalScanner {
       alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
       return
     }
-    const leads: ScrapedLead[] = this.contacts
-      .filter((c) => this.selected.has(c.key))
-      .map((c) => ({
-        name: c.name,
-        phone: c.phone,
-        category: this.isWepsy ? 'Psicólogo' : null,
-        website: null,
-        address: null,
-        city: c.city,
-        state: c.state,
-        rating: null,
-        reviews: null,
-        latitude: null,
-        longitude: null,
-        place_id: null,
-        instagram: null,
-        facebook: null,
-      }))
+    const selectedContacts = this.contacts
+      .filter((c) => this.selected.has(c.key) && !this.imported.has(c.key))
+    const leads: ScrapedLead[] = selectedContacts
+      .map((c) => this.contactToLead(c))
       .slice(0, 50)
     if (leads.length === 0) {
       showToast('Selecione ao menos um contato para importar.', 'warn')
@@ -558,13 +580,9 @@ export class GlobalScanner {
           done = d
           btn.textContent = `${d}/${total}…`
         },
-        {
-          source: 'url_prospecting',
-          sourceDetail: window.location.href,
-          tags: ['url_prospecting', 'extensao_global'],
-          prospectedAt: new Date().toISOString(),
-        },
+        this.importOptions(),
       )
+      for (const c of selectedContacts.slice(0, 50)) this.imported.add(c.key)
       btn.textContent = res.failed === 0 ? '✓' : `${res.ok} ok, ${res.failed} falharam`
       if (res.failed === 0) {
         showToast(res.ok > 0 ? `✅ ${res.ok} lead(s) importado(s)!` : 'Nenhum lead novo para importar.')
@@ -586,6 +604,105 @@ export class GlobalScanner {
       }, 3000)
     } finally {
       this.importing = false
+    }
+  }
+
+  private contactToLead(c: Contact): ScrapedLead {
+    return {
+      name: c.name,
+      phone: c.phone,
+      category: this.isWepsy ? 'Psicólogo' : null,
+      website: null,
+      address: null,
+      city: c.city,
+      state: c.state,
+      rating: null,
+      reviews: null,
+      latitude: null,
+      longitude: null,
+      place_id: null,
+      instagram: null,
+      facebook: null,
+    }
+  }
+
+  private importOptions() {
+    return {
+      source: 'url_prospecting',
+      sourceDetail: window.location.href,
+      tags: ['url_prospecting', 'extensao_global'],
+      prospectedAt: new Date().toISOString(),
+    }
+  }
+
+  /**
+   * Importa TODOS os contatos restantes em lotes de 50, automaticamente:
+   * lote 1 (1-50) → lote 2 (51-100) → ... até terminarem.
+   * Mostra progresso no botão e marca os contatos como importados na lista.
+   */
+  private async doImportBatches(btn: HTMLButtonElement): Promise<void> {
+    if (this.importing) return
+    this.cfg = this.cfg ?? (await getStoredConfig())
+    if (!this.cfg || !this.cfg.extensionKey || !this.cfg.ownerUserId) {
+      alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
+      return
+    }
+    const remaining = this.contacts.filter((c) => !this.imported.has(c.key))
+    if (remaining.length === 0) {
+      showToast('Todos os contatos já foram importados.', 'warn')
+      return
+    }
+    this.importing = true
+    this.importStop = false
+    const prev = btn.textContent
+    btn.disabled = true
+    let totalOk = 0
+    let totalFailed = 0
+    let batch = 0
+    const totalBatches = Math.ceil(remaining.length / 50)
+    try {
+      for (let i = 0; i < remaining.length; i += 50) {
+        if (this.importStop) break
+        batch++
+        const chunk = remaining.slice(i, i + 50)
+        const leads = chunk.map((c) => this.contactToLead(c))
+        btn.textContent = `Lote ${batch}/${totalBatches} · ${totalOk} ok`
+        // seleciona visualmente o lote atual
+        this.selected = new Set(chunk.map((c) => c.key))
+        this.renderList()
+        const res = await importLeads(this.cfg, leads, (d, t) => {
+          btn.textContent = `Lote ${batch}/${totalBatches} · ${d}/${t}…`
+        }, this.importOptions())
+        totalOk += res.ok
+        totalFailed += res.failed
+        for (const c of chunk) this.imported.add(c.key)
+        this.selected.clear()
+        this.renderList()
+        if (res.failed > 0 && res.firstError) {
+          showToast(`⚠️ Lote ${batch}: ${res.failed} falharam: ${res.firstError}`, 'warn')
+        }
+      }
+      btn.textContent = this.importStop
+        ? `Parado · ${totalOk} ok`
+        : `✓ ${totalOk} lead(s) importado(s)`
+      showToast(
+        this.importStop
+          ? `⏹ Importação interrompida. ${totalOk} lead(s) importado(s).`
+          : `✅ ${totalOk} lead(s) importado(s) em ${batch} lote(s)!`,
+      )
+      if (totalFailed > 0) showToast(`⚠️ ${totalFailed} falharam no total.`, 'warn')
+    } catch (err) {
+      btn.textContent = `Erro: ${err}`
+      showToast(`Erro ao importar: ${err}`, 'warn')
+    } finally {
+      this.importing = false
+      this.importStop = false
+      this.selected.clear()
+      this.renderList()
+      setTimeout(() => {
+        btn.textContent = prev
+        btn.disabled = false
+      }, 4000)
     }
   }
 
