@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { UserPlus, Trash2, Check, AlertCircle } from 'lucide-react'
+import { UserPlus, Trash2, Check, AlertCircle, Link2, Loader2, Pencil, X } from 'lucide-react'
 
 const API = import.meta.env.VITE_BACKEND_URL ?? 'https://consecom-backend-production.up.railway.app'
 
@@ -8,8 +8,19 @@ interface AddedLead {
   id: string
   name: string
   phone: string
-  status: string
+  status: 'added' | 'duplicate' | 'invalid' | 'error' | string
   error?: string
+  message?: string
+}
+
+interface UrlContact {
+  index: number
+  name: string
+  phone: string
+  phone_normalized: string | null
+  whatsapp: boolean
+  context?: string | null
+  selected: boolean
 }
 
 export function ManualProspection() {
@@ -19,10 +30,36 @@ export function ManualProspection() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [tab, setTab] = useState<'manual' | 'url'>('manual')
+
+  // Estado da prospecção por URL.
+  const [url, setUrl] = useState('')
+  const [urlBusy, setUrlBusy] = useState(false)
+  const [urlError, setUrlError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<UrlContact[] | null>(null)
+  const [previewTitle, setPreviewTitle] = useState('')
+  const [previewUrl, setPreviewUrl] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [imported, setImported] = useState<AddedLead[]>([])
+  const [editing, setEditing] = useState<number | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [campaignTarget, setCampaignTarget] = useState<'none' | 'existing' | 'new'>('none')
+  const [campaignId, setCampaignId] = useState('')
+  const [newCampaignName, setNewCampaignName] = useState('')
+  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user?.id) setSessionUser(data.user.id)
     })
+    supabase
+      .from('campaigns')
+      .select('id, name')
+      .order('created_at')
+      .then(({ data }) => {
+        if (data) setCampaigns(data as Array<{ id: string; name: string }>)
+      })
   }, [])
 
   const parseLine = (line: string): { name: string; phone: string } | null => {
@@ -51,50 +88,53 @@ export function ManualProspection() {
     return { name, phone }
   }
 
-  const addLead = useCallback(
-    async (name: string, phone: string): Promise<AddedLead> => {
-      const r = await fetch(`${API}/api/leads/manual`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': sessionUser,
-        },
-        body: JSON.stringify({ name, phone }),
-      })
-      const data = await r.json().catch(() => ({}))
-      if (!r.ok) {
-        return {
-          id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          name,
-          phone,
-          status: 'error',
-          error: data?.message ?? data?.error ?? `HTTP ${r.status}`,
-        }
-      }
-      const lead = (data as { ok: boolean; lead: AddedLead }).lead
-      return { ...lead, error: undefined }
-    },
-    [sessionUser],
-  )
-
   const handleBulkAdd = useCallback(async () => {
     if (!sessionUser || busy) return
     setError(null)
     const lines = bulkText.split('\n').filter((l) => l.trim())
     if (lines.length === 0) return
 
-    setBusy(true)
-    const results: AddedLead[] = []
-    for (const line of lines) {
-      const parsed = parseLine(line)
-      if (!parsed) continue
-      const result = await addLead(parsed.name, parsed.phone)
-      results.push(result)
+    const parsedLeads = lines
+      .map((line) => parseLine(line))
+      .filter((p): p is { name: string; phone: string } => p !== null)
+
+    if (parsedLeads.length === 0) {
+      setError('Nenhum contato válido encontrado nas linhas.')
+      return
     }
-    setAdded((prev) => [...results, ...prev])
-    setBulkText('')
-    setBusy(false)
-  }, [bulkText, sessionUser, busy, addLead])
+
+    setBusy(true)
+    try {
+      const r = await fetch(`${API}/api/leads/manual`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': sessionUser,
+        },
+        body: JSON.stringify({ leads: parsedLeads }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        const msg = (data as { message?: string; error?: string })?.message ?? (data as { error?: string })?.error ?? `HTTP ${r.status}`
+        setError(typeof msg === 'string' ? msg : 'Falha ao adicionar leads.')
+        return
+      }
+      const results = (data as { results?: AddedLead[] }).results ?? []
+      const mapped: AddedLead[] = results.map((res) => ({
+        id: res.id ?? `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        name: res.name ?? '',
+        phone: res.phone ?? '',
+        status: res.status,
+        error: res.status !== 'added' ? res.message ?? res.error : undefined,
+      }))
+      setAdded((prev) => [...mapped, ...prev])
+      setBulkText('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro de conexão com o servidor.')
+    } finally {
+      setBusy(false)
+    }
+  }, [bulkText, sessionUser, busy])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -105,17 +145,204 @@ export function ManualProspection() {
 
   const clearAdded = () => setAdded([])
 
-  const successCount = added.filter((l) => l.status === 'novo').length
-  const errorCount = added.filter((l) => l.error).length
+  const successCount = added.filter((l) => l.status === 'added').length
+  const errorCount = added.filter((l) => l.status !== 'added').length
+
+  const statusLabel = (l: AddedLead): string => {
+    if (l.error) return l.error
+    if (l.status === 'added') return 'Adicionado'
+    if (l.status === 'duplicate') return 'Duplicado'
+    if (l.status === 'invalid') return 'Inválido'
+    return l.status
+  }
+
+  // --- Prospecção por URL ---
+
+  const handleProspect = useCallback(async () => {
+    if (!sessionUser || urlBusy) return
+    setUrlError(null)
+    const trimmed = url.trim()
+    if (!trimmed) {
+      setUrlError('Informe a URL da página.')
+      return
+    }
+    setUrlBusy(true)
+    setPreview(null)
+    setImported([])
+    try {
+      const r = await fetch(`${API}/api/leads/prospect-url`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': sessionUser,
+        },
+        body: JSON.stringify({ url: trimmed }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        const msg = (data as { message?: string })?.message ?? (data as { error?: string })?.error ?? `HTTP ${r.status}`
+        setUrlError(typeof msg === 'string' ? msg : 'Não foi possível prospectar a URL.')
+        return
+      }
+      setPreview((data as { contacts?: UrlContact[] }).contacts ?? [])
+      setPreviewTitle((data as { title?: string }).title ?? '')
+      setPreviewUrl((data as { url?: string }).url ?? trimmed)
+    } catch (e) {
+      setUrlError(e instanceof Error ? e.message : 'Erro de conexão com o servidor.')
+    } finally {
+      setUrlBusy(false)
+    }
+  }, [sessionUser, urlBusy, url])
+
+  const togglePreview = (index: number) => {
+    setPreview((prev) => prev?.map((c) => (c.index === index ? { ...c, selected: !c.selected } : c)) ?? null)
+  }
+
+  const startEdit = (index: number) => {
+    const contact = preview?.find((c) => c.index === index)
+    if (!contact) return
+    setEditing(index)
+    setEditName(contact.name)
+    setEditPhone(contact.phone)
+  }
+
+  const saveEdit = () => {
+    if (editing === null) return
+    setPreview((prev) =>
+      prev?.map((c) =>
+        c.index === editing ? { ...c, name: editName.trim(), phone: editPhone.trim() } : c,
+      ) ?? null,
+    )
+    setEditing(null)
+  }
+
+  const removePreview = (index: number) => {
+    setPreview((prev) => prev?.filter((c) => c.index !== index) ?? null)
+  }
+
+  const importSelected = useCallback(async () => {
+    if (!sessionUser || importing) return
+    const selected = preview?.filter((c) => c.selected) ?? []
+    if (selected.length === 0) {
+      setUrlError('Selecione ao menos um lead para importar.')
+      return
+    }
+    setImporting(true)
+    setUrlError(null)
+    try {
+      const r = await fetch(`${API}/api/leads/prospect-import`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': sessionUser,
+        },
+        body: JSON.stringify({ url: previewUrl, leads: selected }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        const msg = (data as { message?: string })?.message ?? (data as { error?: string })?.error ?? `HTTP ${r.status}`
+        setUrlError(typeof msg === 'string' ? msg : 'Falha ao importar os leads.')
+        return
+      }
+      const results = (data as { results?: AddedLead[] }).results ?? []
+      const mapped: AddedLead[] = results.map((res) => ({
+        id: res.id ?? `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        name: res.name ?? '',
+        phone: res.phone ?? '',
+        status: res.status,
+        error: res.status !== 'added' ? res.message ?? res.error : undefined,
+      }))
+      setImported(mapped)
+      setAdded((prev) => [...mapped, ...prev])
+      setPreview(null)
+      setPreviewTitle('')
+      setPreviewUrl('')
+      setCampaignTarget('none')
+      setCampaignId('')
+      setNewCampaignName('')
+    } catch (e) {
+      setUrlError(e instanceof Error ? e.message : 'Erro de conexão com o servidor.')
+    } finally {
+      setImporting(false)
+    }
+  }, [sessionUser, importing, preview, previewUrl])
+
+  const createAndDistributeCampaign = useCallback(async () => {
+    if (!sessionUser) return
+    const successIds = imported.filter((l) => l.status === 'added' && l.id).map((l) => l.id)
+    if (successIds.length === 0) {
+      setUrlError('Nenhum lead novo para adicionar à campanha.')
+      return
+    }
+    try {
+      let targetId = campaignId
+      if (campaignTarget === 'new' && newCampaignName.trim()) {
+        const { data: userData } = await supabase.auth.getUser()
+        const { data, error } = await supabase
+          .from('campaigns')
+          .insert({ name: newCampaignName.trim(), owner_user_id: userData.user?.id ?? null })
+          .select('id')
+          .single()
+        if (error || !data) {
+          setUrlError(error?.message ?? 'Não foi possível criar a campanha.')
+          return
+        }
+        targetId = data.id
+      }
+      if (!targetId) {
+        setUrlError('Selecione uma campanha ou informe o nome de uma nova.')
+        return
+      }
+      const { data, error: rpcError } = await supabase.rpc('consecom_distribute_imported_leads', {
+        p_lead_ids: successIds,
+        p_campaign_id: targetId,
+        p_connection_ids: [],
+      })
+      if (rpcError) {
+        setUrlError(rpcError.message)
+        return
+      }
+      const result = data as { accepted?: number; blocked?: number }
+      setImported([])
+      setCampaignTarget('none')
+      setCampaignId('')
+      setNewCampaignName('')
+      setUrlError(null)
+      const addedThisRound = result.accepted ?? successIds.length
+      setError(`Leads adicionados à campanha: ${addedThisRound} aceito(s), ${result.blocked ?? 0} bloqueado(s).`)
+    } catch (e) {
+      setUrlError(e instanceof Error ? e.message : 'Erro ao adicionar à campanha.')
+    }
+  }, [sessionUser, imported, campaignId, campaignTarget, newCampaignName])
+
+  const previewSelectedCount = preview?.filter((c) => c.selected).length ?? 0
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
         <div className="flex items-center gap-3">
           <UserPlus className="w-5 h-5 text-indigo-400" />
-          <h1 className="text-lg font-semibold">Prospecção Manual</h1>
+          <h1 className="text-lg font-semibold">Prospecção</h1>
         </div>
 
+        <div className="flex gap-1 bg-field border border-line rounded-lg p-1 w-fit">
+          <button
+            onClick={() => setTab('manual')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium ${tab === 'manual' ? 'bg-indigo-600 text-white' : 'text-muted hover:text-fg'}`}
+          >
+            Manual
+          </button>
+          <button
+            onClick={() => setTab('url')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 ${tab === 'url' ? 'bg-indigo-600 text-white' : 'text-muted hover:text-fg'}`}
+          >
+            <Link2 className="w-4 h-4" />
+            Por URL
+          </button>
+        </div>
+
+        {tab === 'manual' && (
+          <>
         <p className="text-sm text-secondary">
           Cole os contatos abaixo, um por linha. Formato:{' '}
           <code className="bg-subtle px-1.5 py-0.5 rounded text-xs">
@@ -141,7 +368,10 @@ export function ManualProspection() {
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium flex items-center gap-2"
             >
               {busy ? (
-                <>Adicionando...</>
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Adicionando...
+                </>
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" />
@@ -196,12 +426,250 @@ export function ManualProspection() {
                         : 'bg-emerald-500/10 text-emerald-300'
                     }`}
                   >
-                    {l.error ?? l.status}
+                    {statusLabel(l)}
                   </span>
                 </div>
               ))}
             </div>
           </div>
+        )}
+          </>
+        )}
+
+        {tab === 'url' && (
+          <>
+        <p className="text-sm text-secondary">
+          Cole o endereço de uma página que lista contatos (diretórios, sites
+          corporativos, páginas com WhatsApp). O VYNTRA extrai nome e telefone
+          e mostra uma prévia para você revisar antes de importar.
+        </p>
+
+        <div className="space-y-2">
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void handleProspect()
+              }
+            }}
+            placeholder="https://exemplo.com.br/contatos"
+            className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+          />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleProspect}
+              disabled={urlBusy || !url.trim()}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium flex items-center gap-2"
+            >
+              {urlBusy ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Prospectando...
+                </>
+              ) : (
+                <>
+                  <Link2 className="w-4 h-4" />
+                  Prospectar URL
+                </>
+              )}
+            </button>
+            <span className="text-xs text-muted">Enter para iniciar</span>
+          </div>
+        </div>
+
+        {urlError && (
+          <div className="flex items-center gap-2 text-sm text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+            <AlertCircle className="w-4 h-4" />
+            {urlError}
+          </div>
+        )}
+
+        {imported.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-sm font-medium">
+              Importados ({imported.filter((l) => l.status === 'added').length} ok,{' '}
+              {imported.filter((l) => l.status !== 'added').length} erro)
+            </div>
+            <div className="space-y-1.5">
+              {imported.map((l) => (
+                <div
+                  key={l.id}
+                  className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm"
+                >
+                  {l.error ? (
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  ) : (
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  )}
+                  <span className="flex-1 min-w-0 text-fg">{l.name}</span>
+                  <span className="text-xs text-muted">{l.phone}</span>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded ${
+                      l.error
+                        ? 'bg-rose-500/10 text-rose-300'
+                        : 'bg-emerald-500/10 text-emerald-300'
+                    }`}
+                  >
+                    {statusLabel(l)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {imported.some((l) => l.status === 'added' && l.id) && (
+              <div className="rounded-lg border border-line p-3 space-y-2">
+                <p className="text-sm font-medium">Adicionar à campanha</p>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <select
+                    value={campaignTarget}
+                    onChange={(e) => {
+                      setCampaignTarget(e.target.value as 'none' | 'existing' | 'new')
+                      setCampaignId('')
+                      setNewCampaignName('')
+                    }}
+                    className="bg-field border border-line-2 rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="none">Sem campanha</option>
+                    <option value="existing">Campanha existente</option>
+                    <option value="new">Criar nova campanha</option>
+                  </select>
+                  {campaignTarget === 'existing' && (
+                    <select
+                      value={campaignId}
+                      onChange={(e) => setCampaignId(e.target.value)}
+                      className="bg-field border border-line-2 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">Selecionar...</option>
+                      {campaigns.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {campaignTarget === 'new' && (
+                    <input
+                      value={newCampaignName}
+                      onChange={(e) => setNewCampaignName(e.target.value)}
+                      placeholder="Nome da nova campanha"
+                      className="bg-field border border-line-2 rounded-lg px-3 py-2 text-sm"
+                    />
+                  )}
+                  {campaignTarget !== 'none' && (
+                    <button
+                      onClick={createAndDistributeCampaign}
+                      disabled={
+                        (campaignTarget === 'existing' && !campaignId) ||
+                        (campaignTarget === 'new' && !newCampaignName.trim())
+                      }
+                      className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-sm font-medium"
+                    >
+                      Adicionar à campanha
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {preview && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium">
+                {preview.length} contato(s) encontrados
+                {previewTitle ? ` · ${previewTitle}` : ''}
+              </div>
+              <span className="text-xs text-muted truncate max-w-[40%]">{previewUrl}</span>
+            </div>
+            <div className="rounded-lg border border-line overflow-hidden">
+              <div className="px-4 py-2 border-b border-line text-sm font-medium flex items-center justify-between">
+                <span>Selecionar todos ({previewSelectedCount}/{preview.length})</span>
+                <button
+                  onClick={() => setPreview((prev) => prev?.map((c) => ({ ...c, selected: true })) ?? null)}
+                  className="text-xs text-indigo-400 hover:text-indigo-300"
+                >
+                  Todos
+                </button>
+              </div>
+              {preview.map((c) => (
+                <div key={c.index} className="flex items-center gap-3 px-4 py-2 border-b border-line last:border-0">
+                  <input
+                    type="checkbox"
+                    checked={c.selected}
+                    onChange={() => togglePreview(c.index)}
+                    className="accent-indigo-500"
+                  />
+                  <div className="flex-1 min-w-0">
+                    {editing === c.index ? (
+                      <div className="flex flex-col gap-1">
+                        <input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="bg-field border border-line-2 rounded px-2 py-1 text-sm"
+                          placeholder="Nome"
+                        />
+                        <input
+                          value={editPhone}
+                          onChange={(e) => setEditPhone(e.target.value)}
+                          className="bg-field border border-line-2 rounded px-2 py-1 text-sm"
+                          placeholder="Telefone"
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={saveEdit} className="text-xs text-emerald-400 hover:text-emerald-300">
+                            Salvar
+                          </button>
+                          <button onClick={() => setEditing(null)} className="text-xs text-muted hover:text-fg">
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="block text-sm truncate">{c.name || 'Sem nome'}</span>
+                        <span className="block text-xs text-faint">
+                          {c.phone} {c.whatsapp ? '· WhatsApp' : ''}
+                          {c.context && c.context !== c.name ? ` · ${c.context}` : ''}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {editing !== c.index && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => startEdit(c.index)}
+                        className="text-muted hover:text-fg"
+                        title="Editar"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => removePreview(c.index)}
+                        className="text-rose-400 hover:text-rose-300"
+                        title="Remover"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={importSelected}
+              disabled={importing || previewSelectedCount === 0}
+              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-sm font-medium"
+            >
+              {importing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin inline" /> Importando...
+                </>
+              ) : (
+                `Importar ${previewSelectedCount} lead(s)`
+              )}
+            </button>
+          </div>
+        )}
+          </>
         )}
       </div>
     </div>

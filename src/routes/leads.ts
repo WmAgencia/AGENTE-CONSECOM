@@ -363,83 +363,199 @@ export function registerLeadsRoutes(app: FastifyInstance): void {
     }
   });
 
+  /**
+   * Criação manual de leads — corpo aceita tanto um único lead quanto um lote:
+   *   { name, phone }                       -> lead único
+   *   { leads: [{ name, phone, ... }] }     -> lote (processa todos)
+   *
+   * Processamento em lote: um item inválido/duplicado NÃO derruba os demais.
+   * Resposta inclui status por item: added | duplicate | invalid | error.
+   * source padrão = 'manual'.
+   */
   app.post('/api/leads/manual', async (req, reply) => {
     const { workspaceId, userId } = getWorkspaceAndUser(req);
     const identifier = workspaceId ?? userId;
     if (!identifier) return reply.status(401).send({ error: 'unauthorized' });
 
     const b = (req.body ?? {}) as Record<string, unknown>;
-    const name = typeof b.name === 'string' ? b.name.trim() : '';
-    const phone = typeof b.phone === 'string' ? b.phone.trim() : '';
-    if (!name) return reply.status(400).send({ error: 'name_required' });
-    if (!phone) return reply.status(400).send({ error: 'phone_required' });
 
-    const pinfo = classifyBrazilianPhone(phone);
-    if (pinfo.class !== 'MOBILE') {
-      return reply.status(400).send({
-        error: 'invalid_phone',
-        message:
-          pinfo.class === 'LANDLINE'
-            ? 'Telefone fixo não é aceito para prospecção manual.'
-            : 'Número inválido. Use o formato (DD) 99999-9999.',
-      });
+    // Monta a lista de candidatos: lote (array) ou single.
+    const rawLeads: Array<Record<string, unknown>> = Array.isArray(b.leads)
+      ? (b.leads as Array<Record<string, unknown>>)
+      : [b];
+
+    if (rawLeads.length === 0) {
+      return reply.status(400).send({ error: 'no_leads', message: 'Nenhum lead informado.' });
+    }
+    if (rawLeads.length > 200) {
+      return reply.status(400).send({ error: 'too_many_leads', message: 'Limite de 200 leads por requisição.' });
     }
 
     const s = sup();
     if (!s) return reply.status(503).send({ error: 'server_misconfigured' });
 
-    // Deduplicação: mesmo telefone normalizado + mesmo dono = duplicado.
-    const dupUrl = `${s.url}/rest/v1/leads?select=id,name&phone_normalized=eq.${encodeURIComponent(pinfo.e164!)}&owner_user_id=eq.${encodeURIComponent(identifier)}&limit=1`;
-    const dupRes = await fetch(dupUrl, { headers: supHeaders(s.serviceRoleKey) });
-    if (dupRes.ok) {
-      const dupRows = (await dupRes.json()) as Array<{ id: string; name: string | null }>;
-      if (dupRows.length > 0) {
-        return reply.status(409).send({
-          error: 'duplicate_lead',
-          message: `Lead "${dupRows[0].name ?? 'sem nome'}" já existe com este telefone.`,
+    interface ManualResult {
+      index: number;
+      status: 'added' | 'duplicate' | 'invalid' | 'error';
+      name: string;
+      phone: string;
+      id?: string;
+      message?: string;
+    }
+
+    const results: ManualResult[] = [];
+    const seenInBatch = new Map<string, number>(); // e164 -> index (para duplicados no mesmo lote)
+
+    for (let i = 0; i < rawLeads.length; i++) {
+      const raw = rawLeads[i] ?? {};
+      const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+      const phone = typeof raw.phone === 'string' ? raw.phone.trim() : '';
+
+      if (!name) {
+        results.push({ index: i, status: 'invalid', name: '', phone, message: 'Nome é obrigatório.' });
+        continue;
+      }
+      if (!phone) {
+        results.push({ index: i, status: 'invalid', name, phone: '', message: 'Telefone é obrigatório.' });
+        continue;
+      }
+
+      const pinfo = classifyBrazilianPhone(phone);
+      if (pinfo.class !== 'MOBILE') {
+        results.push({
+          index: i,
+          status: 'invalid',
+          name,
+          phone,
+          message:
+            pinfo.class === 'LANDLINE'
+              ? 'Telefone fixo não é aceito para prospecção manual.'
+              : pinfo.reason || 'Número inválido. Use o formato (DD) 99999-9999.',
+        });
+        continue;
+      }
+
+      const e164 = pinfo.e164!;
+      // Deduplicação dentro do próprio lote.
+      const prevInBatch = seenInBatch.get(e164);
+      if (prevInBatch !== undefined) {
+        const prev = results[prevInBatch];
+        results.push({
+          index: i,
+          status: 'duplicate',
+          name,
+          phone,
+          message: `Já existe neste lote (${prev.name || 'sem nome'}).`,
+        });
+        continue;
+      }
+
+      // Deduplicação contra o banco: mesmo telefone normalizado + mesmo dono.
+      let dupName: string | null = null;
+      try {
+        const dupUrl = `${s.url}/rest/v1/leads?select=id,name&phone_normalized=eq.${encodeURIComponent(e164)}&owner_user_id=eq.${encodeURIComponent(identifier)}&limit=1`;
+        const dupRes = await fetch(dupUrl, { headers: supHeaders(s.serviceRoleKey) });
+        if (dupRes.ok) {
+          const dupRows = (await dupRes.json()) as Array<{ id: string; name: string | null }>;
+          dupName = dupRows[0]?.name ?? null;
+        }
+      } catch (dupErr) {
+        const em = dupErr instanceof Error ? dupErr.message : 'unknown';
+        log.warn({ errMessage: em }, 'leads: duplicate lookup failed (continuing)');
+      }
+      if (dupName !== null) {
+        seenInBatch.set(e164, i);
+        results.push({
+          index: i,
+          status: 'duplicate',
+          name,
+          phone,
+          message: `Lead "${dupName || 'sem nome'}" já existe com este telefone.`,
+        });
+        continue;
+      }
+
+      const lead: Record<string, unknown> = {
+        name,
+        phone,
+        phone_normalized: e164,
+        city: typeof raw.city === 'string' && raw.city.trim() ? raw.city.trim() : null,
+        state: typeof raw.state === 'string' && raw.state.trim() ? raw.state.trim() : null,
+        instagram: typeof raw.instagram === 'string' && raw.instagram.trim() ? raw.instagram.trim() : null,
+        website: typeof raw.website === 'string' && raw.website.trim() ? raw.website.trim() : null,
+        niche: typeof raw.specialty === 'string' && raw.specialty.trim() ? raw.specialty.trim() : null,
+        source: typeof raw.source === 'string' && raw.source.trim() ? raw.source.trim() : 'manual',
+        source_detail: typeof raw.source_detail === 'string' && raw.source_detail.trim() ? raw.source_detail.trim() : null,
+        tags: Array.isArray(raw.tags)
+          ? raw.tags.filter((t: unknown) => typeof t === 'string' && t.trim())
+          : [],
+        status: 'novo',
+        owner_user_id: identifier,
+        is_active_in_prospecting: true,
+      };
+
+      try {
+        const createRes = await fetch(`${s.url}/rest/v1/leads?select=id,name,phone,status`, {
+          method: 'POST',
+          headers: { ...supHeaders(s.serviceRoleKey, true), Prefer: 'return=representation' },
+          body: JSON.stringify(lead),
+        });
+        if (!createRes.ok) {
+          const txt = await createRes.text();
+          log.warn({ status: createRes.status, body: txt.slice(0, 300) }, 'leads: manual creation failed');
+          const parsed = (await createRes.json().catch(() => null)) as { message?: string; hint?: string } | null;
+          results.push({
+            index: i,
+            status: 'error',
+            name,
+            phone,
+            message: parsed?.message ?? `Falha ao criar o lead (HTTP ${createRes.status}).`,
+          });
+          continue;
+        }
+        const created = (await createRes.json()) as Array<Record<string, unknown>>;
+        seenInBatch.set(e164, i);
+        results.push({
+          index: i,
+          status: 'added',
+          name: created[0]?.name as string,
+          phone: created[0]?.phone as string,
+          id: created[0]?.id as string,
+        });
+      } catch (createErr) {
+        const em = createErr instanceof Error ? createErr.message : 'unknown';
+        log.warn({ errMessage: em }, 'leads: manual creation threw');
+        results.push({
+          index: i,
+          status: 'error',
+          name,
+          phone,
+          message: 'Erro interno ao criar o lead.',
         });
       }
     }
 
-    const lead: Record<string, unknown> = {
-      name,
-      phone,
-      phone_normalized: pinfo.e164,
-      city: typeof b.city === 'string' && b.city.trim() ? b.city.trim() : null,
-      state: typeof b.state === 'string' && b.state.trim() ? b.state.trim() : null,
-      instagram: typeof b.instagram === 'string' && b.instagram.trim() ? b.instagram.trim() : null,
-      website: typeof b.website === 'string' && b.website.trim() ? b.website.trim() : null,
-      niche: typeof b.specialty === 'string' && b.specialty.trim() ? b.specialty.trim() : null,
-      notes: typeof b.notes === 'string' && b.notes.trim() ? b.notes.trim() : null,
-      source: typeof b.source === 'string' && b.source.trim() ? b.source.trim() : 'manual',
-      tags: Array.isArray(b.tags)
-        ? b.tags.filter((t: unknown) => typeof t === 'string' && t.trim())
-        : [],
-      status: 'novo',
-      owner_user_id: identifier,
-      is_active_in_prospecting: true,
+    const summary = {
+      total: results.length,
+      added: results.filter((r) => r.status === 'added').length,
+      duplicate: results.filter((r) => r.status === 'duplicate').length,
+      invalid: results.filter((r) => r.status === 'invalid').length,
+      error: results.filter((r) => r.status === 'error').length,
     };
 
-    const createRes = await fetch(`${s.url}/rest/v1/leads`, {
-      method: 'POST',
-      headers: supHeaders(s.serviceRoleKey, true),
-      body: JSON.stringify(lead),
-    });
-    if (!createRes.ok) {
-      const txt = await createRes.text();
-      log.warn({ status: createRes.status, body: txt.slice(0, 200) }, 'leads: manual creation failed');
-      return reply.status(502).send({ error: 'lead_creation_failed' });
+    log.info({ identifier, summary }, 'leads: manual batch processed');
+
+    // Lead único -> resposta compativel com o contrato antigo.
+    if (!Array.isArray(b.leads)) {
+      const single = results[0];
+      if (single.status === 'added') {
+        return reply.send({ ok: true, lead: { id: single.id, name: single.name, phone: single.phone, status: 'novo' } });
+      }
+      const statusCode = single.status === 'duplicate' ? 409 : 400;
+      return reply.status(statusCode).send({ error: single.status === 'duplicate' ? 'duplicate_lead' : 'invalid_lead', message: single.message, statusCode });
     }
 
-    const created = (await createRes.json()) as Array<Record<string, unknown>>;
-    // Resposta mínima (sem dados sensíveis).
-    const out = {
-      id: created[0]?.id,
-      name: created[0]?.name,
-      phone: created[0]?.phone,
-      status: created[0]?.status,
-    };
-    return reply.send({ ok: true, lead: out });
+    return reply.send({ ok: true, summary, results });
   });
 
   log.info('leads: routes registered');

@@ -27,6 +27,7 @@ import { registerExtensionRoutes } from './routes/extension.js';
 import { registerAiRoutes } from './routes/ai.js';
 import { registerPersonalRoutes } from './routes/personal.js';
 import { registerContactsRoutes } from './routes/contacts.js';
+import { registerUrlProspectingRoutes } from './routes/urlProspecting.js';
 import { registerMemoryRoutes } from './routes/memory.js';
 import { registerAgendaRoutes } from './routes/agenda.js';
 import { registerCampaignScheduleRoutes } from './routes/campaigns.js';
@@ -213,6 +214,7 @@ export function buildApp(): BuiltApp {
   registerAiRoutes(app);
   registerPersonalRoutes(app);
   registerContactsRoutes(app);
+  registerUrlProspectingRoutes(app);
   registerMemoryRoutes(app);
   registerAgendaRoutes(app);
   registerCampaignScheduleRoutes(app);
