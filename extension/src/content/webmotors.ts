@@ -141,7 +141,9 @@ export async function prospectWebMotors(
     let hits: SearchHit[] = []
     try {
       const u = new URL(`${API}/search/car`)
-      u.searchParams.set('url', encodeURIComponent(window.location.origin + window.location.pathname))
+      // URLSearchParams.set já codifica o valor uma vez; NÃO usar encodeURIComponent
+      // aqui (senão vira %252F = codificação dupla → 502).
+      u.searchParams.set('url', window.location.origin + window.location.pathname)
       u.searchParams.set('actualPage', String(page))
       u.searchParams.set('displayPerPage', String(limit))
       u.searchParams.set('order', '1')
@@ -154,13 +156,18 @@ export async function prospectWebMotors(
       const skip = new Set([
         'url', 'actualPage', 'displayPerPage', 'order', 'showMenu', 'showCount',
         'showBanner', 'filtersource', 'page', 'o', 'gclid', 'gclsrc', 'gbraid',
-        'gad_source', 'utm_id', 'utm_source', 'utm_medium', 'utm_campaign',
-        'utm_content', 'utm_term', 'idcmp',
+        'gad_source', 'gad_campaignid', 'utm_id', 'utm_source', 'utm_medium',
+        'utm_campaign', 'utm_content', 'utm_term', 'idcmp',
       ])
       for (const [k, v] of new URLSearchParams(window.location.search)) {
         if (!skip.has(k) && !u.searchParams.has(k)) u.searchParams.set(k, v)
       }
-      const r = await fetch(u.toString(), { headers: { Accept: 'application/json' } })
+      // Espaços chegam como '+'; a API espera '%20' (confirmação do formato que
+      // funciona no site). Troca só na query string, sem tocar o pathname.
+      const qs = u.searchParams.toString().replace(/\+/g, '%20')
+      const r = await fetch(`${u.origin}${u.pathname}?${qs}`, {
+        headers: { Accept: 'application/json' },
+      })
       if (!r.ok) break
       const j = (await r.json()) as SearchResponse
       hits = j.SearchResults ?? []

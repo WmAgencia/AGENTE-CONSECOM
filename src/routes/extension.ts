@@ -23,7 +23,7 @@ import { extractBearerToken } from '../utils/auth.js';
 import { z } from 'zod';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
-const VERSION = '1.8.0';
+const VERSION = '1.8.1';
 
 const DEFAULT_BASE_ZIP_URL =
   'https://frontend-seven-sooty-78.vercel.app/downloads/consecom-extension.zip';
