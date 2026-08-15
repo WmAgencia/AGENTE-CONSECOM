@@ -7,6 +7,13 @@ import {
   isWepsyCatalog,
   type WepsyContact,
 } from './wepsy'
+import {
+  prospectWebMotors,
+  isWebMotorsList,
+  type WebMotorsContact,
+} from './webmotors'
+
+type AdapterMode = 'global' | 'wepsy' | 'webmotors'
 
 interface Contact {
   key: string
@@ -45,9 +52,9 @@ export class GlobalScanner {
   private importing = false
   private imported = new Set<string>()
   private importStop = false
-  private isWepsy = false
-  private wepsyProspecting = false
-  private wepsyStop = { cancelled: false }
+  private mode: AdapterMode = 'global'
+  private prospecting = false
+  private stopFlag = { cancelled: false }
   private prospectBtn: HTMLButtonElement | null = null
   private stopBtn: HTMLButtonElement | null = null
   private statusEl: HTMLElement | null = null
@@ -56,8 +63,12 @@ export class GlobalScanner {
   async init(): Promise<void> {
     this.cfg = await getStoredConfig()
     injectStyles()
-    this.isWepsy = isWepsyCatalog(location.href)
-    if (!this.isWepsy) {
+    this.mode = isWepsyCatalog(location.href)
+      ? 'wepsy'
+      : isWebMotorsList(location.href)
+        ? 'webmotors'
+        : 'global'
+    if (this.mode === 'global') {
       this.scan()
       const obs = new MutationObserver(() => this.debounceScan())
       obs.observe(document.body, { childList: true, subtree: true })
@@ -315,12 +326,16 @@ export class GlobalScanner {
     name.textContent = 'VYNTRA'
     const tag = document.createElement('div')
     tag.className = 'cs-panel__tag'
-    tag.textContent = this.isWepsy ? 'Prospector Wepsy' : 'Prospector Global'
+    tag.textContent =
+      this.mode === 'wepsy' ? 'Prospector Wepsy' : this.mode === 'webmotors' ? 'Prospector WebMotors' : 'Prospector Global'
     const tagline = document.createElement('div')
     tagline.className = 'cs-panel__tagline'
-    tagline.textContent = this.isWepsy
-      ? 'Busca psicólogos do catálogo Wepsy e importa os contatos com WhatsApp público.'
-      : 'Contatos encontrados nesta página. Revise e importe como leads.'
+    tagline.textContent =
+      this.mode === 'wepsy'
+        ? 'Busca psicólogos do catálogo Wepsy e importa os contatos com WhatsApp público.'
+        : this.mode === 'webmotors'
+          ? 'Busca lojas e concessionárias do WebMotors e importa os contatos com telefone público.'
+          : 'Contatos encontrados nesta página. Revise e importe como leads.'
     titles.append(name, tag, tagline)
 
     const controls = document.createElement('div')
@@ -342,15 +357,15 @@ export class GlobalScanner {
     const body = document.createElement('div')
     body.className = 'cs-panel__body'
 
-    if (this.isWepsy) {
-      // Barra de prospecção Wepsy (CTA + max + status + parar).
+    if (this.mode !== 'global') {
+      // Barra de prospecção do adaptador (Wepsy / WebMotors): CTA + max + status + parar.
       const cta = document.createElement('div')
       cta.className = 'cs-filters'
       const prospectBtn = document.createElement('button')
       prospectBtn.type = 'button'
       prospectBtn.className = 'cs-prospect'
       prospectBtn.textContent = 'PROSPECTAR'
-      prospectBtn.addEventListener('click', () => void this.doWepsy())
+      prospectBtn.addEventListener('click', () => void this.doProspect())
       this.prospectBtn = prospectBtn
       const stopBtn = document.createElement('button')
       stopBtn.type = 'button'
@@ -358,7 +373,7 @@ export class GlobalScanner {
       stopBtn.textContent = 'Parar'
       stopBtn.style.display = 'none'
       stopBtn.addEventListener('click', () => {
-        this.wepsyStop.cancelled = true
+        this.stopFlag.cancelled = true
       })
       this.stopBtn = stopBtn
       const maxWrap = document.createElement('label')
@@ -369,7 +384,7 @@ export class GlobalScanner {
       const maxInput = document.createElement('input')
       maxInput.type = 'number'
       maxInput.min = '10'
-      maxInput.max = '2965'
+      maxInput.max = String(this.adapterMax())
       maxInput.value = '200'
       maxInput.style.width = '70px'
       maxInput.className = 'bg-field border border-line-2 rounded px-2 py-1 text-sm'
@@ -386,7 +401,9 @@ export class GlobalScanner {
       this.statusEl.textContent =
         this.contacts.length > 0
           ? `${this.contacts.length} contato(s) encontrado(s)`
-          : 'Toque em PROSPECTAR para buscar os psicólogos desta página.'
+          : this.mode === 'wepsy'
+            ? 'Toque em PROSPECTAR para buscar os psicólogos desta página.'
+            : 'Toque em PROSPECTAR para buscar as lojas desta busca.'
       status.append(this.statusEl)
       cta.append(ctaRow, status)
       body.appendChild(cta)
@@ -471,9 +488,12 @@ export class GlobalScanner {
       this.listEl.innerHTML = ''
       const empty = document.createElement('div')
       empty.className = 'cs-empty'
-      empty.innerHTML = this.isWepsy
-        ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para buscar os psicólogos do catálogo Wepsy.'
-        : '<b>0 contatos encontrados</b><br/>Nenhum telefone móvel detectado nesta página. Acesse uma página com contatos e tente novamente.'
+      empty.innerHTML =
+        this.mode === 'wepsy'
+          ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para buscar os psicólogos do catálogo Wepsy.'
+          : this.mode === 'webmotors'
+            ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para buscar as lojas desta busca no WebMotors.'
+            : '<b>0 contatos encontrados</b><br/>Nenhum telefone móvel detectado nesta página. Acesse uma página com contatos e tente novamente.'
       this.listEl.appendChild(empty)
       return
     }
@@ -611,7 +631,8 @@ export class GlobalScanner {
     return {
       name: c.name,
       phone: c.phone,
-      category: this.isWepsy ? 'Psicólogo' : null,
+      category:
+        this.mode === 'wepsy' ? 'Psicólogo' : this.mode === 'webmotors' ? 'Loja de Carros' : null,
       website: null,
       address: null,
       city: c.city,
@@ -706,8 +727,8 @@ export class GlobalScanner {
     }
   }
 
-  /** Adiciona um contato vindo do adaptador Wepsy (dedup por número). */
-  private addWepsyContact(wc: WepsyContact): void {
+  /** Adiciona um contato vindo de um adaptador (Wepsy/WebMotors, dedup por número). */
+  private addAdapterContact(wc: WepsyContact | WebMotorsContact): void {
     if (this.contacts.some((c) => c.key === wc.key)) {
       // Aproveita o nome se o novo for melhor.
       const ex = this.contacts.find((c) => c.key === wc.key)!
@@ -727,51 +748,72 @@ export class GlobalScanner {
     })
   }
 
-  /** Prospecção Wepsy: pagina o catálogo e busca perfis (API pública). */
-  private async doWepsy(): Promise<void> {
-    if (this.wepsyProspecting) return
+  /** Limite máximo de contatos por adaptador. */
+  private adapterMax(): number {
+    return this.mode === 'webmotors' ? 167000 : 2965
+  }
+
+  /** Prospecção via adaptador: pagina a fonte e coleta contatos (API pública). */
+  private async doProspect(): Promise<void> {
+    if (this.prospecting) return
     this.cfg = this.cfg ?? (await getStoredConfig())
     if (!this.cfg || !this.cfg.extensionKey || !this.cfg.ownerUserId) {
       alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
       return
     }
     const max = Math.min(
-      2965,
+      this.adapterMax(),
       Math.max(10, parseInt(this.maxInput?.value || '200', 10) || 200),
     )
-    this.wepsyProspecting = true
-    this.wepsyStop = { cancelled: false }
+    this.prospecting = true
+    this.stopFlag = { cancelled: false }
     if (this.prospectBtn) {
       this.prospectBtn.disabled = true
       this.prospectBtn.textContent = 'PROSPECTANDO…'
     }
     if (this.stopBtn) this.stopBtn.style.display = 'inline-block'
     let last = 0
+    const renderThrottle = () => {
+      const now = Date.now()
+      if (now - last > 250 || this.contacts.length % 3 === 0) {
+        last = now
+        if (this.statusEl) this.statusEl.textContent = `${this.contacts.length} contato(s) encontrado(s)`
+        this.renderList()
+      }
+    }
     try {
-      await prospectWepsy({
-        max,
-        signal: this.wepsyStop,
-        onResult: (wc) => {
-          this.addWepsyContact(wc)
-          // Throttle render: a cada ~3 contatos ou 250ms.
-          const now = Date.now()
-          if (now - last > 250 || this.contacts.length % 3 === 0) {
-            last = now
-            if (this.statusEl) this.statusEl.textContent = `${this.contacts.length} contato(s) encontrado(s)`
-            this.renderList()
-          }
-        },
-        onProgress: (msg) => {
-          if (this.statusEl) this.statusEl.textContent = `${msg} · ${this.contacts.length} ok`
-        },
-      })
-      if (!this.wepsyStop.cancelled) {
+      if (this.mode === 'wepsy') {
+        await prospectWepsy({
+          max,
+          signal: this.stopFlag,
+          onResult: (wc) => {
+            this.addAdapterContact(wc)
+            renderThrottle()
+          },
+          onProgress: (msg) => {
+            if (this.statusEl) this.statusEl.textContent = `${msg} · ${this.contacts.length} ok`
+          },
+        })
+      } else if (this.mode === 'webmotors') {
+        await prospectWebMotors({
+          max,
+          signal: this.stopFlag,
+          onResult: (wc) => {
+            this.addAdapterContact(wc)
+            renderThrottle()
+          },
+          onProgress: (msg) => {
+            if (this.statusEl) this.statusEl.textContent = `${msg} · ${this.contacts.length} ok`
+          },
+        })
+      }
+      if (!this.stopFlag.cancelled) {
         showToast(`✓ ${this.contacts.length} contato(s) encontrado(s).`)
       }
     } catch (err) {
-      showToast(`Erro na prospecção Wepsy: ${err}`, 'warn')
+      showToast(`Erro na prospecção: ${err}`, 'warn')
     } finally {
-      this.wepsyProspecting = false
+      this.prospecting = false
       if (this.prospectBtn) {
         this.prospectBtn.disabled = false
         this.prospectBtn.textContent = this.contacts.length > 0 ? 'PROSPECTAR MAIS' : 'PROSPECTAR'
