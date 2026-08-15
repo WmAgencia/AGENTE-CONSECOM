@@ -492,6 +492,11 @@ export function registerLeadsRoutes(app: FastifyInstance): void {
         status: 'novo',
         owner_user_id: identifier,
         is_active_in_prospecting: true,
+        // Fluxo padrão VYNTRA: import_state='imported' faz o lead aparecer na
+        // página /importados e permite distribuir para campanha via RPC
+        // consecom_distribute_imported_leads (mesmo comportamento da extensão).
+        import_state: 'imported',
+        imported_at: new Date().toISOString(),
       };
 
       try {

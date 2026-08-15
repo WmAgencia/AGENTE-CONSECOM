@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { UserPlus, Trash2, Check, AlertCircle, Link2, Loader2, Pencil, X } from 'lucide-react'
+import { UserPlus, Trash2, Check, AlertCircle, Link2, Loader2, Pencil, X, ArrowRight } from 'lucide-react'
 
 const API = import.meta.env.VITE_BACKEND_URL ?? 'https://consecom-backend-production.up.railway.app'
 
@@ -44,22 +45,13 @@ export function ManualProspection() {
   const [editing, setEditing] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
   const [editPhone, setEditPhone] = useState('')
-  const [campaignTarget, setCampaignTarget] = useState<'none' | 'existing' | 'new'>('none')
-  const [campaignId, setCampaignId] = useState('')
-  const [newCampaignName, setNewCampaignName] = useState('')
-  const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string }>>([])
+
+  const navigate = useNavigate()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user?.id) setSessionUser(data.user.id)
     })
-    supabase
-      .from('campaigns')
-      .select('id, name')
-      .order('created_at')
-      .then(({ data }) => {
-        if (data) setCampaigns(data as Array<{ id: string; name: string }>)
-      })
   }, [])
 
   const parseLine = (line: string): { name: string; phone: string } | null => {
@@ -257,63 +249,12 @@ export function ManualProspection() {
       setPreview(null)
       setPreviewTitle('')
       setPreviewUrl('')
-      setCampaignTarget('none')
-      setCampaignId('')
-      setNewCampaignName('')
     } catch (e) {
       setUrlError(e instanceof Error ? e.message : 'Erro de conexão com o servidor.')
     } finally {
       setImporting(false)
     }
   }, [sessionUser, importing, preview, previewUrl])
-
-  const createAndDistributeCampaign = useCallback(async () => {
-    if (!sessionUser) return
-    const successIds = imported.filter((l) => l.status === 'added' && l.id).map((l) => l.id)
-    if (successIds.length === 0) {
-      setUrlError('Nenhum lead novo para adicionar à campanha.')
-      return
-    }
-    try {
-      let targetId = campaignId
-      if (campaignTarget === 'new' && newCampaignName.trim()) {
-        const { data: userData } = await supabase.auth.getUser()
-        const { data, error } = await supabase
-          .from('campaigns')
-          .insert({ name: newCampaignName.trim(), owner_user_id: userData.user?.id ?? null })
-          .select('id')
-          .single()
-        if (error || !data) {
-          setUrlError(error?.message ?? 'Não foi possível criar a campanha.')
-          return
-        }
-        targetId = data.id
-      }
-      if (!targetId) {
-        setUrlError('Selecione uma campanha ou informe o nome de uma nova.')
-        return
-      }
-      const { data, error: rpcError } = await supabase.rpc('consecom_distribute_imported_leads', {
-        p_lead_ids: successIds,
-        p_campaign_id: targetId,
-        p_connection_ids: [],
-      })
-      if (rpcError) {
-        setUrlError(rpcError.message)
-        return
-      }
-      const result = data as { accepted?: number; blocked?: number }
-      setImported([])
-      setCampaignTarget('none')
-      setCampaignId('')
-      setNewCampaignName('')
-      setUrlError(null)
-      const addedThisRound = result.accepted ?? successIds.length
-      setError(`Leads adicionados à campanha: ${addedThisRound} aceito(s), ${result.blocked ?? 0} bloqueado(s).`)
-    } catch (e) {
-      setUrlError(e instanceof Error ? e.message : 'Erro ao adicionar à campanha.')
-    }
-  }, [sessionUser, imported, campaignId, campaignTarget, newCampaignName])
 
   const previewSelectedCount = preview?.filter((c) => c.selected).length ?? 0
 
@@ -406,6 +347,20 @@ export function ManualProspection() {
                 Limpar
               </button>
             </div>
+            {successCount > 0 && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
+                <div className="text-sm text-emerald-300">
+                  Leads importados com sucesso. Distribua para uma campanha na página Importados.
+                </div>
+                <button
+                  onClick={() => navigate('/importados')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium text-white"
+                >
+                  Ir para Importados
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             <div className="space-y-1.5">
               {added.map((l) => (
                 <div
@@ -518,55 +473,17 @@ export function ManualProspection() {
               ))}
             </div>
             {imported.some((l) => l.status === 'added' && l.id) && (
-              <div className="rounded-lg border border-line p-3 space-y-2">
-                <p className="text-sm font-medium">Adicionar à campanha</p>
-                <div className="flex flex-wrap gap-2 items-center">
-                  <select
-                    value={campaignTarget}
-                    onChange={(e) => {
-                      setCampaignTarget(e.target.value as 'none' | 'existing' | 'new')
-                      setCampaignId('')
-                      setNewCampaignName('')
-                    }}
-                    className="bg-field border border-line-2 rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="none">Sem campanha</option>
-                    <option value="existing">Campanha existente</option>
-                    <option value="new">Criar nova campanha</option>
-                  </select>
-                  {campaignTarget === 'existing' && (
-                    <select
-                      value={campaignId}
-                      onChange={(e) => setCampaignId(e.target.value)}
-                      className="bg-field border border-line-2 rounded-lg px-3 py-2 text-sm"
-                    >
-                      <option value="">Selecionar...</option>
-                      {campaigns.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  {campaignTarget === 'new' && (
-                    <input
-                      value={newCampaignName}
-                      onChange={(e) => setNewCampaignName(e.target.value)}
-                      placeholder="Nome da nova campanha"
-                      className="bg-field border border-line-2 rounded-lg px-3 py-2 text-sm"
-                    />
-                  )}
-                  {campaignTarget !== 'none' && (
-                    <button
-                      onClick={createAndDistributeCampaign}
-                      disabled={
-                        (campaignTarget === 'existing' && !campaignId) ||
-                        (campaignTarget === 'new' && !newCampaignName.trim())
-                      }
-                      className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-sm font-medium"
-                    >
-                      Adicionar à campanha
-                    </button>
-                  )}
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
+                <div className="text-sm text-emerald-300">
+                  Leads importados com sucesso. Distribua para uma campanha na página Importados.
                 </div>
+                <button
+                  onClick={() => navigate('/importados')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium text-white"
+                >
+                  Ir para Importados
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
             )}
           </div>
