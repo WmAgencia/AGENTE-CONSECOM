@@ -1633,8 +1633,17 @@ export class MapsScanner {
 }
 
 const start = () => {
-  const scanner = new MapsScanner()
-  void scanner.init()
+  const host = window.location.hostname
+  const isMaps = /(^|\.)google\.(com|com\.br|[a-z.]+)\/maps\//.test(window.location.href) || host.startsWith('maps.google')
+  if (isMaps) {
+    const scanner = new MapsScanner()
+    void scanner.init()
+  } else {
+    import('./global').then(({ GlobalScanner }) => {
+      const scanner = new GlobalScanner()
+      void scanner.init()
+    })
+  }
 }
 
 if (typeof window !== 'undefined') start()
@@ -1789,7 +1798,7 @@ function deriveReviews(text: string): number | null {
   return m ? parseInt(m[1].replace(/[^\d]/g, ''), 10) : null
 }
 
-function injectStyles(): void {
+export function injectStyles(): void {
   if (document.getElementById('consecom-css')) return
   const el = document.createElement('style')
   el.id = 'consecom-css'
@@ -1797,7 +1806,7 @@ function injectStyles(): void {
   document.head.appendChild(el)
 }
 
-function showToast(text: string, kind: 'ok' | 'warn' = 'ok'): void {
+export function showToast(text: string, kind: 'ok' | 'warn' = 'ok'): void {
   const id = 'consecom-toast'
   document.getElementById(id)?.remove()
   const toast = document.createElement('div')
@@ -1812,7 +1821,7 @@ function showToast(text: string, kind: 'ok' | 'warn' = 'ok'): void {
 }
 
 /** Espera não-bloqueante (usada nos estágios de prospecção). */
-function sleep(ms: number): Promise<void> {
+export function sleep(ms: number): Promise<void> {
   return new Promise((r) => window.setTimeout(r, ms))
 }
 

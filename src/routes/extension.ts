@@ -23,7 +23,7 @@ import { extractBearerToken } from '../utils/auth.js';
 import { z } from 'zod';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
-const VERSION = '1.4.5';
+const VERSION = '1.5.0';
 
 const DEFAULT_BASE_ZIP_URL =
   'https://frontend-seven-sooty-78.vercel.app/downloads/consecom-extension.zip';
@@ -96,7 +96,7 @@ const importLeadsSchema = z.object({
   leads: z.array(leadSchema).min(1).max(50),
   listName: z.string().min(1).max(120).optional(),
   source: z.string().max(60).optional(),
-  sourceDetail: z.string().max(60).optional(),
+  sourceDetail: z.string().max(2048).optional(),
   tags: z.array(z.string().max(60)).max(12).optional(),
   prospectFilters: z.record(z.unknown()).optional(),
   score: z.number().min(0).max(100).optional(),
@@ -206,14 +206,21 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
         log.warn({ status: listRes.status }, `${logPrefix}: list create failed`);
       }
 
-      // Dedup dentro da própria leva (place_id como chave primária).
+      // Dedup dentro da própria leva (place_id como chave primária; sem
+      // place_id, usa phone_normalized — modo prospector global).
       const seen = new Set<string>();
+      const seenPhones = new Set<string>();
       const candidateRows: Array<Record<string, unknown>> = [];
       for (const lead of leads) {
         const ph = normalizePhone(lead.phone);
         const pid = lead.place_id ?? undefined;
-        if (pid && seen.has(pid)) continue;
-        if (pid) seen.add(pid);
+        if (pid) {
+          if (seen.has(pid)) continue;
+          seen.add(pid);
+        } else if (ph) {
+          if (seenPhones.has(ph)) continue;
+          seenPhones.add(ph);
+        }
         candidateRows.push({
           name: lead.name.trim() || 'Sem nome',
           phone: lead.phone ?? '',
@@ -249,6 +256,7 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       // Dedup contra o banco: busca place_ids já existentes (qualquer owner)
       // e envia apenas os novos — não sobrescreve leads já distribuídos/processados.
       const existingPlaceIds = new Set<string>();
+      const existingPhones = new Set<string>();
       {
         const pids = candidateRows.map((r) => r.place_id).filter((x): x is string => typeof x === 'string');
         if (pids.length > 0) {
@@ -261,11 +269,30 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
             for (const r of rows) if (r.place_id) existingPlaceIds.add(r.place_id);
           }
         }
+        // Leads sem place_id (prospector global): dedup por phone_normalized
+        // apenas entre os da mesma leva (mesmo owner_user_id) para não
+        // criar duplicados quando a mesma página é prospectada de novo.
+        const phones = candidateRows
+          .map((r) => r.phone_normalized)
+          .filter((x): x is string => typeof x === 'string' && !candidateRows.find((r) => typeof r.place_id === 'string' && r.phone_normalized === x));
+        if (phones.length > 0) {
+          const unique = Array.from(new Set(phones));
+          const res = await fetch(
+            `${s.url}/rest/v1/leads?select=phone_normalized&phone_normalized=in.(${unique.map(encodeURIComponent).join(',')})&owner_user_id=eq.${encodeURIComponent(ownerUserId)}`,
+            { headers: headers(s.key) },
+          );
+          if (res.ok) {
+            const rows = (await res.json()) as Array<{ phone_normalized: string | null }>;
+            for (const r of rows) if (r.phone_normalized) existingPhones.add(r.phone_normalized);
+          }
+        }
       }
 
       const rows = candidateRows.filter((r) => {
         const pid = r.place_id;
-        return typeof pid !== 'string' || !existingPlaceIds.has(pid);
+        if (typeof pid === 'string') return !existingPlaceIds.has(pid);
+        const ph = r.phone_normalized;
+        return typeof ph !== 'string' || !existingPhones.has(ph);
       });
       const duplicates = candidateRows.length - rows.length;
 
