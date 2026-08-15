@@ -1,7 +1,7 @@
 import { getStoredConfig, type StoredConfig } from '../shared/config'
 import { importLeads, type ScrapedLead } from '../shared/leads'
 import { classifyBrazilianPhone } from '../shared/phone'
-import { injectStyles, showToast, sleep } from './index'
+import { injectStyles, showToast } from './index'
 
 interface Contact {
   key: string
