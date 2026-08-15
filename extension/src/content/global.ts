@@ -2,6 +2,11 @@ import { getStoredConfig, type StoredConfig } from '../shared/config'
 import { importLeads, type ScrapedLead } from '../shared/leads'
 import { classifyBrazilianPhone } from '../shared/phone'
 import { injectStyles, showToast } from './index'
+import {
+  prospectWepsy,
+  isWepsyCatalog,
+  type WepsyContact,
+} from './wepsy'
 
 interface Contact {
   key: string
@@ -10,6 +15,8 @@ interface Contact {
   phone_normalized: string | null
   whatsapp: boolean
   context: string | null
+  city: string | null
+  state: string | null
   el: HTMLElement | null
 }
 
@@ -36,15 +43,24 @@ export class GlobalScanner {
   private countEl: HTMLElement | null = null
   private locEl: HTMLElement | null = null
   private importing = false
+  private isWepsy = false
+  private wepsyProspecting = false
+  private wepsyStop = { cancelled: false }
+  private prospectBtn: HTMLButtonElement | null = null
+  private stopBtn: HTMLButtonElement | null = null
+  private statusEl: HTMLElement | null = null
+  private maxInput: HTMLInputElement | null = null
 
   async init(): Promise<void> {
     this.cfg = await getStoredConfig()
     injectStyles()
-    this.scan()
-
-    const obs = new MutationObserver(() => this.debounceScan())
-    obs.observe(document.body, { childList: true, subtree: true })
-    window.addEventListener('scroll', () => this.debounceScan(), { passive: true })
+    this.isWepsy = isWepsyCatalog(location.href)
+    if (!this.isWepsy) {
+      this.scan()
+      const obs = new MutationObserver(() => this.debounceScan())
+      obs.observe(document.body, { childList: true, subtree: true })
+      window.addEventListener('scroll', () => this.debounceScan(), { passive: true })
+    }
 
     window.addEventListener('click', (e) => {
       if (!this.balloon?.classList.contains('open')) return
@@ -162,6 +178,8 @@ export class GlobalScanner {
         phone_normalized: pinfo.e164,
         whatsapp: raw.via === 'wa' || raw.via === 'tel',
         context: this.guessContext(raw.el),
+        city: null,
+        state: null,
         el: raw.el,
       })
     }
@@ -295,10 +313,12 @@ export class GlobalScanner {
     name.textContent = 'VYNTRA'
     const tag = document.createElement('div')
     tag.className = 'cs-panel__tag'
-    tag.textContent = 'Prospector Global'
+    tag.textContent = this.isWepsy ? 'Prospector Wepsy' : 'Prospector Global'
     const tagline = document.createElement('div')
     tagline.className = 'cs-panel__tagline'
-    tagline.textContent = 'Contatos encontrados nesta página. Revise e importe como leads.'
+    tagline.textContent = this.isWepsy
+      ? 'Busca psicólogos do catálogo Wepsy e importa os contatos com WhatsApp público.'
+      : 'Contatos encontrados nesta página. Revise e importe como leads.'
     titles.append(name, tag, tagline)
 
     const controls = document.createElement('div')
@@ -320,13 +340,63 @@ export class GlobalScanner {
     const body = document.createElement('div')
     body.className = 'cs-panel__body'
 
-    const loc = document.createElement('div')
-    loc.className = 'cs-panel__loc'
-    loc.innerHTML = pinIcon
-    this.locEl = document.createElement('span')
-    this.locEl.textContent = `${this.contacts.length} contato(s) encontrado(s)`
-    loc.append(this.locEl)
-    body.appendChild(loc)
+    if (this.isWepsy) {
+      // Barra de prospecção Wepsy (CTA + max + status + parar).
+      const cta = document.createElement('div')
+      cta.className = 'cs-filters'
+      const prospectBtn = document.createElement('button')
+      prospectBtn.type = 'button'
+      prospectBtn.className = 'cs-prospect'
+      prospectBtn.textContent = 'PROSPECTAR'
+      prospectBtn.addEventListener('click', () => void this.doWepsy())
+      this.prospectBtn = prospectBtn
+      const stopBtn = document.createElement('button')
+      stopBtn.type = 'button'
+      stopBtn.className = 'cs-footer__btn cs-foot-clear'
+      stopBtn.textContent = 'Parar'
+      stopBtn.style.display = 'none'
+      stopBtn.addEventListener('click', () => {
+        this.wepsyStop.cancelled = true
+      })
+      this.stopBtn = stopBtn
+      const maxWrap = document.createElement('label')
+      maxWrap.className = 'cs-adv__item'
+      maxWrap.style.margin = '0 0 0 8px'
+      const maxLab = document.createElement('span')
+      maxLab.textContent = 'Máx.'
+      const maxInput = document.createElement('input')
+      maxInput.type = 'number'
+      maxInput.min = '10'
+      maxInput.max = '2965'
+      maxInput.value = '200'
+      maxInput.style.width = '70px'
+      maxInput.className = 'bg-field border border-line-2 rounded px-2 py-1 text-sm'
+      this.maxInput = maxInput
+      maxWrap.append(maxLab, maxInput)
+      const ctaRow = document.createElement('div')
+      ctaRow.className = 'cs-chips'
+      ctaRow.style.flexWrap = 'wrap'
+      ctaRow.append(prospectBtn, maxWrap, stopBtn)
+      const status = document.createElement('div')
+      status.className = 'cs-panel__loc'
+      status.innerHTML = pinIcon
+      this.statusEl = document.createElement('span')
+      this.statusEl.textContent =
+        this.contacts.length > 0
+          ? `${this.contacts.length} contato(s) encontrado(s)`
+          : 'Toque em PROSPECTAR para buscar os psicólogos desta página.'
+      status.append(this.statusEl)
+      cta.append(ctaRow, status)
+      body.appendChild(cta)
+    } else {
+      const loc = document.createElement('div')
+      loc.className = 'cs-panel__loc'
+      loc.innerHTML = pinIcon
+      this.locEl = document.createElement('span')
+      this.locEl.textContent = `${this.contacts.length} contato(s) encontrado(s)`
+      loc.append(this.locEl)
+      body.appendChild(loc)
+    }
 
     const list = document.createElement('div')
     list.className = 'cs-panel__list'
@@ -349,13 +419,24 @@ export class GlobalScanner {
       this.renderList()
       showToast('Seleção limpa')
     })
+    const selectAllBtn = document.createElement('button')
+    selectAllBtn.type = 'button'
+    selectAllBtn.className = 'cs-footer__btn cs-foot-config'
+    selectAllBtn.title = 'Seleciona até 50 contatos (limite por importação)'
+    selectAllBtn.textContent = 'Sel. todos'
+    selectAllBtn.addEventListener('click', () => {
+      const keys = this.contacts.slice(0, 50).map((c) => c.key)
+      this.selected = new Set(keys)
+      this.renderList()
+      showToast(`✓ ${Math.min(50, this.contacts.length)} selecionado(s)`)
+    })
     const importBtn = document.createElement('button')
     importBtn.type = 'button'
     importBtn.className = 'cs-footer__btn cs-foot-config'
     importBtn.title = 'Importar selecionados'
     importBtn.innerHTML = 'Importar' + downloadIcon
     importBtn.addEventListener('click', () => void this.doImport(importBtn))
-    row2.append(clearBtn, importBtn)
+    row2.append(clearBtn, selectAllBtn, importBtn)
     footer.append(countEl, row2)
 
     balloon.append(header, body, footer)
@@ -369,8 +450,9 @@ export class GlobalScanner {
       this.listEl.innerHTML = ''
       const empty = document.createElement('div')
       empty.className = 'cs-empty'
-      empty.innerHTML =
-        '<b>0 contatos encontrados</b><br/>Nenhum telefone móvel detectado nesta página. Acesse uma página com contatos e tente novamente.'
+      empty.innerHTML = this.isWepsy
+        ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para buscar os psicólogos do catálogo Wepsy.'
+        : '<b>0 contatos encontrados</b><br/>Nenhum telefone móvel detectado nesta página. Acesse uma página com contatos e tente novamente.'
       this.listEl.appendChild(empty)
       return
     }
@@ -442,7 +524,22 @@ export class GlobalScanner {
     }
     const leads: ScrapedLead[] = this.contacts
       .filter((c) => this.selected.has(c.key))
-      .map((c) => ({ name: c.name, phone: c.phone, category: null, website: null, address: null, city: null, state: null, rating: null, reviews: null, latitude: null, longitude: null, place_id: null, instagram: null, facebook: null }))
+      .map((c) => ({
+        name: c.name,
+        phone: c.phone,
+        category: this.isWepsy ? 'Psicólogo' : null,
+        website: null,
+        address: null,
+        city: c.city,
+        state: c.state,
+        rating: null,
+        reviews: null,
+        latitude: null,
+        longitude: null,
+        place_id: null,
+        instagram: null,
+        facebook: null,
+      }))
       .slice(0, 50)
     if (leads.length === 0) {
       showToast('Selecione ao menos um contato para importar.', 'warn')
@@ -489,6 +586,82 @@ export class GlobalScanner {
       }, 3000)
     } finally {
       this.importing = false
+    }
+  }
+
+  /** Adiciona um contato vindo do adaptador Wepsy (dedup por número). */
+  private addWepsyContact(wc: WepsyContact): void {
+    if (this.contacts.some((c) => c.key === wc.key)) {
+      // Aproveita o nome se o novo for melhor.
+      const ex = this.contacts.find((c) => c.key === wc.key)!
+      if ((!ex.name || this.isDefaultName(ex.name)) && !this.isDefaultName(wc.name)) ex.name = wc.name
+      return
+    }
+    this.contacts.push({
+      key: wc.key,
+      name: wc.name,
+      phone: wc.phone,
+      phone_normalized: wc.key,
+      whatsapp: wc.whatsapp,
+      context: [wc.city, wc.state].filter(Boolean).join(' · ') || null,
+      city: wc.city,
+      state: wc.state,
+      el: null,
+    })
+  }
+
+  /** Prospecção Wepsy: pagina o catálogo e busca perfis (API pública). */
+  private async doWepsy(): Promise<void> {
+    if (this.wepsyProspecting) return
+    this.cfg = this.cfg ?? (await getStoredConfig())
+    if (!this.cfg || !this.cfg.extensionKey || !this.cfg.ownerUserId) {
+      alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
+      return
+    }
+    const max = Math.min(
+      2965,
+      Math.max(10, parseInt(this.maxInput?.value || '200', 10) || 200),
+    )
+    this.wepsyProspecting = true
+    this.wepsyStop = { cancelled: false }
+    if (this.prospectBtn) {
+      this.prospectBtn.disabled = true
+      this.prospectBtn.textContent = 'PROSPECTANDO…'
+    }
+    if (this.stopBtn) this.stopBtn.style.display = 'inline-block'
+    let last = 0
+    try {
+      await prospectWepsy({
+        max,
+        signal: this.wepsyStop,
+        onResult: (wc) => {
+          this.addWepsyContact(wc)
+          // Throttle render: a cada ~3 contatos ou 250ms.
+          const now = Date.now()
+          if (now - last > 250 || this.contacts.length % 3 === 0) {
+            last = now
+            if (this.statusEl) this.statusEl.textContent = `${this.contacts.length} contato(s) encontrado(s)`
+            this.renderList()
+          }
+        },
+        onProgress: (msg) => {
+          if (this.statusEl) this.statusEl.textContent = `${msg} · ${this.contacts.length} ok`
+        },
+      })
+      if (!this.wepsyStop.cancelled) {
+        showToast(`✓ ${this.contacts.length} contato(s) encontrado(s).`)
+      }
+    } catch (err) {
+      showToast(`Erro na prospecção Wepsy: ${err}`, 'warn')
+    } finally {
+      this.wepsyProspecting = false
+      if (this.prospectBtn) {
+        this.prospectBtn.disabled = false
+        this.prospectBtn.textContent = this.contacts.length > 0 ? 'PROSPECTAR MAIS' : 'PROSPECTAR'
+      }
+      if (this.stopBtn) this.stopBtn.style.display = 'none'
+      if (this.statusEl) this.statusEl.textContent = `${this.contacts.length} contato(s) encontrado(s)`
+      this.renderList()
     }
   }
 
