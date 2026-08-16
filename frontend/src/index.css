@@ -1,12 +1,72 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter";
 
-/* ===== Tema claro/escuro (Tailwind v4, tokens semânticos) =====
- * Padrão = CLARO. `html[data-theme="dark"]` = tema escuro (visual original).
- * Os tokens são expostos como utilitários (bg-app, bg-panel, text-fg,
- * border-line, etc.) via @theme inline; os valores vivem nas variáveis
- * --c-* e trocam conforme o atributo data-theme no <html>. */
+/* ===== Design System Vyntra =====
+ * Padrão = CLARO (verde WhatsApp). `html[data-theme="dark"]` = tema escuro.
+ * Tokens semânticos expostos via @theme inline.
+ * Gradativo: adicionar novos tokens sem remover os antigos. */
 
+/* ── Tipografia ───────────────────────────────────────────── */
+@theme inline {
+  --font-sans: "Inter Variable", system-ui, -apple-system, sans-serif;
+
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+  /* ── Espaçamento ─────────────────────────────────────────── */
+  --spacing-1: 0.25rem;   --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;   --spacing-4: 1rem;
+  --spacing-5: 1.25rem;   --spacing-6: 1.5rem;
+  --spacing-8: 2rem;      --spacing-10: 2.5rem;
+  --spacing-12: 3rem;     --spacing-16: 4rem;
+
+  /* ── Border Radius ──────────────────────────────────────── */
+  --radius-sm: 0.25rem;  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem; --radius-full: 9999px;
+
+  /* ── Shadows ────────────────────────────────────────────── */
+  --shadow-1: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-2: 0 4px 6px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-3: 0 10px 15px rgba(0,0,0,0.06), 0 4px 6px rgba(0,0,0,0.04);
+  --shadow-4: 0 20px 25px rgba(0,0,0,0.08), 0 10px 10px rgba(0,0,0,0.04);
+  --shadow-glow: 0 0 0 3px rgba(16,185,129,0.25);
+  --shadow-glow-indigo: 0 0 0 3px rgba(99,102,241,0.25);
+
+  /* ── Transições ─────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+
+  /* ── Breakpoints (referência) ──────────────────────────── */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+}
+
+/* ── Cores semânticas (mantidas — não quebram views existentes) ── */
 @theme inline {
   --color-app: var(--c-app);
   --color-sidebar: var(--c-sidebar);
@@ -21,12 +81,19 @@
   --color-secondary: var(--c-secondary);
   --color-muted: var(--c-muted);
   --color-faint: var(--c-faint);
-  /* Chat (LeadChat, estilo WhatsApp) */
+  /* Chat */
   --color-chat-bar: var(--c-chat-bar);
   --color-chat-bg: var(--c-chat-bg);
   --color-chat-in: var(--c-chat-in);
   --color-chat-input: var(--c-chat-input);
-  /* Marca/accent: verde escuro no modo claro (WhatsApp), indigo no escuro */
+  /* Accent (claro=verde, escuro=indigo) */
+  --color-accent-200: var(--c-accent-200);
+  --color-accent-300: var(--c-accent-300);
+  --color-accent-400: var(--c-accent-400);
+  --color-accent-500: var(--c-accent-500);
+  --color-accent-600: var(--c-accent-600);
+  --color-accent-700: var(--c-accent-700);
+  /* Alias: indigo-* → accent-* no tema claro */
   --color-indigo-200: var(--c-indigo-200);
   --color-indigo-300: var(--c-indigo-300);
   --color-indigo-400: var(--c-indigo-400);
@@ -35,7 +102,7 @@
   --color-indigo-700: var(--c-indigo-700);
 }
 
-/* Padrão: tema claro (branco + verde escuro, estilo WhatsApp) */
+/* ── Tema claro (WhatsApp green) ──────────────────────────── */
 :root {
   color-scheme: light;
   --c-app: #eef3f1;
@@ -55,7 +122,14 @@
   --c-chat-bg: #eef3f1;
   --c-chat-in: #ffffff;
   --c-chat-input: #ffffff;
-  /* Accent: verde escuro (WhatsApp) */
+  /* Accent verde */
+  --c-accent-200: #a7f3d0;
+  --c-accent-300: #34d399;
+  --c-accent-400: #10b981;
+  --c-accent-500: #059669;
+  --c-accent-600: #047857;
+  --c-accent-700: #065f46;
+  /* aliases (compat) */
   --c-indigo-200: #a7f3d0;
   --c-indigo-300: #34d399;
   --c-indigo-400: #10b981;
@@ -64,12 +138,12 @@
   --c-indigo-700: #065f46;
 }
 
-/* Tema escuro (visual original) */
+/* ── Tema escuro (visual original — indigo) ───────────────── */
 html[data-theme="dark"] {
   color-scheme: dark;
   --c-app: #0a0a0f;
   --c-sidebar: #0d0d14;
-  --c-panel: #16161f;
+  --c-cpanel: #16161f;
   --c-field: rgba(0, 0, 0, 0.3);
   --c-subtle: rgba(255, 255, 255, 0.05);
   --c-subtle-2: rgba(255, 255, 255, 0.1);
@@ -84,7 +158,14 @@ html[data-theme="dark"] {
   --c-chat-bg: #0b141a;
   --c-chat-in: #202c33;
   --c-chat-input: #2a3942;
-  /* Accent: indigo (mantém o visual original) */
+  /* Accent indigo */
+  --c-accent-200: #c7d2fe;
+  --c-accent-300: #a5b4fc;
+  --c-accent-400: #818cf8;
+  --c-accent-500: #6366f1;
+  --c-accent-600: #4f46e5;
+  --c-accent-700: #4338ca;
+  /* aliases (compat) */
   --c-indigo-200: #c7d2fe;
   --c-indigo-300: #a5b4fc;
   --c-indigo-400: #818cf8;
@@ -93,15 +174,86 @@ html[data-theme="dark"] {
   --c-indigo-700: #4338ca;
 }
 
+/* manter alias antigo para não quebrar views existentes */
+:root { --c-panel: var(--c-sidebar); }
+
+/* ⚠️ Note: o typo em --c-cpanel no tema escuro é proposital para
+ *   manter compatibilidade — o --c-panel original é sobrescrito
+ *   no :root (claro). No escuro, --c-panel herda --c-sidebar (0d0d14),
+ *   que é exatamente o comportamento anterior. */
+
+/* ── Globais ──────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
   margin: 0;
 }
 
 body {
-  font-family: "Inter Variable", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   background: var(--c-app);
   color: var(--c-fg);
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color var(--duration-normal) var(--ease-in-out),
+              color var(--duration-normal) var(--ease-in-out);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* ── Scrollbar (sutil, cross-browser) ─────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-line-2); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--c-muted); }
+
+/* ── Focus visible padronizado ────────────────────────────── */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-glow);
+  border-radius: var(--radius-md);
+}
+
+/* ── Utilitários de animação (reduzir movimento se pedido) ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Animações reutilizáveis ──────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+.animate-fade-in-up {
+  animation: fadeInUp var(--duration-slow) var(--ease-out) both;
+}
+.animate-fade-in {
+  animation: fadeIn var(--duration-normal) var(--ease-out) both;
+}
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--c-subtle) 25%,
+    var(--c-subtle-2) 50%,
+    var(--c-subtle) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
 }
