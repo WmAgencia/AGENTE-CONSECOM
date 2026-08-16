@@ -71,6 +71,213 @@ export const api = {
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
+// ===== Vyntra SaaS (minha conta + catálogo de planos) =====
+
+export interface SaasPlan {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  price: number
+  currency: string
+  lead_limit: number
+  duration_days: number | null
+  billing_type: 'one_time' | 'recurring'
+  active: boolean
+  features: unknown[]
+}
+
+export interface SaasSubscription {
+  id: string
+  plan_id: string
+  status: 'active' | 'pending' | 'past_due' | 'cancelled' | 'expired'
+  current_period_start: string | null
+  current_period_end: string | null
+  leads_used: number
+  cancel_at_period_end: boolean
+}
+
+export interface SaasUsage {
+  lead_limit: number
+  leads_used: number
+  leads_remaining: number
+}
+
+export interface SaasMe {
+  user: { id: string; email: string; role: 'USER' | 'MASTER'; status: string }
+  tenantId: string
+  subscription: SaasSubscription | null
+  plan: SaasPlan | null
+  usage: SaasUsage
+}
+
+export interface CheckoutResult {
+  ok: boolean
+  paymentId: string
+  checkoutUrl: string | null
+  provider: string
+}
+
+export const saasApi = {
+  async me(): Promise<SaasMe> {
+    return api.get<SaasMe>('/api/saas/me')
+  },
+  async plans(): Promise<SaasPlan[]> {
+    const r = await api.get<{ plans: SaasPlan[] }>('/api/saas/plans')
+    return r.plans ?? []
+  },
+  async validateCoupon(code: string, planId: string): Promise<{
+    ok: boolean
+    code?: string
+    discountType?: string
+    discountValue?: number
+    discountAmount?: number
+    total?: number
+  }> {
+    return api.post<{
+      ok: boolean
+      code?: string
+      discountType?: string
+      discountValue?: number
+      discountAmount?: number
+      total?: number
+    }>('/api/saas/coupons/validate', { code, planId })
+  },
+  async checkout(planId: string, couponCode?: string, backUrl?: string): Promise<CheckoutResult> {
+    return api.post<CheckoutResult>('/api/saas/checkout', { planId, couponCode, backUrl })
+  },
+  async changePassword(currentPassword: string, newPassword: string, confirmPassword: string): Promise<void> {
+    await api.post<{ ok: boolean }>('/api/account/password', { currentPassword, newPassword, confirmPassword })
+  },
+}
+
+// ===== Vyntra SaaS — Painel Master (apenas MASTER) =====
+
+export interface MasterDashboard {
+  users: number
+  masters: number
+  actives: number
+  tenants: number
+  subscriptions: number
+  activeSubscriptions: number
+  approvedPayments: number
+  revenue: number
+  requests: number
+  pendingRequests: number
+  leads: number
+  plans: number
+}
+
+export interface MasterPlan {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  price: number
+  lead_limit: number
+  duration_days: number | null
+  billing_type: string
+  active: boolean
+}
+
+export interface MasterCoupon {
+  id: string
+  code: string
+  discount_type: 'percentage' | 'fixed'
+  discount_value: number
+  valid_from: string | null
+  valid_until: string | null
+  usage_limit: number | null
+  usage_count: number
+  active: boolean
+  applicable_plan_ids: string[]
+}
+
+export interface MasterGateway {
+  id: string
+  provider: string
+  enabled: boolean
+  sandbox: boolean
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export const masterApi = {
+  async dashboard(): Promise<MasterDashboard> {
+    return api.get<MasterDashboard>('/api/master/dashboard')
+  },
+  async users(): Promise<Array<Record<string, unknown>>> {
+    const r = await api.get<{ users: Array<Record<string, unknown>> }>('/api/master/users')
+    return r.users ?? []
+  },
+  async updateUser(id: string, patch: { role?: string; status?: string }): Promise<void> {
+    await api.patch(`/api/master/users/${encodeURIComponent(id)}`, patch)
+  },
+  async plans(): Promise<MasterPlan[]> {
+    const r = await api.get<{ plans: MasterPlan[] }>('/api/master/plans')
+    return r.plans ?? []
+  },
+  async createPlan(input: Record<string, unknown>): Promise<void> {
+    await api.post('/api/master/plans', input)
+  },
+  async updatePlan(id: string, patch: Record<string, unknown>): Promise<void> {
+    await api.patch(`/api/master/plans/${encodeURIComponent(id)}`, patch)
+  },
+  async deletePlan(id: string): Promise<void> {
+    await api.del(`/api/master/plans/${encodeURIComponent(id)}`)
+  },
+  async subscriptions(): Promise<Array<Record<string, unknown>>> {
+    const r = await api.get<{ subscriptions: Array<Record<string, unknown>> }>('/api/master/subscriptions')
+    return r.subscriptions ?? []
+  },
+  async payments(): Promise<Array<Record<string, unknown>>> {
+    const r = await api.get<{ payments: Array<Record<string, unknown>> }>('/api/master/payments')
+    return r.payments ?? []
+  },
+  async gateways(): Promise<MasterGateway[]> {
+    const r = await api.get<{ gateways: MasterGateway[] }>('/api/master/gateways')
+    return r.gateways ?? []
+  },
+  async saveGateway(input: { provider: string; accessToken: string; sandbox: boolean; active: boolean }): Promise<void> {
+    await api.post('/api/master/gateways', input)
+  },
+  async testGateway(id: string): Promise<{ ok: boolean; error: string | null }> {
+    return api.post(`/api/master/gateways/${encodeURIComponent(id)}/test`, {})
+  },
+  async coupons(): Promise<MasterCoupon[]> {
+    const r = await api.get<{ coupons: MasterCoupon[] }>('/api/master/coupons')
+    return r.coupons ?? []
+  },
+  async createCoupon(input: Record<string, unknown>): Promise<void> {
+    await api.post('/api/master/coupons', input)
+  },
+  async updateCoupon(id: string, patch: Record<string, unknown>): Promise<void> {
+    await api.patch(`/api/master/coupons/${encodeURIComponent(id)}`, patch)
+  },
+  async deleteCoupon(id: string): Promise<void> {
+    await api.del(`/api/master/coupons/${encodeURIComponent(id)}`)
+  },
+  async pixels(): Promise<Record<string, unknown> | null> {
+    const r = await api.get<{ settings: Record<string, unknown> | null }>('/api/master/pixels')
+    return r.settings
+  },
+  async updatePixels(patch: Record<string, unknown>): Promise<void> {
+    await api.patch('/api/master/pixels', patch)
+  },
+  async sourceRequests(): Promise<Array<Record<string, unknown>>> {
+    const r = await api.get<{ requests: Array<Record<string, unknown>> }>('/api/master/source-requests')
+    return r.requests ?? []
+  },
+  async updateSourceRequest(id: string, status: string): Promise<void> {
+    await api.patch(`/api/master/source-requests/${encodeURIComponent(id)}`, { status })
+  },
+  async auditLogs(limit = 100): Promise<Array<Record<string, unknown>>> {
+    const r = await api.get<{ logs: Array<Record<string, unknown>> }>(`/api/master/audit-logs?limit=${limit}`)
+    return r.logs ?? []
+  },
+}
+
 // ===== Inteligência Comercial (Metas + Faturamento) =====
 
 export interface CommercialGoal {

@@ -20,6 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import { getEnv, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { extractBearerToken } from '../utils/auth.js';
+import { getTenantForUserId } from '../services/saas.auth.js';
 import { z } from 'zod';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
@@ -189,6 +190,7 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
 
     const { ownerUserId, leads, listName, source, sourceDetail, tags, prospectFilters, score, serviceInterest, prospectedAt } = parsed.data;
     const logPrefix = `extension:import(${ownerUserId.slice(0, 8)})`;
+    const tenantId = await getTenantForUserId(ownerUserId);
 
     try {
       // Cria (ou reutiliza) a lista = capture_session.
@@ -196,7 +198,7 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       const listRes = await fetch(`${s.url}/rest/v1/capture_sessions`, {
         method: 'POST',
         headers: { ...headers(s.key, true), Prefer: 'return=representation' },
-        body: JSON.stringify({ imported_by: listLabel }),
+        body: JSON.stringify({ imported_by: listLabel, tenant_id: tenantId }),
       });
       let listId: string | null = null;
       if (listRes.ok) {
@@ -241,6 +243,7 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
           status: 'novo',
           session_id: listId,
           owner_user_id: ownerUserId,
+          tenant_id: tenantId,
           import_state: 'imported',
           imported_at: prospectedAt ?? new Date().toISOString(),
           source: source ?? 'google_maps',

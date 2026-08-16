@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Download } from 'lucide-react'
+import { Menu, Download, UserCircle, ShieldCheck } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
 import { KanbanBoard } from './components/KanbanBoard'
@@ -21,8 +21,11 @@ import { FollowUpsCalendarPanel } from './components/FollowUpsCalendarPanel'
 import { ThemeToggle } from './components/ThemeToggle'
 import { ConnectionQrOverlay } from './components/ConnectionQrOverlay'
 import { ManualProspection } from './components/ManualProspection'
+import { ContaPage } from './components/ContaPage'
+import { MasterPanel } from './components/MasterPanel'
 import { downloadPersonalizedExtension } from './lib/extensionDownload'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
+import { saasApi } from './lib/api'
 import { NAV_ITEMS, resolveTabFromPath, type Tab } from './lib/routes'
 
 const APP_VERSION = '2.1.0'
@@ -42,7 +45,12 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [extStatus, setExtStatus] = useState('')
+  const [isMaster, setIsMaster] = useState(false)
   const activeTab: Tab | null = resolveTabFromPath(location.pathname)
+
+  useEffect(() => {
+    saasApi.me().then((m) => setIsMaster(m.user.role === 'MASTER')).catch(() => setIsMaster(false))
+  }, [])
 
   function navigateTab(t: Tab) {
     const item = NAV_ITEMS.find((i) => i.key === t)
@@ -127,6 +135,19 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
               </button>
             )
           })}
+          {isMaster && (
+            <button
+              onClick={() => { navigate('/master'); setSidebarOpen(false) }}
+              className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${
+                location.pathname.startsWith('/master')
+                  ? 'bg-indigo-500/15 text-fg'
+                  : 'text-muted hover:bg-subtle hover:text-fg'
+              }`}
+            >
+              <ShieldCheck className="w-[18px] h-[18px] shrink-0 text-faint" />
+              <span className="truncate">Painel Master</span>
+            </button>
+          )}
         </nav>
 
         <div className="px-5 py-4 border-t border-line space-y-2">
@@ -145,6 +166,14 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
             Baixar extensão (.zip)
           </button>
           {extStatus && <div className="text-[11px] text-faint">{extStatus}</div>}
+
+          <button
+            onClick={() => { navigate('/conta'); setSidebarOpen(false) }}
+            className="flex items-center gap-2 text-xs text-muted hover:text-fg transition"
+          >
+            <UserCircle className="w-4 h-4" />
+            Minha conta
+          </button>
 
           <button
             onClick={() => {
@@ -176,6 +205,8 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           <Route path="/extensao" element={<ExtensionView />} />
           <Route path="/app-mobile" element={<MobileAppView />} />
           <Route path="/contatos" element={<ContactsView />} />
+          <Route path="/conta" element={<ContaPage />} />
+          <Route path="/master" element={<MasterPanel />} />
           <Route path="/central-ia" element={<AICenter />} />
           <Route path="/central-ia/memoria" element={<CommercialMemory />} />
           <Route path="/central-ia/memoria/lotes" element={<CommercialMemory />} />

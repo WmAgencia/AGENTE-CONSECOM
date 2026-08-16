@@ -32,6 +32,9 @@ import { registerMemoryRoutes } from './routes/memory.js';
 import { registerAgendaRoutes } from './routes/agenda.js';
 import { registerCampaignScheduleRoutes } from './routes/campaigns.js';
 import { registerFollowUpRoutes } from './routes/followups.js';
+import { registerSaaSRoutes } from './routes/saas.js';
+import { registerMasterRoutes } from './routes/master.js';
+import { resolveAuthContext } from './services/saas.auth.js';
 import { buildDefaultRegistry } from './tools/index.js';
 import { ensureSchema, isDbEnabled } from './services/db.js';
 import type { SendWorker } from './services/send.worker.js';
@@ -178,6 +181,13 @@ export function buildApp(): BuiltApp {
     );
   });
 
+  // === Auth multitenant (SaaS) ===
+  // Anexa o contexto de autenticação (tenant, role) a cada request quando há
+  // token Bearer válido. Sem token => req.auth = null (rotas decidem o acesso).
+  app.addHook('preHandler', async (req) => {
+    (req as unknown as { auth?: unknown }).auth = await resolveAuthContext(req);
+  });
+
   app.setErrorHandler((err, req, reply) => {
     const statusCode = err.statusCode && err.statusCode >= 400
       ? err.statusCode
@@ -219,6 +229,8 @@ export function buildApp(): BuiltApp {
   registerAgendaRoutes(app);
   registerCampaignScheduleRoutes(app);
   registerFollowUpRoutes(app);
+  registerSaaSRoutes(app);
+  registerMasterRoutes(app);
 
   return { app };
 }
