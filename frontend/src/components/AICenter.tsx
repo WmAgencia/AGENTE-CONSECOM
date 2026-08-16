@@ -383,9 +383,9 @@ export function AICenter() {
       {/* Memória Comercial da IA — rota própria /central-ia/memoria */}
       <Link
         to={MEMORY_PATHS.root}
-        className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-5 flex items-center gap-4 hover:bg-indigo-500/10 transition"
+        className="rounded-xl border border-accent-500/20 bg-accent-500/5 p-5 flex items-center gap-4 hover:bg-accent-500/10 transition"
       >
-        <div className="p-3 rounded-xl bg-indigo-500/15 text-indigo-300 shrink-0">
+        <div className="p-3 rounded-xl bg-accent-500/15 text-accent-300 shrink-0">
           <Brain className="w-6 h-6" />
         </div>
         <div>
