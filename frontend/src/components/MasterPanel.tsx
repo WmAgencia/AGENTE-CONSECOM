@@ -51,7 +51,8 @@ function RefCard({ title, description, value, onChange, onTest, onSave, onRemove
       ) : <span className="text-muted">Nenhuma referência configurada</span>}</div>
       <div className="flex flex-wrap gap-2">
         <button onClick={onTest} disabled={isLoading} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-subtle text-fg hover:bg-line transition disabled:opacity-50">{isLoading ? 'Testando…' : 'Testar URL'}</button>
-        <button onClick={onSave} disabled={isLoading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-50">Salvar referência</button>
+        <button onClick={onSave} disabled={isLoading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition
+disabled:opacity-50">Salvar referência</button>
         <button onClick={onRemove} disabled={isLoading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-300 hover:text-red-200 hover:bg-red-500/10 transition disabled:opacity-50">Remover referência</button>
       </div>
     </div>
@@ -154,7 +155,7 @@ export function MasterPanel({ onBack }: { onBack?: () => void }) {
           {TABS.map((t) => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                tab === t.key ? 'bg-indigo-500 text-white' : 'bg-subtle text-muted hover:text-fg'
+                tab === t.key ? 'bg-accent-600 text-white' : 'bg-subtle text-muted hover:text-fg'
               }`}>
               {t.label}
             </button>
@@ -322,7 +323,7 @@ function PlansTab() {
         <input placeholder="Preço (R$)" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} />
         <input placeholder="Limite de leads" type="number" value={form.lead_limit} onChange={(e) => setForm({ ...form, lead_limit: e.target.value })} className={inputCls} />
         <input placeholder="Duração (dias)" type="number" value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: e.target.value })} className={inputCls} />
-        <button onClick={create} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition">Criar plano</button>
+        <button onClick={create} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Criar plano</button>
       </div>
       {msg && <p className={`text-xs mb-2 ${msg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{msg.text}</p>}
       <div className="space-y-2">
@@ -374,7 +375,7 @@ function CouponsTab() {
         </select>
         <input placeholder="Valor" type="number" value={form.discount_value} onChange={(e) => setForm({ ...form, discount_value: e.target.value })} className={inputCls} />
         <input placeholder="Limite de uso" type="number" value={form.usage_limit} onChange={(e) => setForm({ ...form, usage_limit: e.target.value })} className={inputCls} />
-        <button onClick={create} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition">Criar cupom</button>
+        <button onClick={create} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Criar cupom</button>
       </div>
       {msg && <p className="text-xs text-emerald-400 mb-2">{msg}</p>}
       <div className="space-y-2">
@@ -431,14 +432,14 @@ function GatewaysTab() {
           <option value="1">Sandbox (teste)</option>
           <option value="0">Produção</option>
         </select>
-        <button onClick={save} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition">Salvar e testar</button>
+        <button onClick={save} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Salvar e testar</button>
       </div>
       <div className="space-y-2">
         {gateways.map((g) => (
           <div key={g.id} className="flex items-center justify-between rounded-lg border border-line bg-fg/5 px-3 py-2 text-sm">
             <span className="font-semibold capitalize">{g.provider}</span>
             <span className="text-xs text-muted">{g.sandbox ? 'sandbox' : 'produção'} · {g.enabled ? 'habilitado' : 'desabilitado'}</span>
-            <button onClick={() => test(g.id)} disabled={testing === g.id} className="text-xs text-indigo-400 hover:text-indigo-300 transition">
+            <button onClick={() => test(g.id)} disabled={testing === g.id} className="text-xs text-accent-400 hover:text-accent-300 transition">
               {testing === g.id ? 'Testando…' : 'Testar conexão'}
             </button>
           </div>
@@ -487,7 +488,7 @@ function PixelsTab() {
         Ativar pixel TikTok
       </label>
       {msg && <p className="text-xs text-emerald-400 mb-2">{msg}</p>}
-      <button onClick={save} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition">Salvar pixels</button>
+      <button onClick={save} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Salvar pixels</button>
     </Section>
   )
 }
@@ -527,7 +528,7 @@ function LogsTab() {
         {logs.map((l) => (
           <div key={String(l.id)} className="flex gap-2 py-1 border-b border-line last:border-0">
             <span className="text-faint">{String(l.created_at ?? '').slice(0, 19)}</span>
-            <span className="text-indigo-300">{String(l.action ?? '')}</span>
+            <span className="text-accent-300">{String(l.action ?? '')}</span>
             <span className="text-muted truncate">{String(l.user_id ?? '')}</span>
           </div>
         ))}

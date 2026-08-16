@@ -72,7 +72,7 @@ function Row({
           aria-checked={on}
           onClick={() => onChange(!on)}
           className={`relative w-10 h-6 rounded-full transition-colors ${
-            on ? 'bg-indigo-500' : 'bg-subtle-2'
+            on ? 'bg-accent-500' : 'bg-subtle-2'
           }`}
         >
           <span

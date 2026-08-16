@@ -105,7 +105,7 @@ function GoalModal({
       <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Target className="w-5 h-5 text-indigo-400" />
+            <Target className="w-5 h-5 text-accent-300" />
             <div>
               <div className="font-semibold">Configurar meta comercial</div>
               <div className="text-xs text-muted">A projeção é calculada em tempo real conforme você digita</div>
@@ -119,12 +119,12 @@ function GoalModal({
             Meta de faturamento (R$)
             <input type="number" min={0} value={form.goal_amount || ''}
               onChange={(e) => set('goal_amount', Number(e.target.value) || 0)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
           </label>
           <label className="block text-xs text-muted">
             Período (dias)
             <select value={form.period_days} onChange={(e) => set('period_days', Number(e.target.value) as 30 | 60 | 90)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500">
               <option value={30}>30 dias</option>
               <option value={60}>60 dias</option>
               <option value={90}>90 dias</option>
@@ -134,25 +134,25 @@ function GoalModal({
             Ticket médio (R$)
             <input type="number" min={0} value={form.avg_ticket || ''}
               onChange={(e) => set('avg_ticket', Number(e.target.value) || 0)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
           </label>
           <label className="block text-xs text-muted">
             Conversão reunião → venda (%)
             <input type="number" min={0} max={100} value={form.meeting_close_rate || ''}
               onChange={(e) => set('meeting_close_rate', Number(e.target.value) || 0)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
           </label>
           <label className="block text-xs text-muted sm:col-span-2">
             Leads/dia (opcional — para estimar conversões necessárias)
             <input type="number" min={0} value={form.leads_per_day ?? ''}
               onChange={(e) => set('leads_per_day', e.target.value ? Number(e.target.value) : null)}
               placeholder="Ex.: 20"
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
           </label>
         </div>
 
-        <div className="mt-5 rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold text-indigo-300 uppercase tracking-wide mb-3">
+        <div className="mt-5 rounded-xl border border-accent-500/20 bg-accent-500/5 p-4">
+          <div className="flex items-center gap-2 text-xs font-semibold text-accent-300 uppercase tracking-wide mb-3">
             <TrendingUp className="w-4 h-4" /> Projeção (calculadora)
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -304,7 +304,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
                       ? `${real.diasRestantes} dia${real.diasRestantes === 1 ? '' : 's'} restante${real.diasRestantes === 1 ? '' : 's'}`
                       : 'Período encerrado'}
                     {real.rPorDiaNecessario != null && (
-                      <> · precisa de <span className="text-indigo-300">{formatBRL(real.rPorDiaNecessario)}/dia</span></>
+                      <> · precisa de <span className="text-accent-300">{formatBRL(real.rPorDiaNecessario)}/dia</span></>
                     )}
                   </div>
                 </>
@@ -314,7 +314,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
                   <p className="text-sm text-faint mt-3 text-center">
                     Configure uma meta para acompanhar o progresso do faturamento.
                   </p>
-                  <button onClick={() => setShowGoal(true)} className="mt-4 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg px-3 py-2">
+                  <button onClick={() => setShowGoal(true)} className="mt-4 text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 rounded-lg px-3 py-2">
                     Configurar meta
                   </button>
                 </>
@@ -325,7 +325,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
           {/* Hoje */}
           <div className="mt-4">
             <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
-              <CalendarDays className="w-4 h-4 text-indigo-400" /> Hoje
+              <CalendarDays className="w-4 h-4 text-accent-300" /> Hoje
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               <Card>
@@ -350,7 +350,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
           {goal && projection && (
             <div className="mt-6">
               <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-indigo-400" /> Projeção para atingir a meta
+                <TrendingUp className="w-4 h-4 text-accent-300" /> Projeção para atingir a meta
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Card>
@@ -380,7 +380,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
           {/* Conversões reais */}
           <div className="mt-6">
             <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
-              <Coins className="w-4 h-4 text-indigo-400" /> Conversões reais
+              <Coins className="w-4 h-4 text-accent-300" /> Conversões reais
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               <Card>
@@ -410,13 +410,13 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
           {/* Funil */}
           <div className="mt-6">
             <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
-              <Users className="w-4 h-4 text-indigo-400" /> Funil de conversão
+              <Users className="w-4 h-4 text-accent-300" /> Funil de conversão
             </h2>
             <Card>
               {real.funnel.map((f, i) => {
                 const denom = real.funnel[0]?.value || 0
                 const width = denom > 0 ? (f.value / denom) * 100 : 0
-                const colors = ['bg-sky-500', 'bg-violet-500', 'bg-emerald-500', 'bg-green-500', 'bg-indigo-500']
+                const colors = ['bg-sky-500', 'bg-violet-500', 'bg-emerald-500', 'bg-green-500', 'bg-accent-500']
                 return (
                   <div key={f.label} className="flex items-center gap-3 px-1 py-2.5 border-b border-line last:border-0">
                     <span className="w-44 text-xs text-muted">{f.label}</span>
@@ -437,7 +437,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
               className="w-full flex items-center justify-between text-sm font-semibold text-secondary mb-3 hover:text-fg transition"
             >
               <span className="flex items-center gap-2">
-                <MessagesSquare className="w-4 h-4 text-indigo-400" /> Faturamento histórico vs meta
+                <MessagesSquare className="w-4 h-4 text-accent-300" /> Faturamento histórico vs meta
               </span>
               <ChevronDown className={`w-4 h-4 transition-transform ${expanded === 'historico' ? 'rotate-180' : ''}`} />
             </button>
@@ -452,7 +452,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
                         <span className="w-14 text-xs text-muted uppercase">{formatMonth(h.mes)}</span>
                         <div className="flex-1 h-6 rounded-md bg-subtle overflow-hidden relative">
                           <div
-                            className={`h-full ${goal && h.faturamento >= goal.goal_amount ? 'bg-green-500' : 'bg-indigo-500'}`}
+                            className={`h-full ${goal && h.faturamento >= goal.goal_amount ? 'bg-green-500' : 'bg-accent-500'}`}
                             style={{ width: `${maxHistorico > 0 ? (h.faturamento / maxHistorico) * 100 : 0}%` }}
                           />
                           <span className="absolute right-2 inset-y-0 flex items-center text-[11px] text-secondary font-medium">

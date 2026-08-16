@@ -115,7 +115,7 @@ function TrainingChat() {
     }
   }
 
-  const inputCls = 'w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const inputCls = 'w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500'
   const labelCls = 'block text-xs text-muted mb-1'
 
   return (
@@ -141,7 +141,7 @@ function TrainingChat() {
         </span>
         <button
           onClick={() => setPersonaOpen((v) => !v)}
-          className="ml-auto text-[11px] text-indigo-300 hover:text-indigo-200 border border-indigo-500/30 rounded-md px-2 py-0.5"
+          className="ml-auto text-[11px] text-accent-300 hover:text-accent-200 border border-accent-500/30 rounded-md px-2 py-0.5"
         >
           {personaOpen ? 'Fechar' : 'Editar persona'}
         </button>
@@ -237,7 +237,7 @@ function FlowTest() {
     }
   }
 
-  const inputCls = 'w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const inputCls = 'w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500'
   const labelCls = 'block text-xs text-muted mb-1'
 
   return (
@@ -308,7 +308,7 @@ function FlowTest() {
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
                     <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Etapa</div>
-                    <div className="text-sm text-indigo-300">{result.etapa}</div>
+                    <div className="text-sm text-accent-300">{result.etapa}</div>
                   </div>
                   <div>
                     <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Próxima etapa</div>
@@ -394,7 +394,7 @@ export function AICenter() {
             Importe conversas reais do WhatsApp, veja os aprendizados extraídos e controle o que entra no contexto comercial da IA.
           </div>
         </div>
-        <span className="ml-auto text-indigo-300 text-xs font-semibold shrink-0">Abrir →</span>
+        <span className="ml-auto text-accent-300 text-xs font-semibold shrink-0">Abrir →</span>
       </Link>
     </div>
   )

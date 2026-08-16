@@ -338,10 +338,10 @@ const data = await r.json()
 
   const filteredGroups = groups.filter((g) => g.name.toLowerCase().includes(groupSearch.toLowerCase()))
 
-  const input = 'w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const input = 'w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500'
   const label = 'block text-xs text-muted mb-1'
-  const btn = 'px-3 py-2 text-sm rounded-lg font-medium transition'
-  const btnPrimary = `${btn} bg-indigo-600 hover:bg-indigo-500 text-white`
+  const btn = 'px-3 py-2 text-sm rounded-xl font-medium transition'
+  const btnPrimary = `${btn} bg-accent-600 hover:bg-accent-500 text-white`
   const btnGhost = `${btn} bg-subtle hover:bg-subtle-2 text-secondary`
   const btnDanger = `${btn} bg-red-600/20 hover:bg-red-600/40 text-red-300`
 
@@ -438,7 +438,7 @@ const data = await r.json()
                   )}
                   {connecting && !qr && (
                     <div className="flex items-center justify-center py-4">
-                      <div className="animate-spin w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full" />
+                      <div className="animate-spin w-8 h-8 border-2 border-accent-500 border-t-transparent rounded-full" />
                       <span className="ml-3 text-sm text-muted">Gerando QR Code…</span>
                     </div>
                   )}
@@ -566,7 +566,7 @@ const data = await r.json()
                 <button
                   type="button"
                   onClick={() => toggleSetting(key, !settings[key])}
-                  className={`relative w-11 h-6 rounded-full transition ${settings[key] ? 'bg-indigo-500' : 'bg-subtle-2'}`}
+                  className={`relative w-11 h-6 rounded-full transition ${settings[key] ? 'bg-accent-600' : 'bg-subtle-2'}`}
                 >
                   <span
                     className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${settings[key] ? 'left-5' : 'left-0.5'}`}

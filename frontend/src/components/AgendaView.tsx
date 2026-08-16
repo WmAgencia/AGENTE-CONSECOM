@@ -295,7 +295,7 @@ const btnPrimary =
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-indigo-400" />
+            <CalendarDays className="w-5 h-5 text-accent-300" />
             <h1 className="text-lg font-semibold">Agenda de reuniões</h1>
           </div>
           <div className="flex items-center gap-1 ml-auto">
@@ -435,7 +435,7 @@ const btnPrimary =
             {/* Configuração global */}
             <div className={panel}>
               <div className="flex items-center gap-2 mb-3">
-                <Clock className="w-4 h-4 text-indigo-400" />
+                <Clock className="w-4 h-4 text-accent-300" />
                 <div className="text-sm font-medium">Configuração</div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -498,8 +498,8 @@ const btnPrimary =
                         onClick={() => toggleDay(day)}
                         className={`w-5 h-5 rounded-md border flex items-center justify-center transition ${
                           slot
-                            ? 'bg-indigo-600 border-indigo-500 text-white'
-                            : 'border-line-strong text-transparent hover:border-indigo-400'
+                            ? 'bg-accent-600 border-accent-500 text-white'
+                            : 'border-line-strong text-transparent hover:border-accent-400'
                         }`}
                         aria-label={slot ? `Desativar ${label}` : `Ativar ${label}`}
                       >

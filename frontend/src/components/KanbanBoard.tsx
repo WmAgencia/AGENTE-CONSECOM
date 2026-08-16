@@ -301,7 +301,7 @@ export function KanbanBoard({
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Buscar por nome ou telefone…"
-                className="w-56 bg-field border border-line-2 rounded-xl pl-3 pr-7 py-1.5 text-sm text-fg outline-none focus:border-indigo-500 placeholder:text-faint"
+                className="w-56 bg-field border border-line-2 rounded-xl pl-3 pr-7 py-1.5 text-sm text-fg outline-none focus:border-accent-500 placeholder:text-faint"
               />
               {searchInput && (
                 <button
@@ -317,7 +317,7 @@ export function KanbanBoard({
           <label className="text-xs text-muted">
             Filtrar por campanha
             <select value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)}
-              className="ml-2 bg-field border border-line-2 rounded-xl px-2 py-1.5 text-sm text-fg outline-none focus:border-indigo-500">
+              className="ml-2 bg-field border border-line-2 rounded-xl px-2 py-1.5 text-sm text-fg outline-none focus:border-accent-500">
               <option value="all">Todos</option>
               <option value={NO_CAMPAIGN}>Sem campanha</option>
               {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -338,11 +338,11 @@ export function KanbanBoard({
                 <button
                   key={cid ?? NO_CAMPAIGN}
                   onClick={() => setCampaignFilter(cid ?? NO_CAMPAIGN)}
-                  className="text-left rounded-xl border border-line bg-subtle hover:border-indigo-500/40 hover:bg-subtle-2 transition p-4 group"
+                  className="text-left rounded-xl border border-line bg-subtle hover:border-accent-500/40 hover:bg-subtle-2 transition p-4 group"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-semibold text-sm truncate group-hover:text-indigo-200">{name}</div>
+                      <div className="font-semibold text-sm truncate group-hover:text-accent-200">{name}</div>
                       {campaign?.description && (
                         <div className="text-[11px] text-faint truncate mt-0.5">{campaign.description}</div>
                       )}
@@ -485,7 +485,7 @@ export function LeadCard({ lead, engagement, followUps, onAction, onChat, onMeet
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{lead.name || 'Sem nome'}</div>
-          {lead.niche && <div className="text-[11px] text-indigo-300/80 truncate">{lead.niche}</div>}
+          {lead.niche && <div className="text-[11px] text-accent-300/80 truncate">{lead.niche}</div>}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <button onClick={(e) => { e.stopPropagation(); onAction() }} title="Abrir conversa (WhatsApp)"
@@ -553,7 +553,7 @@ export function LeadCard({ lead, engagement, followUps, onAction, onChat, onMeet
           </button>
         )}
         {lead.status !== 'reuniao_marcada' && lead.status !== 'fechado' && lead.status !== 'nao_fechado' && (
-          <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-subtle hover:bg-subtle-2 text-indigo-300">
+          <button onClick={onMeeting} className="flex-1 text-[11px] px-2 py-1.5 rounded-md bg-subtle hover:bg-subtle-2 text-accent-300">
             Marcar reunião
           </button>
         )}
@@ -608,7 +608,7 @@ function MeetingModal({ lead, onClose, onSave }: {
         {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Cancelar</button>
-          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium">
+          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium">
             {busy ? 'Salvando...' : 'Salvar'}
           </button>
         </div>
@@ -676,18 +676,18 @@ function CloseModal({ lead, onClose, onSave }: {
             Valor da venda (R$)
             <input value={valor} onChange={(e) => setValor(e.target.value)}
               inputMode="decimal" placeholder="Ex.: 1500"
-              className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500" />
           </label>
         )}
         <label className="block text-xs text-muted mb-3">
           Motivo
           <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: fora do orçamento, já tem fornecedor..."
-            className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+            className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500" />
         </label>
         {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Cancelar</button>
-          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium">
+          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium">
             {busy ? 'Salvando...' : 'Concluir'}
           </button>
         </div>

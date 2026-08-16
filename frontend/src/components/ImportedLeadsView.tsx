@@ -94,7 +94,7 @@ export function ImportedLeadsView({
             {campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
           </select>
           <input value={newCampaign} onChange={(e) => { setNewCampaign(e.target.value); setCampaignId('') }} placeholder="ou criar nova campanha" className="bg-field border border-line-2 rounded-lg px-3 py-2 text-sm" />
-          <button onClick={() => void distribute()} disabled={busy || selected.size === 0} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-sm font-medium">
+          <button onClick={() => void distribute()} disabled={busy || selected.size === 0} className="px-4 py-2 rounded-lg bg-accent-600 hover:bg-accent-500 disabled:opacity-40 text-sm font-medium">
             {busy ? 'Distribuindo...' : `Adicionar à campanha (${selected.size})`}
           </button>
         </div>
@@ -117,13 +117,13 @@ export function ImportedLeadsView({
             <div className="px-4 py-3 border-b border-line text-sm font-medium flex items-center justify-between">
               <span>{imported.length} lead(s) importado(s)</span>
               <span className="flex items-center gap-2">
-                <button type="button" onClick={() => setSelected(new Set(imported.map((l) => l.id)))} disabled={imported.length === 0} className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed">Selecionar todos ({imported.length})</button>
+                <button type="button" onClick={() => setSelected(new Set(imported.map((l) => l.id)))} disabled={imported.length === 0} className="text-xs text-accent-400 hover:text-accent-300 disabled:opacity-40 disabled:cursor-not-allowed">Selecionar todos ({imported.length})</button>
                 {selected.size > 0 && <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-muted hover:text-faint">Limpar</button>}
               </span>
             </div>
             {imported.map((lead) => (
               <label key={lead.id} className="flex items-center gap-3 px-4 py-3 border-b border-line last:border-0 hover:bg-subtle cursor-pointer">
-                <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggleLead(lead.id)} className="accent-indigo-500" />
+                <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggleLead(lead.id)} className="accent-emerald-600" />
                 <span className="flex-1 min-w-0"><span className="block text-sm truncate">{lead.name ?? 'Sem nome'}</span><span className="block text-xs text-faint">{lead.phone ?? 'Sem telefone'} · {lead.city ?? ''}</span></span>
                 <span className="text-xs text-muted">{lead.source_detail ?? 'Extensão'}</span>
               </label>

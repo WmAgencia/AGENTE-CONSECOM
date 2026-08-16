@@ -305,7 +305,7 @@ async function fireCampaign(c: Campaign) {
               return (
                 <div key={section.key}>
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-muted mb-3 flex items-center gap-2">
-                    <Badge color={section.key === 'em_andamento' ? 'green' : section.key === 'prontas' ? 'amber' : section.key === 'agendadas' ? 'indigo' : 'sky'} size="sm">
+                    <Badge color={section.key === 'em_andamento' ? 'green' : section.key === 'prontas' ? 'amber' : section.key === 'agendadas' ? 'accent' : 'sky'} size="sm">
                       {SECTION_EMOJI[section.key]} {section.title}
                     </Badge>
                     <span className="text-[11px] font-normal text-faint">({items.length})</span>
@@ -333,7 +333,7 @@ async function fireCampaign(c: Campaign) {
                         }}
                         className={`transition-shadow rounded-xl ${
                           dragOver === c.id && dragId && dragId !== c.id
-                            ? 'ring-2 ring-indigo-400 ring-offset-1 ring-offset-panel'
+                            ? 'ring-2 ring-accent-400 ring-offset-1 ring-offset-panel'
                             : ''
                         } ${dragId === c.id ? 'opacity-50' : ''}`}
                         title="Arraste para reordenar dentro desta seção"
@@ -409,7 +409,7 @@ async function fireCampaign(c: Campaign) {
                   <div className={`text-[11px] px-1 flex items-center justify-between ${cell.inMonth ? 'text-fg' : 'text-faint'}`}>
                     <span>{cell.day}</span>
                     {dayItems.length > 0 && (
-                      <span className="text-[9px] px-1 rounded-full bg-indigo-500/15 text-indigo-300">
+                      <span className="text-[9px] px-1 rounded-full bg-accent-600/20 text-accent-300">
                         {dayItems.length}
                       </span>
                     )}
@@ -428,7 +428,7 @@ async function fireCampaign(c: Campaign) {
                             ? 'bg-emerald-500/20 text-emerald-300'
                             : it.status === 'pausada'
                               ? 'bg-amber-500/20 text-amber-300'
-                              : 'bg-indigo-500/20 text-indigo-300'
+                              : 'bg-accent-600/20 text-accent-300'
                         }`}
                       >
                         {saLocalTime(Date.parse(it.startIso))} {it.name}
@@ -489,7 +489,7 @@ async function fireCampaign(c: Campaign) {
                           <td className="px-4 py-2.5 text-right">
                             <button
                               onClick={() => setQueueFor(c)}
-                              className="text-[11px] px-2.5 py-1 rounded-xl bg-accent-600/20 text-indigo-300 hover:bg-accent-600/30"
+                              className="text-[11px] px-2.5 py-1 rounded-xl bg-accent-600/20 text-accent-300 hover:bg-accent-600/30"
                             >
                               Fila de leads ({rs.length})
                             </button>
@@ -908,7 +908,7 @@ function QueueModal({
           <button onClick={() => void onChanged()} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">
             Atualizar
           </button>
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-accent-600 hover:bg-indigo-500 rounded-xl font-medium">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-accent-600 hover:bg-accent-500 rounded-xl font-medium">
             Fechar
           </button>
         </div>
@@ -1056,7 +1056,7 @@ function ScheduleModal({
                 Próximo início livre:{' '}
                 <button
                   onClick={() => setLocal(`${saLocalDay(Date.parse(info.nextAvailableStart))}T${saLocalTime(Date.parse(info.nextAvailableStart))}`)}
-                  className="text-indigo-300 hover:underline"
+                  className="text-accent-300 hover:underline"
                 >
                   {humanDateTime(Date.parse(info.nextAvailableStart))}
                 </button>
@@ -1096,7 +1096,7 @@ function ScheduleModal({
             <button
               onClick={() => void submit()}
               disabled={saving || !campaignId}
-              className="px-4 py-2 text-sm bg-accent-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium"
+              className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium"
             >
               {saving ? 'Agendando...' : 'Agendar'}
             </button>
@@ -1109,7 +1109,7 @@ function ScheduleModal({
 
 const CAMPAIGN_STATUS: Record<Campaign['status'], { label: string; cls: string }> = {
   pronta: { label: 'Pronta', cls: 'bg-subtle text-secondary' },
-  agendada: { label: 'Agendada', cls: 'bg-indigo-500/15 text-indigo-300' },
+  agendada: { label: 'Agendada', cls: 'bg-accent-600/20 text-accent-300' },
   em_progresso: { label: 'Em andamento', cls: 'bg-emerald-500/15 text-emerald-300' },
   waiting_connection: { label: 'Aguardando conexão', cls: 'bg-orange-500/15 text-orange-300' },
   pausada: { label: 'Pausada', cls: 'bg-amber-500/15 text-amber-300' },
@@ -1118,7 +1118,7 @@ const CAMPAIGN_STATUS: Record<Campaign['status'], { label: string; cls: string }
 }
 
 function CampaignStatusBadge({ status }: { status: Campaign['status'] }) {
-  const color = status === 'pronta' ? 'green' : status === 'agendada' ? 'indigo' : status === 'em_progresso' || status === 'waiting_connection' ? 'amber' : status === 'pausada' ? 'orange' : status === 'finalizada' ? 'sky' : 'gray'
+  const color = status === 'pronta' ? 'green' : status === 'agendada' ? 'accent' : status === 'em_progresso' || status === 'waiting_connection' ? 'amber' : status === 'pausada' ? 'orange' : status === 'finalizada' ? 'sky' : 'gray'
   const label = CAMPAIGN_STATUS[status]?.label ?? status
   return (
     <Badge color={color} size="sm">{label}</Badge>
@@ -1129,7 +1129,7 @@ function CampaignStatusBadge({ status }: { status: Campaign['status'] }) {
 function CampaignStatusBanner({ status, scheduledAt }: { status: Campaign['status']; scheduledAt?: string | null }) {
   if (status === 'agendada') {
     return (
-      <div className="mb-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 text-sm text-indigo-300 flex items-center gap-2">
+      <div className="mb-3 rounded-xl bg-accent-600/10 border border-accent-500/20 px-3 py-2 text-sm text-accent-300 flex items-center gap-2">
         🕐 Campanha agendada para {scheduledAt ? humanDateTime(Date.parse(scheduledAt)) : '—'}.
         O disparo começa automaticamente no horário.
       </div>

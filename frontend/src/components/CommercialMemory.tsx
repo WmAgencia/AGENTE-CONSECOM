@@ -48,7 +48,7 @@ interface FileState {
 
 const STATUS_BADGE: Record<LearningStatus, { label: string; cls: string }> = {
   identificado: { label: 'Identificado', cls: 'text-secondary bg-subtle border-line-2' },
-  validado: { label: 'Validado', cls: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/30' },
+  validado: { label: 'Validado', cls: 'text-accent-300 bg-accent-600/10 border-accent-500/30' },
   ativo: { label: 'Ativo', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
   inativo: { label: 'Inativo', cls: 'text-muted bg-subtle border-line-2' },
 }
@@ -57,7 +57,7 @@ const CATEGORY_CHIP: Record<string, string> = {
   communication_style: 'text-teal-300 bg-teal-500/10 border-teal-500/30',
   opening_patterns: 'text-sky-300 bg-sky-500/10 border-sky-500/30',
   discovery_questions: 'text-violet-300 bg-violet-500/10 border-violet-500/30',
-  value_proposition: 'text-indigo-300 bg-indigo-500/10 border-indigo-500/30',
+  value_proposition: 'text-accent-300 bg-accent-600/10 border-accent-500/30',
   objection_handling: 'text-amber-300 bg-amber-500/10 border-amber-500/30',
   meeting_transition: 'text-fuchsia-300 bg-fuchsia-500/10 border-fuchsia-500/30',
   follow_up_patterns: 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30',
@@ -432,7 +432,7 @@ export function CommercialMemory() {
       {/* ===== Header ===== */}
       <div className="px-5 py-4 border-b border-line flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2.5">
-          <Brain className="w-5 h-5 text-indigo-300" />
+          <Brain className="w-5 h-5 text-accent-300" />
           <div>
             <div className="text-sm font-semibold">Mem├│ria Comercial da IA</div>
             <div className="text-[11px] text-faint">
@@ -480,7 +480,7 @@ export function CommercialMemory() {
             { label: 'Conversas importadas', value: dash?.conversationsImported ?? 0, accent: 'text-fg' },
             { label: 'Processadas', value: dash?.conversationsProcessed ?? 0, accent: 'text-emerald-300' },
             { label: 'Em processamento', value: inProcessing, accent: 'text-amber-300' },
-            { label: 'Aprendizados', value: dash?.learnings ?? 0, accent: 'text-indigo-300' },
+            { label: 'Aprendizados', value: dash?.learnings ?? 0, accent: 'text-accent-300' },
             { label: 'Ativos/validados', value: (dash?.statusCounts.ativo ?? 0) + (dash?.statusCounts.validado ?? 0), accent: 'text-emerald-300' },
             { label: 'Pendentes', value: dash?.statusCounts.identificado ?? 0, accent: 'text-amber-300' },
             { label: 'Padr├Áes extra├¡dos', value: dash?.patterns ?? 0, accent: 'text-sky-300' },
@@ -509,7 +509,7 @@ export function CommercialMemory() {
                 .slice(0, 7)
                 .map((l) => (
                   <li key={l.id} className="text-xs text-secondary flex gap-2">
-                    <ArrowRight className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
+                    <ArrowRight className="w-3.5 h-3.5 text-accent-300 shrink-0 mt-0.5" />
                     <span>
                       <span className="font-semibold text-fg">[{categoryLabel(l.category)}]</span>{' '}
                       {l.content}
@@ -543,7 +543,7 @@ export function CommercialMemory() {
                 <Icon className="w-3.5 h-3.5" />
                 {t.label}
                 {t.key === 'aprendizados' && learnings.length > 0 && (
-                  <span className="ml-0.5 text-[10px] px-1.5 rounded-full bg-indigo-500/20 text-indigo-300">{learnings.length}</span>
+                  <span className="ml-0.5 text-[10px] px-1.5 rounded-full bg-accent-600/20 text-accent-300">{learnings.length}</span>
                 )}
               </button>
             )
@@ -606,7 +606,7 @@ export function CommercialMemory() {
               const st = STATUS_TEXT[c.status] ?? STATUS_TEXT.imported
               return (
                 <div key={c.id} className="rounded-xl border border-line bg-subtle-2 px-4 py-3 flex flex-wrap items-center gap-3">
-                  <MessageSquareText className="w-4 h-4 text-indigo-300 shrink-0" />
+                  <MessageSquareText className="w-4 h-4 text-accent-300 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm text-fg font-medium truncate">
@@ -668,7 +668,7 @@ export function CommercialMemory() {
                     onClick={() => setFilter(f.key)}
                     className={`px-2.5 py-1 rounded-full text-[11px] border transition ${
                       filter === f.key
-                        ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
+                        ? 'bg-accent-600/20 text-accent-200 border-accent-500/40'
                         : 'text-muted border-line-2 hover:text-fg'
                     }`}
                   >
@@ -747,7 +747,7 @@ export function CommercialMemory() {
                               return next
                             })
                           }
-                          className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-faint hover:text-indigo-300 transition"
+                          className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-faint hover:text-accent-300 transition"
                         >
                           <Eye className="w-3 h-3" />
                           {evidence.length === 1 ? '1 evid├¬ncia' : `${evidence.length} evid├¬ncias`}
@@ -817,7 +817,7 @@ export function CommercialMemory() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <div className="font-semibold flex items-center gap-2">
-                  <Upload className="w-4 h-4 text-indigo-300" />
+                  <Upload className="w-4 h-4 text-accent-300" />
                   Importar conversas
                 </div>
                 <div className="text-xs text-muted mt-0.5">
@@ -858,7 +858,7 @@ export function CommercialMemory() {
               }}
               onClick={() => fileInputRef.current?.click()}
               className={`border-2 border-dashed rounded-xl px-6 py-8 flex flex-col items-center justify-center text-center transition cursor-pointer ${
-                dragOver ? 'border-indigo-400 bg-indigo-500/5' : 'border-line-2 hover:border-line-strong'
+                dragOver ? 'border-accent-400 bg-accent-500/5' : 'border-line-2 hover:border-line-strong'
               }`}
             >
               <FileUp className="w-8 h-8 text-faint mb-2" />

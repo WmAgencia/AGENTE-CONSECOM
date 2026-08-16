@@ -304,7 +304,7 @@ export function SequenceEditor({
             {draft.uploading && (
               <div className="h-1.5 rounded-full bg-subtle-2 overflow-hidden">
                 <div
-                  className="h-full bg-indigo-500 transition-all"
+                  className="h-full bg-accent-500 transition-all"
                   style={{ width: `${draft.progress}%` }}
                 />
               </div>

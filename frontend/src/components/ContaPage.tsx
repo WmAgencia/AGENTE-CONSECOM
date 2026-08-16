@@ -172,9 +172,9 @@ export function ContaPage() {
         <section className="rounded-xl border border-line bg-subtle p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold">Plano atual</h2>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300">
-              {plan ? plan.name : 'Sem plano'}
-            </span>
+<span className="text-xs px-2 py-0.5 rounded-full bg-accent-600/20 text-accent-300">
+            {plan ? plan.name : 'Sem plano'}
+          </span>
           </div>
           {plan ? (
             <>
@@ -184,7 +184,7 @@ export function ContaPage() {
                 <span>{usedPct}%</span>
               </div>
               <div className="h-2 rounded-full bg-subtle-2 overflow-hidden">
-                <div className="h-full bg-indigo-500 transition-all" style={{ width: `${usedPct}%` }} />
+                <div className="h-full bg-accent-500 transition-all" style={{ width: `${usedPct}%` }} />
               </div>
               {me.usage.leads_remaining <= 0 && me.usage.lead_limit > 0 && (
                 <p className="text-xs text-red-400 mt-2">Você atingiu o limite de leads do plano. Assine um novo plano para continuar.</p>
@@ -220,7 +220,7 @@ export function ContaPage() {
               <div key={p.id} className="rounded-lg border border-line bg-fg/5 p-4 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold">{p.name}</span>
-                  <span className="text-sm text-indigo-300">{formatBRL(p.price)}</span>
+                  <span className="text-sm text-accent-300">{formatBRL(p.price)}</span>
                 </div>
                 {p.description && <p className="text-xs text-muted">{p.description}</p>}
                 <p className="text-xs text-muted">{p.lead_limit} leads</p>

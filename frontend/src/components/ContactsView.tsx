@@ -138,7 +138,7 @@ export function ContactsView() {
         </div>
 
         <label
-          className="block border-2 border-dashed border-line-2 hover:border-indigo-500/50 rounded-xl px-6 py-8 text-center cursor-pointer transition"
+          className="block border-2 border-dashed border-line-2 hover:border-accent-500/50 rounded-xl px-6 py-8 text-center cursor-pointer transition"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault()
@@ -177,7 +177,7 @@ export function ContactsView() {
       {parsed && stats && (
         <div className="rounded-xl border border-line bg-subtle p-5">
           <div className="flex items-center gap-2 mb-4">
-            <Table className="w-4 h-4 text-indigo-300" />
+            <Table className="w-4 h-4 text-accent-300" />
             <span className="text-sm font-semibold">Validação</span>
             <span className="text-xs text-faint ml-auto font-mono">{fileName}</span>
           </div>
@@ -259,7 +259,7 @@ export function ContactsView() {
             <ChevronLeft className="w-3.5 h-3.5" /> Voltar para listas
           </Button>
           <div className="flex items-center gap-2 mb-4">
-            <ContactRound className="w-4 h-4 text-indigo-300" />
+            <ContactRound className="w-4 h-4 text-accent-300" />
             <span className="text-sm font-semibold">{activeList.name}</span>
             <span className="text-xs text-faint">{activeList.count} contatos</span>
           </div>
@@ -306,7 +306,7 @@ export function ContactsView() {
       ) : (
         <div className="rounded-xl border border-line bg-subtle p-5">
           <div className="flex items-center gap-2 mb-4">
-            <Users className="w-4 h-4 text-indigo-300" />
+            <Users className="w-4 h-4 text-accent-300" />
             <span className="text-sm font-semibold">Listas importadas</span>
             {listsState.kind === 'loading' && <Loader2 className="w-4 h-4 animate-spin text-faint ml-auto" />}
           </div>
@@ -360,7 +360,7 @@ function ErrorBlock({ onRetry, message }: { onRetry: () => void; message: string
       <div className="text-xs text-faint">{message}</div>
       <button
         onClick={onRetry}
-        className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-xl font-medium inline-flex items-center gap-2 transition"
+        className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 rounded-xl font-medium inline-flex items-center gap-2 transition"
       >
         <RefreshCcw className="w-3.5 h-3.5" /> Tentar novamente
       </button>

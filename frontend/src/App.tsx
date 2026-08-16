@@ -150,7 +150,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
               onClick={() => { navigate('/master'); setSidebarOpen(false) }}
               className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${
                 location.pathname.startsWith('/master')
-                  ? 'bg-indigo-500/15 text-fg'
+                  ? 'bg-accent-500/15 text-fg'
                   : 'text-muted hover:bg-subtle hover:text-fg'
               }`}
             >

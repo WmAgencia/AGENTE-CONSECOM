@@ -263,7 +263,7 @@ export function ManualProspection() {
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
         <div className="flex items-center gap-3">
-          <UserPlus className="w-5 h-5 text-indigo-400" />
+          <UserPlus className="w-5 h-5 text-accent-300" />
           <h1 className="text-lg font-semibold">Prospecção</h1>
         </div>
 
@@ -403,13 +403,13 @@ export function ManualProspection() {
               }
             }}
             placeholder="https://exemplo.com.br/contatos"
-            className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+            className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500"
           />
           <div className="flex items-center gap-3">
             <button
               onClick={handleProspect}
               disabled={urlBusy || !url.trim()}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium flex items-center gap-2"
+              className="px-4 py-2 bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-lg text-sm font-medium flex items-center gap-2"
             >
               {urlBusy ? (
                 <>
@@ -496,7 +496,7 @@ export function ManualProspection() {
                 <span>Selecionar todos ({previewSelectedCount}/{preview.length})</span>
                 <button
                   onClick={() => setPreview((prev) => prev?.map((c) => ({ ...c, selected: true })) ?? null)}
-                  className="text-xs text-indigo-400 hover:text-indigo-300"
+                  className="text-xs text-accent-300 hover:text-accent-200"
                 >
                   Todos
                 </button>
@@ -507,7 +507,7 @@ export function ManualProspection() {
                     type="checkbox"
                     checked={c.selected}
                     onChange={() => togglePreview(c.index)}
-                    className="accent-indigo-500"
+                    className="accent-emerald-600"
                   />
                   <div className="flex-1 min-w-0">
                     {editing === c.index ? (
@@ -567,7 +567,7 @@ export function ManualProspection() {
             <button
               onClick={importSelected}
               disabled={importing || previewSelectedCount === 0}
-              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-sm font-medium"
+              className="px-4 py-2 rounded-lg bg-accent-600 hover:bg-accent-500 disabled:opacity-40 text-sm font-medium"
             >
               {importing ? (
                 <>
