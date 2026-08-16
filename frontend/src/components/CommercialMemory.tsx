@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Brain,
@@ -22,6 +22,7 @@ import {
   Search,
   Eye,
 } from 'lucide-react'
+import { Button } from './ui'
 import {
   memoryApi,
   categoryLabel,
@@ -67,14 +68,14 @@ const CATEGORY_CHIP: Record<string, string> = {
 }
 
 const OUTCOME_LABEL: Record<string, string> = {
-  reuniao: 'Conduzida a reunião',
+  reuniao: 'Conduzida a reuni├úo',
   sem_interesse: 'Sem interesse',
   interesse: 'Interesse',
 }
 
 const STATUS_TEXT: Record<string, { label: string; cls: string }> = {
   imported: { label: 'Importada', cls: 'text-secondary bg-subtle border-line-2' },
-  processing: { label: 'Processando…', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
+  processing: { label: 'ProcessandoÔÇª', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
   processed: { label: 'Processada', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
   failed: { label: 'Falhou', cls: 'text-rose-300 bg-rose-500/10 border-rose-500/30' },
 }
@@ -87,7 +88,7 @@ const ORIGIN_LABEL: Record<string, string> = {
 }
 
 const DIRECTION_LABEL: Record<string, string> = {
-  saida: 'saída',
+  saida: 'sa├¡da',
   entrada: 'entrada',
   misto: 'misto',
 }
@@ -199,7 +200,7 @@ export function CommercialMemory() {
           setLearnings(await memoryApi.learnings())
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Falha ao carregar memória comercial')
+        setError(err instanceof Error ? err.message : 'Falha ao carregar mem├│ria comercial')
       } finally {
         if (!opts?.silent) setLoading(false)
       }
@@ -330,7 +331,7 @@ export function CommercialMemory() {
   async function saveLearning() {
     const content = form.content.trim()
     if (!content) {
-      setModalError('Escreva o aprendizado (ex.: "Sempre entender o problema antes de apresentar preço").')
+      setModalError('Escreva o aprendizado (ex.: "Sempre entender o problema antes de apresentar pre├ºo").')
       return
     }
     setSaving(true)
@@ -433,41 +434,35 @@ export function CommercialMemory() {
         <div className="flex items-center gap-2.5">
           <Brain className="w-5 h-5 text-indigo-300" />
           <div>
-            <div className="text-sm font-semibold">Memória Comercial da IA</div>
+            <div className="text-sm font-semibold">Mem├│ria Comercial da IA</div>
             <div className="text-[11px] text-faint">
-              Importe conversas reais e transforme em aprendizados que orientam a IA — sem alterar a persona.
+              Importe conversas reais e transforme em aprendizados que orientam a IA ÔÇö sem alterar a persona.
             </div>
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {processingActive && (
             <span className="flex items-center gap-1.5 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-full px-2.5 py-1">
-              <Loader2 className="w-3 h-3 animate-spin" /> Processando…
+              <Loader2 className="w-3 h-3 animate-spin" /> ProcessandoÔÇª
             </span>
           )}
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => void refresh()}
             disabled={loading}
-            className="p-2 rounded-lg text-muted hover:text-fg hover:bg-subtle disabled:opacity-40 transition"
             title="Atualizar"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition"
-          >
+          </Button>
+          <Button variant="primary" onClick={openCreate} size="sm">
             <Plus className="w-3.5 h-3.5" />
             Adicionar aprendizado
-          </button>
-          <button
-            onClick={openImport}
-            disabled={uploading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white disabled:opacity-50 transition"
-          >
+          </Button>
+          <Button variant="primary" onClick={openImport} disabled={uploading} loading={uploading} size="sm">
             <Upload className="w-3.5 h-3.5" />
             Importar conversas
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -479,7 +474,7 @@ export function CommercialMemory() {
       )}
 
       <div className="p-5 space-y-5">
-        {/* ===== Stats (números reais do dashboard) ===== */}
+        {/* ===== Stats (n├║meros reais do dashboard) ===== */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { label: 'Conversas importadas', value: dash?.conversationsImported ?? 0, accent: 'text-fg' },
@@ -488,10 +483,10 @@ export function CommercialMemory() {
             { label: 'Aprendizados', value: dash?.learnings ?? 0, accent: 'text-indigo-300' },
             { label: 'Ativos/validados', value: (dash?.statusCounts.ativo ?? 0) + (dash?.statusCounts.validado ?? 0), accent: 'text-emerald-300' },
             { label: 'Pendentes', value: dash?.statusCounts.identificado ?? 0, accent: 'text-amber-300' },
-            { label: 'Padrões extraídos', value: dash?.patterns ?? 0, accent: 'text-sky-300' },
-            { label: 'Objeções mapeadas', value: dash?.objections ?? 0, accent: 'text-orange-300' },
-            { label: 'Estratégias de reunião', value: dash?.meetingStrategies ?? 0, accent: 'text-fuchsia-300' },
-            { label: 'Lotes de importação', value: dash?.totalImports ?? 0, accent: 'text-fg' },
+            { label: 'Padr├Áes extra├¡dos', value: dash?.patterns ?? 0, accent: 'text-sky-300' },
+            { label: 'Obje├º├Áes mapeadas', value: dash?.objections ?? 0, accent: 'text-orange-300' },
+            { label: 'Estrat├®gias de reuni├úo', value: dash?.meetingStrategies ?? 0, accent: 'text-fuchsia-300' },
+            { label: 'Lotes de importa├º├úo', value: dash?.totalImports ?? 0, accent: 'text-fg' },
           ].map((s) => (
             <div key={s.label} className="rounded-lg border border-line bg-subtle-2 px-3 py-2.5">
               <div className={`text-lg font-semibold leading-tight ${s.accent}`}>{s.value}</div>
@@ -523,7 +518,7 @@ export function CommercialMemory() {
                 ))}
             </ul>
             <p className="text-[10px] text-faint mt-2">
-              Padrões validados são injetados no contexto comercial da IA ({learnings.length} no total).
+              Padr├Áes validados s├úo injetados no contexto comercial da IA ({learnings.length} no total).
             </p>
           </div>
         )}
@@ -559,7 +554,7 @@ export function CommercialMemory() {
         {tab === 'lotes' && (
           <div className="space-y-2">
             {imports.length === 0 && (
-              <div className="text-xs text-faint py-6 text-center">Nenhum lote importado ainda. Clique em “Importar conversas”.</div>
+              <div className="text-xs text-faint py-6 text-center">Nenhum lote importado ainda. Clique em ÔÇ£Importar conversasÔÇØ.</div>
             )}
             {imports.map((imp) => (
               <div key={imp.id} className="rounded-lg border border-line bg-subtle-2 px-4 py-3 flex flex-wrap items-center gap-3">
@@ -576,7 +571,7 @@ export function CommercialMemory() {
                     )}
                     {imp.status === 'done' && (
                       <span className="flex items-center gap-1 text-[10px] text-emerald-300">
-                        <CheckCircle2 className="w-3 h-3" /> concluído
+                        <CheckCircle2 className="w-3 h-3" /> conclu├¡do
                       </span>
                     )}
                     {imp.status === 'failed' && (
@@ -586,17 +581,18 @@ export function CommercialMemory() {
                     )}
                   </div>
                   <div className="text-[11px] text-faint mt-0.5">
-                    {imp.conversations_found} conversas · {imp.learnings_generated} aprendizados
-                    {imp.failures > 0 ? ` · ${imp.failures} falhas` : ''} · {new Date(imp.created_at).toLocaleString('pt-BR')}
+                    {imp.conversations_found} conversas ┬À {imp.learnings_generated} aprendizados
+                    {imp.failures > 0 ? ` ┬À ${imp.failures} falhas` : ''} ┬À {new Date(imp.created_at).toLocaleString('pt-BR')}
                   </div>
                 </div>
-                <button
+                <Button
+                  variant="danger"
                   onClick={() => void onDeleteImport(imp.id, imp.file_name)}
-                  className="p-2 rounded-lg text-faint hover:text-rose-300 hover:bg-rose-500/10 transition"
+                  size="sm"
                   title="Excluir lote"
                 >
                   <Trash2 className="w-4 h-4" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -624,11 +620,11 @@ export function CommercialMemory() {
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${st.cls}`}>{st.label}</span>
                     </div>
                     <div className="text-[11px] text-faint mt-0.5">
-                      {c.messages_count} mensagens · {c.direction ? (DIRECTION_LABEL[c.direction] ?? c.direction) : '—'}
-                      {c.source_file ? ` · ${c.source_file}` : ''} · {new Date(c.created_at).toLocaleString('pt-BR')}
+                      {c.messages_count} mensagens ┬À {c.direction ? (DIRECTION_LABEL[c.direction] ?? c.direction) : 'ÔÇö'}
+                      {c.source_file ? ` ┬À ${c.source_file}` : ''} ┬À {new Date(c.created_at).toLocaleString('pt-BR')}
                     </div>
                     {c.status === 'failed' && (
-                      <div className="text-[10px] text-rose-300 mt-0.5">{c.error_message ?? 'falha na análise'}</div>
+                      <div className="text-[10px] text-rose-300 mt-0.5">{c.error_message ?? 'falha na an├ílise'}</div>
                     )}
                   </div>
                   <button
@@ -661,7 +657,7 @@ export function CommercialMemory() {
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Buscar por título, conteúdo ou categoria…"
+                  placeholder="Buscar por t├¡tulo, conte├║do ou categoriaÔÇª"
                   className="bg-transparent outline-none text-xs text-fg placeholder-slate-500 w-52"
                 />
               </div>
@@ -685,7 +681,7 @@ export function CommercialMemory() {
 
             {learnings.length === 0 && (
               <div className="text-xs text-faint py-6 text-center">
-                Nenhum aprendizado ainda. Importe conversas para a IA extrair padrões ou use “+ Adicionar aprendizado”.
+                Nenhum aprendizado ainda. Importe conversas para a IA extrair padr├Áes ou use ÔÇ£+ Adicionar aprendizadoÔÇØ.
               </div>
             )}
             {filteredLearnings.length === 0 && learnings.length > 0 && (
@@ -736,7 +732,7 @@ export function CommercialMemory() {
                               : 'text-muted bg-subtle border-line-2'
                         }`}
                       >
-                        confiança {l.confidence}
+                        confian├ºa {l.confidence}
                       </span>
                     </div>
                     <p className="mt-1.5 text-sm text-fg leading-snug">{l.content}</p>
@@ -754,20 +750,20 @@ export function CommercialMemory() {
                           className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-faint hover:text-indigo-300 transition"
                         >
                           <Eye className="w-3 h-3" />
-                          {evidence.length === 1 ? '1 evidência' : `${evidence.length} evidências`}
+                          {evidence.length === 1 ? '1 evid├¬ncia' : `${evidence.length} evid├¬ncias`}
                         </button>
                         {(expanded || evidence.length <= 2) && (
                           <div className="mt-1 space-y-1">
                             {(expanded ? evidence : evidence.slice(0, 2)).map((e, i) => (
                               <div key={i} className="text-[11px] text-muted bg-subtle border border-line rounded-md px-2 py-1">
-                                “{e}”
+                                ÔÇ£{e}ÔÇØ
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
                     ) : (
-                      <div className="mt-1.5 text-[10px] text-slate-600">Evidência não disponível</div>
+                      <div className="mt-1.5 text-[10px] text-slate-600">Evid├¬ncia n├úo dispon├¡vel</div>
                     )}
                   </div>
                   <div className="flex flex-col gap-1.5 shrink-0">
@@ -792,7 +788,7 @@ export function CommercialMemory() {
                           ? 'text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10'
                           : 'text-muted border-line-2 hover:text-fg hover:bg-subtle'
                       }`}
-                      title={l.status === 'ativo' ? 'Desativar (não entra na memória)' : 'Ativar (entra na memória comercial)'}
+                      title={l.status === 'ativo' ? 'Desativar (n├úo entra na mem├│ria)' : 'Ativar (entra na mem├│ria comercial)'}
                     >
                       <Clock className="w-3 h-3" /> {l.status === 'ativo' ? 'Desativar' : 'Ativar'}
                     </button>
@@ -811,7 +807,7 @@ export function CommercialMemory() {
         )}
       </div>
 
-      {/* ===== Modal de importação ===== */}
+      {/* ===== Modal de importa├º├úo ===== */}
       {importOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !uploading && setImportOpen(false)}>
           <div
@@ -825,7 +821,7 @@ export function CommercialMemory() {
                   Importar conversas
                 </div>
                 <div className="text-xs text-muted mt-0.5">
-                  Aceita .txt (exportação do WhatsApp), .csv e .zip com vários arquivos. Até 100MB por arquivo.
+                  Aceita .txt (exporta├º├úo do WhatsApp), .csv e .zip com v├írios arquivos. At├® 100MB por arquivo.
                 </div>
               </div>
               <button
@@ -867,7 +863,7 @@ export function CommercialMemory() {
             >
               <FileUp className="w-8 h-8 text-faint mb-2" />
               <div className="text-sm text-secondary">Arraste aqui ou clique para selecionar</div>
-              <div className="text-[11px] text-faint mt-1">Você pode enviar vários arquivos de uma vez</div>
+              <div className="text-[11px] text-faint mt-1">Voc├¬ pode enviar v├írios arquivos de uma vez</div>
             </div>
 
             {fileList.length > 0 && (
@@ -880,7 +876,7 @@ export function CommercialMemory() {
                     {f.status === 'queued' && <Clock className="w-3.5 h-3.5 text-faint" />}
                     <span className="truncate text-secondary flex-1">{f.name}</span>
                     <span className="text-faint shrink-0">
-                      {f.status === 'uploading' && 'enviando…'}
+                      {f.status === 'uploading' && 'enviandoÔÇª'}
                       {f.status === 'done' && 'importado'}
                       {f.status === 'error' && (f.detail ?? 'erro')}
                     </span>
@@ -891,15 +887,15 @@ export function CommercialMemory() {
 
             <div className="mt-4 flex items-center justify-between">
               <p className="text-[10px] text-faint">
-                As conversas são analisadas em background automaticamente. Os aprendizados ficam como “Identificados” — você decide o que ativar.
+                As conversas s├úo analisadas em background automaticamente. Os aprendizados ficam como ÔÇ£IdentificadosÔÇØ ÔÇö voc├¬ decide o que ativar.
               </p>
-              <button
+<Button
                 onClick={() => !uploading && setImportOpen(false)}
                 disabled={uploading}
-                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-sm font-medium text-white transition"
+                loading={uploading}
               >
                 {uploading ? 'Importando…' : 'Concluir'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -921,7 +917,7 @@ export function CommercialMemory() {
                 <div className="text-xs text-muted mt-0.5">
                   {modal.mode === 'edit' && modal.learning
                     ? `Origem: ${modal.learning.origin === 'manual' ? 'Manual' : 'Gerado pela IA'}`
-                    : 'Conhecimento manual que orientará a IA.'}
+                    : 'Conhecimento manual que orientar├í a IA.'}
                 </div>
               </div>
               <button onClick={() => !saving && setModal(null)} className="text-muted hover:text-fg">
@@ -936,7 +932,7 @@ export function CommercialMemory() {
                   value={form.content}
                   onChange={(e) => setForm({ ...form, content: e.target.value })}
                   rows={3}
-                  placeholder="Ex.: Sempre entender o problema antes de apresentar preço"
+                  placeholder="Ex.: Sempre entender o problema antes de apresentar pre├ºo"
                   className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                 />
               </div>
@@ -954,14 +950,14 @@ export function CommercialMemory() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-muted mb-1">Confiança</label>
+                  <label className="block text-xs text-muted mb-1">Confian├ºa</label>
                   <select
                     value={form.confidence}
                     onChange={(e) => setForm({ ...form, confidence: e.target.value as LearningForm['confidence'] })}
                     className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                   >
                     <option value="alta">Alta</option>
-                    <option value="media">Média</option>
+                    <option value="media">M├®dia</option>
                     <option value="baixa">Baixa</option>
                   </select>
                 </div>
@@ -976,7 +972,7 @@ export function CommercialMemory() {
                   >
                     <option value="identificado">Identificado (pendente)</option>
                     <option value="validado">Validado</option>
-                    <option value="ativo">Ativo (na memória)</option>
+                    <option value="ativo">Ativo (na mem├│ria)</option>
                     <option value="inativo">Inativo</option>
                   </select>
                 </div>
@@ -994,7 +990,7 @@ export function CommercialMemory() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-muted mb-1">Evidências (opcional — uma por linha)</label>
+                <label className="block text-xs text-muted mb-1">Evid├¬ncias (opcional ÔÇö uma por linha)</label>
                 <textarea
                   value={form.evidenceText}
                   onChange={(e) => setForm({ ...form, evidenceText: e.target.value })}
@@ -1019,7 +1015,7 @@ export function CommercialMemory() {
                   onChange={(e) => setForm({ ...form, status: e.target.checked ? 'ativo' : 'inativo' })}
                   className="accent-emerald-500"
                 />
-                Usar na memória comercial
+                Usar na mem├│ria comercial
               </label>
 
               {modalError && (
@@ -1039,7 +1035,7 @@ export function CommercialMemory() {
                   disabled={saving}
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-sm font-medium text-white transition"
                 >
-                  {saving ? <span className="inline-flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Salvando…</span> : 'Salvar'}
+                  {saving ? <span className="inline-flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> SalvandoÔÇª</span> : 'Salvar'}
                 </button>
               </div>
             </div>

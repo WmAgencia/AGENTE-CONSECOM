@@ -6,6 +6,7 @@ import {
   renderTemplate,
   unresolvedVariables,
 } from '../lib/template'
+import { Button } from './ui'
 
 type Kind = QueueMessage['kind']
 
@@ -191,7 +192,7 @@ export function SequenceEditor({
           Sequência ({messages.length} etapas)
         </div>
         {messages.length === 0 ? (
-          <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-3">
+          <p className="text-sm text-faint border border-dashed border-line-2 rounded-xl px-4 py-3">
             Ainda não há mensagens. Adicione abaixo a ordem de envio (ex.: 1º
             texto de apresentação, 2º vídeo prévia, 3º áudio...).
           </p>
@@ -200,9 +201,9 @@ export function SequenceEditor({
             {messages.map((m, i) => (
               <li
                 key={m.id}
-                className="flex items-center gap-3 rounded-lg border border-line bg-subtle px-3 py-2"
+                className="flex items-center gap-3 rounded-xl border border-line bg-subtle px-3 py-2"
               >
-                <span className="w-6 h-6 shrink-0 rounded-full bg-indigo-600/30 flex items-center justify-center text-xs font-medium">
+                <span className="w-6 h-6 shrink-0 rounded-full bg-accent-600/30 flex items-center justify-center text-xs font-medium">
                   {i + 1}
                 </span>
                 <button
@@ -253,9 +254,9 @@ export function SequenceEditor({
             <button
               key={k}
               onClick={() => setField({ kind: k })}
-              className={`px-3 py-1.5 text-xs rounded-lg border transition ${
+              className={`px-3 py-1.5 text-xs rounded-xl border transition ${
                 draft.kind === k
-                  ? 'border-indigo-500 bg-indigo-600/20 text-fg'
+                  ? 'border-accent-500 bg-accent-600/20 text-fg'
                   : 'border-line-2 bg-subtle text-secondary hover:bg-subtle-2'
               }`}
             >
@@ -270,7 +271,7 @@ export function SequenceEditor({
             onChange={(e) => setField({ text: e.target.value })}
             rows={4}
             placeholder="Escreva a mensagem de texto. Use variáveis como {nome_empresa}..."
-            className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+            className="w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500"
           />
         ) : (
           <div className="space-y-2">
@@ -285,7 +286,7 @@ export function SequenceEditor({
                 </button>
               </div>
             ) : (
-              <label className="block cursor-pointer rounded-lg border border-dashed border-line-strong px-4 py-5 text-center text-sm text-muted hover:border-indigo-500 hover:text-fg transition">
+              <label className="block cursor-pointer rounded-xl border border-dashed border-line-strong px-4 py-5 text-center text-sm text-muted hover:border-accent-500 hover:text-fg transition">
                 {draft.uploading
                   ? `Enviando... ${draft.progress}%`
                   : `Clique para enviar o arquivo (${KIND_META[draft.kind].label})`}
@@ -312,7 +313,7 @@ export function SequenceEditor({
               value={draft.caption}
               onChange={(e) => setField({ caption: e.target.value })}
               placeholder={`Legenda (opcional) — pode usar variáveis (ex: {nome_empresa})`}
-              className="w-full bg-field border border-line-2 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+              className="w-full bg-field border border-line-2 rounded-xl px-3 py-1.5 text-sm outline-none focus:border-accent-500"
             />
           </div>
         )}
@@ -327,7 +328,7 @@ export function SequenceEditor({
                     type="button"
                     onClick={() => insertVariable(v.token)}
                     title={v.description}
-                    className="text-[11px] px-2 py-1 rounded-md border border-line-2 bg-subtle text-secondary hover:border-indigo-500 hover:text-fg transition"
+                    className="text-[11px] px-2 py-1 rounded-md border border-line-2 bg-subtle text-secondary hover:border-accent-500 hover:text-fg transition"
                   >
                     {'{' + v.token + '}'}
                   </button>
@@ -338,7 +339,7 @@ export function SequenceEditor({
               <div className="text-[11px] text-faint mb-1">
                 Preview (com dados de exemplo)
               </div>
-              <div className="rounded-lg border border-line-2 bg-subtle-2 px-3 py-2 text-sm text-secondary whitespace-pre-wrap break-words">
+              <div className="rounded-xl border border-line-2 bg-subtle-2 px-3 py-2 text-sm text-secondary whitespace-pre-wrap break-words">
                 {preview || <span className="text-slate-600">—</span>}
               </div>
               {unresolved.length > 0 && (
@@ -358,16 +359,17 @@ export function SequenceEditor({
               min={0}
               value={draft.delay_seconds}
               onChange={(e) => setField({ delay_seconds: Number(e.target.value) })}
-              className="ml-2 w-24 bg-field border border-line-2 rounded-lg px-2 py-1 text-sm outline-none focus:border-indigo-500"
+              className="ml-2 w-24 bg-field border border-line-2 rounded-xl px-2 py-1 text-sm outline-none focus:border-accent-500"
             />
           </label>
-          <button
+          <Button
             onClick={addMessage}
             disabled={saving}
-            className="ml-auto px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium"
+            loading={saving}
+            className="ml-auto"
           >
-            {saving ? 'Salvando...' : '+ Adicionar etapa'}
-          </button>
+            + Adicionar etapa
+          </Button>
         </div>
 
         {error && <p className="text-sm text-rose-400">{error}</p>}
