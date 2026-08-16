@@ -169,7 +169,7 @@ export function ContactsView() {
           </div>
         )}
 
-        {error && <div className="mt-3 text-xs text-rose-300 bg-rose-500/10 rounded-lg px-3 py-2">{error}</div>}
+        {error && <div className="mt-3 text-xs text-rose-300 bg-rose-500/10 rounded-xl px-3 py-2">{error}</div>}
       </div>
 
       {/* ===== Validação ===== */}
@@ -182,19 +182,19 @@ export function ContactsView() {
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
               <div className="flex items-center gap-1.5 text-emerald-300 text-sm font-semibold">
                 <CheckCircle2 className="w-4 h-4" /> {stats.valid}
               </div>
               <div className="text-[11px] text-muted mt-0.5">válidos</div>
             </div>
-            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
               <div className="flex items-center gap-1.5 text-amber-300 text-sm font-semibold">
                 <AlertTriangle className="w-4 h-4" /> {stats.invalid}
               </div>
               <div className="text-[11px] text-muted mt-0.5">inválidos</div>
             </div>
-            <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 p-3">
+            <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
               <div className="flex items-center gap-1.5 text-rose-300 text-sm font-semibold">
                 <XCircle className="w-4 h-4" /> {stats.dupes}
               </div>
@@ -215,14 +215,14 @@ export function ContactsView() {
           <button
             onClick={() => void importAll()}
             disabled={importing || !stats.valid}
-            className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-lg font-medium inline-flex items-center gap-2 transition"
+            className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-xl font-medium inline-flex items-center gap-2 transition"
           >
             {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ListChecks className="w-4 h-4" />}
             {importing ? 'Importando...' : `Importar ${stats.valid} contato${stats.valid === 1 ? '' : 's'}`}
           </button>
 
           {done && (
-            <div className="mt-4 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+            <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-200">
               Importação concluída: <b>{done.summary.created}</b> criados, <b>{done.summary.duplicates}</b> duplicados, <b>{done.summary.errors}</b> erros.
             </div>
           )}
@@ -359,7 +359,7 @@ function ErrorBlock({ onRetry, message }: { onRetry: () => void; message: string
       <div className="text-xs text-faint">{message}</div>
       <button
         onClick={onRetry}
-        className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium inline-flex items-center gap-2 transition"
+        className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-xl font-medium inline-flex items-center gap-2 transition"
       >
         <RefreshCcw className="w-3.5 h-3.5" /> Tentar novamente
       </button>

@@ -212,7 +212,7 @@ export function LeadsView({ leads, campaigns }: { leads: Lead[]; campaigns?: Cam
         })}
 
         {leads.length === 0 && (
-          <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-8 text-center">
+          <p className="text-sm text-faint border border-dashed border-line-2 rounded-xl px-4 py-8 text-center">
             Nenhum lead no histórico ainda. Use a aba <span className="text-fg">Importados</span> para distribuir leads da extensão para campanhas.
           </p>
         )}

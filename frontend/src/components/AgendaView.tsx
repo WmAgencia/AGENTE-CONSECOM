@@ -285,9 +285,9 @@ export function AgendaView() {
 
   const panel = 'rounded-xl border border-line-2 bg-subtle p-4'
   const input =
-    'bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+    'bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500'
   const btnPrimary =
-    'px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium'
+    'px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium'
 
   return (
     <div className="h-full overflow-y-auto">
@@ -300,24 +300,24 @@ export function AgendaView() {
           <div className="flex items-center gap-1 ml-auto">
             <button
               onClick={() => setAnchor((a) => addMonths(a.year, a.month0, -1))}
-              className="p-2 rounded-lg border border-line-2 hover:bg-subtle text-secondary"
+              className="p-2 rounded-xl border border-line-2 hover:bg-subtle text-secondary"
               aria-label="Mês anterior"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="px-3 py-1.5 text-sm text-secondary border border-line-2 rounded-lg min-w-40 text-center">
+            <span className="px-3 py-1.5 text-sm text-secondary border border-line-2 rounded-xl min-w-40 text-center">
               {monthTitle(anchor.year, anchor.month0)}
             </span>
             <button
               onClick={() => setAnchor((a) => addMonths(a.year, a.month0, 1))}
-              className="p-2 rounded-lg border border-line-2 hover:bg-subtle text-secondary"
+              className="p-2 rounded-xl border border-line-2 hover:bg-subtle text-secondary"
               aria-label="Próximo mês"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
             <button
               onClick={() => setAnchor(anchorFromNow())}
-              className="p-2 rounded-lg border border-line-2 hover:bg-subtle text-secondary"
+              className="p-2 rounded-xl border border-line-2 hover:bg-subtle text-secondary"
               title="Voltar para este mês"
             >
               <RotateCcw className="w-4 h-4" />
@@ -333,7 +333,7 @@ export function AgendaView() {
         </div>
 
         {error && (
-          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300 text-sm px-4 py-3">
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-sm px-4 py-3">
             {error}
           </div>
         )}
@@ -347,7 +347,7 @@ export function AgendaView() {
           <>
             {/* Calendário mensal */}
             <div className={panel}>
-              <div className="grid grid-cols-7 gap-px bg-line-2 rounded-lg overflow-hidden border border-line-2">
+              <div className="grid grid-cols-7 gap-px bg-line-2 rounded-xl overflow-hidden border border-line-2">
                 {DAY_SHORT.map((d) => (
                   <div
                     key={d}
@@ -405,7 +405,7 @@ export function AgendaView() {
                 </div>
                 <ul className="space-y-2">
                   {undatedMeetings.map((m) => (
-                    <li key={m.leadId} className="flex flex-wrap items-center gap-3 rounded-lg border border-line px-3 py-2.5 text-sm">
+                    <li key={m.leadId} className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-3 py-2.5 text-sm">
                       <span className="text-fg flex-1 min-w-40">
                         {m.name ?? 'Lead ' + m.leadId}
                         {m.phone && <span className="text-faint ml-2 text-xs">{m.phone}</span>}
@@ -491,7 +491,7 @@ export function AgendaView() {
                   return (
                     <div
                       key={day}
-                      className="flex flex-wrap items-center gap-3 rounded-lg border border-line px-3 py-2"
+                      className="flex flex-wrap items-center gap-3 rounded-xl border border-line px-3 py-2"
                     >
                       <button
                         onClick={() => toggleDay(day)}
@@ -558,7 +558,7 @@ export function AgendaView() {
               ) : (
                 <ul className="space-y-1.5">
                   {blocks.map((b) => (
-                    <li key={b.id} className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm">
+                    <li key={b.id} className="flex items-center gap-3 rounded-xl border border-line px-3 py-2 text-sm">
                       <span className="text-secondary">
                         {humanDate(b.start_at.slice(0, 10))} – {humanDate(b.end_at.slice(0, 10))}
                       </span>
@@ -592,7 +592,7 @@ export function AgendaView() {
                   {available.slice(0, 24).map((s) => (
                     <div
                       key={s.start}
-                      className="rounded-lg border border-line bg-subtle-2 px-2 py-1.5 text-xs text-secondary"
+                      className="rounded-xl border border-line bg-subtle-2 px-2 py-1.5 text-xs text-secondary"
                     >
                       <span className="text-muted">{humanDate(s.day)}</span> ·{' '}
                       <span className="text-indigo-300">{s.time}</span>
@@ -671,7 +671,7 @@ function DayModal({
           <div className="flex items-center gap-2">
             <button
               onClick={onCreate}
-              className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 rounded-lg flex items-center gap-1"
+              className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 rounded-xl flex items-center gap-1"
             >
               <Plus className="w-3.5 h-3.5" />
               Nova
@@ -684,14 +684,14 @@ function DayModal({
 
         <div className="flex-1 overflow-y-auto space-y-2">
           {meetings.length === 0 && (
-            <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-8 text-center">
+            <p className="text-sm text-faint border border-dashed border-line-2 rounded-xl px-4 py-8 text-center">
               Nenhuma reunião neste dia. Clique em "Nova" para agendar.
             </p>
           )}
           {meetings.map((m) => {
             const st = effectiveStatus(m)
             return (
-              <div key={m.leadId} className="rounded-lg border border-line px-3 py-2.5">
+              <div key={m.leadId} className="rounded-xl border border-line px-3 py-2.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium text-fg">{m.name ?? 'Lead ' + m.leadId}</span>
                   {m.phone && <span className="text-xs text-faint">{m.phone}</span>}
@@ -829,7 +829,7 @@ function MeetingModal({
             <select
               value={leadId}
               onChange={(e) => setLeadId(e.target.value)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+              className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500"
             >
               <option value="">Selecione o lead...</option>
               {leads.map((l) => (
@@ -848,7 +848,7 @@ function MeetingModal({
               value={local}
               min={todayLocal}
               onChange={(e) => setLocal(e.target.value)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+              className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500"
             />
           </label>
 
@@ -860,7 +860,7 @@ function MeetingModal({
               step={5}
               value={durationMin}
               onChange={(e) => setDurationMin(Number(e.target.value) || 30)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+              className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500"
             />
           </label>
 
@@ -871,24 +871,24 @@ function MeetingModal({
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               placeholder="Assunto da reunião, contato, etc."
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 resize-y"
+              className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500 resize-y"
             />
           </label>
 
           {error && (
-            <div className="text-sm text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+            <div className="text-sm text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">
               {error}
             </div>
           )}
 
           <div className="flex justify-end gap-2">
-            <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
+            <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">
               Cancelar
             </button>
             <button
               onClick={() => void submit()}
               disabled={saving || busy}
-              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium"
+              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium"
             >
               {saving ? 'Salvando...' : mode === 'create' ? 'Agendar' : 'Salvar'}
             </button>

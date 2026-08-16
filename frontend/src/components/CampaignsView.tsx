@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Button, Badge } from './ui'
 import { supabase, type Campaign, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
@@ -276,26 +276,22 @@ async function fireCampaign(c: Campaign) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-gradient-to-r from-transparent via-subtle-2/40 to-transparent">
+      <div className="px-6 py-4 border-b border-line flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold bg-gradient-to-r from-indigo-300 to-emerald-300 bg-clip-text text-transparent">
-            Campanhas &amp; disparo
+<h1 className="text-lg font-semibold text-fg">
+            Campanhas & disparo
           </h1>
           <p className="text-sm text-muted">
             Monte a sequência, agende o início e acompanhe a fila por campanha (WhatsApp)
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setSchedulePicker(true)}
-            className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 rounded-lg transition shadow-sm shadow-indigo-600/30"
-          >
+          <Button onClick={() => setSchedulePicker(true)}>
             📅 Agendar campanha
-          </button>
-          <button onClick={load}
-            className="px-3 py-1.5 text-xs bg-subtle hover:bg-subtle-2 rounded-lg transition">
+          </Button>
+          <Button variant="secondary" onClick={load}>
             Atualizar
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -309,8 +305,9 @@ async function fireCampaign(c: Campaign) {
               return (
                 <div key={section.key}>
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-muted mb-3 flex items-center gap-2">
-                    <span>{SECTION_EMOJI[section.key]}</span>
-                    {section.title}
+                    <Badge color={section.key === 'em_andamento' ? 'green' : section.key === 'prontas' ? 'amber' : section.key === 'agendadas' ? 'indigo' : 'sky'} size="sm">
+                      {SECTION_EMOJI[section.key]} {section.title}
+                    </Badge>
                     <span className="text-[11px] font-normal text-faint">({items.length})</span>
                   </h2>
                   <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -378,22 +375,22 @@ async function fireCampaign(c: Campaign) {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setCalAnchor((a) => addMonths(a.year, a.month0, -1))}
-                className="p-1.5 rounded-lg border border-line-2 hover:bg-subtle text-secondary text-xs"
+                className="p-1.5 rounded-xl border border-line-2 hover:bg-subtle text-secondary text-xs"
               >
                 ←
               </button>
-              <span className="px-2 py-1 text-xs text-secondary border border-line-2 rounded-lg min-w-28 text-center">
+              <span className="px-2 py-1 text-xs text-secondary border border-line-2 rounded-xl min-w-28 text-center">
                 {monthTitle(calAnchor.year, calAnchor.month0)}
               </span>
               <button
                 onClick={() => setCalAnchor((a) => addMonths(a.year, a.month0, 1))}
-                className="p-1.5 rounded-lg border border-line-2 hover:bg-subtle text-secondary text-xs"
+                className="p-1.5 rounded-xl border border-line-2 hover:bg-subtle text-secondary text-xs"
               >
                 →
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-7 gap-px bg-line-2 rounded-lg overflow-hidden border border-line-2">
+          <div className="grid grid-cols-7 gap-px bg-line-2 rounded-xl overflow-hidden border border-line-2">
             {DAY_SHORT.map((d) => (
               <div
                 key={d}
@@ -465,7 +462,7 @@ async function fireCampaign(c: Campaign) {
           </div>
           <div className="rounded-xl border border-line overflow-hidden">
             {campaigns.filter((c) => (runsByCampaign[c.id] ?? []).length > 0).length === 0 ? (
-              <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-6 text-center m-2">
+              <p className="text-sm text-faint border border-dashed border-line-2 rounded-xl px-4 py-6 text-center m-2">
                 Nenhuma execução de envio ainda. Distribua leads para uma campanha para começar.
               </p>
             ) : (
@@ -492,7 +489,7 @@ async function fireCampaign(c: Campaign) {
                           <td className="px-4 py-2.5 text-right">
                             <button
                               onClick={() => setQueueFor(c)}
-                              className="text-[11px] px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30"
+                              className="text-[11px] px-2.5 py-1 rounded-xl bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30"
                             >
                               Fila de leads ({rs.length})
                             </button>
@@ -578,22 +575,19 @@ function CampaignButton({ onCreated }: { onCreated: () => Promise<void> }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Nome da campanha"
-            className="flex-1 max-w-xs bg-field border border-line-2 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500"
+            className="flex-1 max-w-xs"
           />
-          <button type="submit"
-            className="px-3 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg transition">
+          <Button type="submit" onClick={() => {}}>
             Criar
-          </button>
-          <button type="button" onClick={() => setOpen(false)}
-            className="px-3 py-1.5 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
             Cancelar
-          </button>
+          </Button>
         </form>
       ) : (
-        <button onClick={() => setOpen(true)}
-          className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg transition font-medium">
+        <Button onClick={() => setOpen(true)}>
           + Nova campanha
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -642,25 +636,25 @@ function CampaignCard({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <CampaignStatusBadge status={campaign.status} />
-          <button
+          <span
             onClick={onShowQueue}
             title="Ver fila de leads desta campanha"
-            className="text-[11px] px-2 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30"
+            className="text-[11px] px-2 py-1 rounded-xl bg-accent-600/20 text-accent-300 hover:bg-accent-600/30 cursor-pointer"
           >
             Fila de leads
-          </button>
-          <button
+          </span>
+          <span
             onClick={() => setOpen((o) => !o)}
-            className="text-[11px] px-2 py-1 rounded-lg bg-subtle hover:bg-subtle-2"
+            className={`text-[11px] px-2 py-1 rounded-xl cursor-pointer ${open ? 'bg-subtle hover:bg-subtle-2 text-secondary' : 'bg-accent-600/20 text-accent-300 hover:bg-accent-600/30'}`}
           >
             {open ? 'Fechar' : 'Montar sequência'}
-          </button>
+          </span>
           <button
             onClick={onDelete}
             title="Excluir campanha"
-            className="p-1.5 rounded-lg text-faint hover:text-rose-400 hover:bg-rose-500/10 transition"
+            className="p-1.5 rounded-xl text-faint hover:text-rose-400 hover:bg-rose-500/10 transition"
           >
-            <Trash2 className="w-4 h-4" />
+            ✕
           </button>
         </div>
       </div>
@@ -699,38 +693,38 @@ function CampaignCard({
 
       {campaign.status === 'pronta' && (
         <div className="space-y-2 mb-3">
-          <button onClick={onFire} className="w-full text-sm py-2 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg font-medium">
+          <Button className="w-full" onClick={onFire}>
             ▶ Iniciar campanha agora
-          </button>
-          <button onClick={onSchedule} className="w-full text-sm py-2 bg-indigo-600/70 hover:bg-indigo-500 rounded-lg font-medium">
+          </Button>
+          <Button className="w-full" onClick={onSchedule}>
             📅 Agendar início
-          </button>
+          </Button>
         </div>
       )}
       {campaign.status === 'agendada' && (
         <div className="space-y-2 mb-3">
-          <button onClick={onSchedule} className="w-full text-sm py-2 bg-indigo-600/70 hover:bg-indigo-500 rounded-lg font-medium">
+          <Button className="w-full" onClick={onSchedule}>
             📅 Reagendar início
-          </button>
-          <button onClick={onCancelSchedule} className="w-full text-sm py-2 bg-rose-600/60 hover:bg-rose-500 rounded-lg font-medium">
+          </Button>
+          <Button className="w-full" variant="danger" onClick={onCancelSchedule}>
             ✕ Cancelar agendamento
-          </button>
+          </Button>
         </div>
       )}
       {campaign.status === 'em_progresso' && (
-        <button onClick={onPause} className="w-full mb-3 text-sm py-2 bg-amber-600/70 hover:bg-amber-500 rounded-lg font-medium">
+        <Button className="w-full" onClick={onPause}>
           ⏸ Pausar campanha
-        </button>
+        </Button>
       )}
       {campaign.status === 'pausada' && (
-        <button onClick={onResume} className="w-full mb-3 text-sm py-2 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg font-medium">
+        <Button className="w-full" onClick={onResume}>
           ▶ Retomar campanha
-        </button>
+        </Button>
       )}
       {campaign.status === 'waiting_connection' && (
-        <button onClick={onResume} className="w-full mb-3 text-sm py-2 bg-emerald-600/80 hover:bg-emerald-500 rounded-lg font-medium">
+        <Button className="w-full" onClick={onResume}>
           ▶ Retomar agora (conexão disponível)
-        </button>
+        </Button>
       )}
 
       {!open ? (
@@ -786,12 +780,12 @@ function QueueModal({
             </div>
             <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
           </div>
-          <p className="text-sm text-faint border border-dashed border-line-2 rounded-lg px-4 py-6 text-center">
+          <p className="text-sm text-faint border border-dashed border-line-2 rounded-xl px-4 py-6 text-center">
             Esta campanha ainda não tem leads na fila. Distribua leads para ela na guia Importados
             ou no painel de leads para começar.
           </p>
           <div className="flex justify-end mt-4">
-            <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Fechar</button>
+            <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Fechar</button>
           </div>
         </div>
       </div>
@@ -822,7 +816,7 @@ function QueueModal({
         </div>
 
         {detail ? (
-          <div className="rounded-lg border border-line-2 bg-subtle-2 p-4 mb-4">
+          <div className="rounded-xl border border-line-2 bg-subtle-2 p-4 mb-4">
             <div className="flex items-center justify-between mb-2">
               <div className="font-medium text-sm">{detail.lead?.name ?? '—'} <span className="text-faint font-normal">{detail.lead?.phone ?? ''}</span></div>
               <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${(RUN_STATUS[detail.status] ?? RUN_STATUS.pending).cls}`}>
@@ -854,16 +848,16 @@ function QueueModal({
               )}
             </dl>
             <div className="flex justify-end gap-2 mt-3">
-              <button onClick={() => setDetail(null)} className="px-3 py-1.5 text-xs bg-subtle hover:bg-subtle-2 rounded-lg">Voltar</button>
+              <button onClick={() => setDetail(null)} className="px-3 py-1.5 text-xs bg-subtle hover:bg-subtle-2 rounded-xl">Voltar</button>
               {detail.status !== 'done' && (
-                <button onClick={() => { void onRemove(detail); setDetail(null) }} className="px-3 py-1.5 text-xs bg-rose-600/70 hover:bg-rose-500 rounded-lg text-white">
+                <button onClick={() => { void onRemove(detail); setDetail(null) }} className="px-3 py-1.5 text-xs bg-rose-600/70 hover:bg-rose-500 rounded-xl text-white">
                   Desenfileirar
                 </button>
               )}
             </div>
           </div>
         ) : (
-          <div className="max-h-80 overflow-y-auto rounded-lg border border-line">
+          <div className="max-h-80 overflow-y-auto rounded-xl border border-line">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wide text-faint border-b border-line bg-subtle">
@@ -911,10 +905,10 @@ function QueueModal({
         )}
 
         <div className="flex justify-end mt-4 gap-2">
-          <button onClick={() => void onChanged()} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
+          <button onClick={() => void onChanged()} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">
             Atualizar
           </button>
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-xl font-medium">
             Fechar
           </button>
         </div>
@@ -1021,14 +1015,14 @@ function ScheduleModal({
           <label className="block text-xs text-muted">
             Campanha
             {initial ? (
-              <div className="mt-1 text-sm text-fg bg-subtle rounded-lg px-3 py-2">
+              <div className="mt-1 text-sm text-fg bg-subtle rounded-xl px-3 py-2">
                 {initial.name}
               </div>
             ) : (
               <select
                 value={campaignId}
                 onChange={(e) => setCampaignId(e.target.value)}
-                className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500"
               >
                 <option value="">Selecione a campanha...</option>
                 {schedulable.map((c) => (
@@ -1047,12 +1041,12 @@ function ScheduleModal({
               type="datetime-local"
               value={local}
               onChange={(e) => setLocal(e.target.value)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500"
+              className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500"
             />
           </label>
 
           {info && selected && (
-            <div className="rounded-lg border border-line bg-subtle-2 px-3 py-2 text-xs text-secondary space-y-1">
+            <div className="rounded-xl border border-line bg-subtle-2 px-3 py-2 text-xs text-secondary space-y-1">
               <div>
                 Duração estimada da campanha:{' '}
                 <span className="text-fg font-medium">{info.durationMin} min</span>
@@ -1090,19 +1084,19 @@ function ScheduleModal({
           )}
 
           {error && (
-            <div className="text-sm text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">
+            <div className="text-sm text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">
               {error}
             </div>
           )}
 
           <div className="flex justify-end gap-2">
-            <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">
+            <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">
               Cancelar
             </button>
             <button
               onClick={() => void submit()}
               disabled={saving || !campaignId}
-              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium"
+              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium"
             >
               {saving ? 'Agendando...' : 'Agendar'}
             </button>
@@ -1124,11 +1118,10 @@ const CAMPAIGN_STATUS: Record<Campaign['status'], { label: string; cls: string }
 }
 
 function CampaignStatusBadge({ status }: { status: Campaign['status'] }) {
-  const meta = CAMPAIGN_STATUS[status]
+  const color = status === 'pronta' ? 'green' : status === 'agendada' ? 'indigo' : status === 'em_progresso' || status === 'waiting_connection' ? 'amber' : status === 'pausada' ? 'orange' : status === 'finalizada' ? 'sky' : 'gray'
+  const label = CAMPAIGN_STATUS[status]?.label ?? status
   return (
-    <span className={`text-[11px] px-2 py-1 rounded-full ${meta.cls}`}>
-      {meta.label}
-    </span>
+    <Badge color={color} size="sm">{label}</Badge>
   )
 }
 
@@ -1136,7 +1129,7 @@ function CampaignStatusBadge({ status }: { status: Campaign['status'] }) {
 function CampaignStatusBanner({ status, scheduledAt }: { status: Campaign['status']; scheduledAt?: string | null }) {
   if (status === 'agendada') {
     return (
-      <div className="mb-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 text-sm text-indigo-300 flex items-center gap-2">
+      <div className="mb-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 px-3 py-2 text-sm text-indigo-300 flex items-center gap-2">
         🕐 Campanha agendada para {scheduledAt ? humanDateTime(Date.parse(scheduledAt)) : '—'}.
         O disparo começa automaticamente no horário.
       </div>
@@ -1144,7 +1137,7 @@ function CampaignStatusBanner({ status, scheduledAt }: { status: Campaign['statu
   }
   if (status === 'em_progresso') {
     return (
-      <div className="mb-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-sm text-emerald-300 flex items-center gap-2">
+      <div className="mb-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-sm text-emerald-300 flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         🟢 Campanha em andamento
       </div>
@@ -1152,7 +1145,7 @@ function CampaignStatusBanner({ status, scheduledAt }: { status: Campaign['statu
   }
   if (status === 'waiting_connection') {
     return (
-      <div className="mb-3 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-2 text-sm text-orange-300 flex items-center gap-2">
+      <div className="mb-3 rounded-xl bg-orange-500/10 border border-orange-500/20 px-3 py-2 text-sm text-orange-300 flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
         🟠 Todas as conexões do WhatsApp caíram — fila preservada, aguardando conexão.
         Retoma automaticamente quando alguma conexão voltar.
@@ -1161,7 +1154,7 @@ function CampaignStatusBanner({ status, scheduledAt }: { status: Campaign['statu
   }
   if (status === 'pausada') {
     return (
-      <div className="mb-3 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-sm text-amber-300 flex items-center gap-2">
+      <div className="mb-3 rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-sm text-amber-300 flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-amber-400" />
         🟡 Campanha pausada
       </div>
@@ -1169,7 +1162,7 @@ function CampaignStatusBanner({ status, scheduledAt }: { status: Campaign['statu
   }
   if (status === 'finalizada') {
     return (
-      <div className="mb-3 rounded-lg bg-sky-500/10 border border-sky-500/20 px-3 py-2 text-sm text-sky-300 flex items-center gap-2">
+      <div className="mb-3 rounded-xl bg-sky-500/10 border border-sky-500/20 px-3 py-2 text-sm text-sky-300 flex items-center gap-2">
         ✓ Campanha concluída
       </div>
     )
