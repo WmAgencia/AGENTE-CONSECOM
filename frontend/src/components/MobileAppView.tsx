@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Download, Link2, CheckCircle2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { Button } from './ui'
 
 // =====================================================================
 // App mobile — baixar o APK e conectar o celular à conta já logada.
@@ -63,18 +64,19 @@ export function MobileAppView() {
           <a
             href={APK_URL}
             download
-            className="flex items-center gap-2 justify-center px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition"
+            className="flex items-center gap-2 justify-center px-4 py-3 rounded-xl bg-accent-600 hover:bg-accent-500 text-white text-sm font-medium transition"
           >
             <Download className="w-4 h-4" />
             Baixar APK (Android)
           </a>
-          <button
+          <Button
+            variant="secondary"
             onClick={() => void connect()}
-            className="flex items-center gap-2 justify-center px-4 py-3 rounded-xl bg-subtle hover:bg-subtle-2 text-sm font-medium transition border border-line-2"
+            className="flex items-center gap-2 justify-center"
           >
-            <Link2 className="w-4 h-4 text-indigo-300" />
+            <Link2 className="w-4 h-4 text-accent-300" />
             Conectar neste aparelho
-          </button>
+          </Button>
         </div>
 
         {sent && (

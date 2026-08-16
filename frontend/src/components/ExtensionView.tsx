@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { Puzzle, Download } from 'lucide-react'
 import { downloadPersonalizedExtension } from '../lib/extensionDownload'
+import { Button } from './ui'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL as string | undefined
 const API = BACKEND ?? 'https://consecom-backend-production.up.railway.app'
@@ -52,13 +53,14 @@ export function ExtensionView() {
           </div>
         </div>
 
-        <button
+        <Button
           onClick={() => void handleDownload()}
-          className="mt-4 w-full flex items-center gap-2 justify-center px-4 py-3 rounded-xl text-white text-sm font-medium transition bg-emerald-600 hover:bg-emerald-500 focus:ring-2 focus:ring-emerald-400 focus:outline-none"
+          variant="primary"
+          className="mt-4 flex items-center gap-2 justify-center"
         >
           <Download className="w-4 h-4" />
           Baixar extensão para a minha conta (.zip)
-        </button>
+        </Button>
 
         {status && <p className="mt-2 text-xs text-emerald-300">{status}</p>}
 

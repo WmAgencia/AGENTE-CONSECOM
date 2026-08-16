@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { Button } from './ui'
 
 interface AgentCfg {
   company: string
@@ -68,7 +69,7 @@ export function AgentConfig() {
     setCfg((c) => ({ ...c, [key]: val }))
   }
 
-  const input = 'w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const input = 'w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500'
   const label = 'block text-xs text-muted mb-1'
 
   return (
@@ -121,7 +122,7 @@ export function AgentConfig() {
         <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
           <h2 className="text-sm font-semibold text-secondary">Remarketing automático</h2>
           <label className="flex items-center gap-2 text-sm text-secondary">
-            <input type="checkbox" checked={cfg.remarket_active} onChange={(e) => set('remarket_active', e.target.checked)} className="accent-indigo-500" />
+            <input type="checkbox" checked={cfg.remarket_active} onChange={(e) => set('remarket_active', e.target.checked)} className="accent-emerald-500" />
             Reenviar mensagem para quem não respondeu
           </label>
           <div>
@@ -145,9 +146,9 @@ export function AgentConfig() {
       </div>
 
       <div className="mt-6 flex items-center gap-3">
-        <button onClick={() => void save()} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium">
+        <Button onClick={() => void save()}>
           Salvar configuração
-        </button>
+        </Button>
         {saved && <span className="text-xs text-emerald-300">Salvo ✓</span>}
       </div>
     </div>

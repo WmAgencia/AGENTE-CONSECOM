@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { saasApi, authUpdateUsername, formatBRL, type SaasMe, type SaasPlan } from '../lib/api'
+import { Button, Input } from './ui'
 
 export function ContaPage() {
   const [me, setMe] = useState<SaasMe | null>(null)
@@ -130,7 +131,7 @@ export function ContaPage() {
           <h1 className="text-xl font-semibold">Minha conta</h1>
           <button
             onClick={() => void logout()}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-500 transition"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-rose-600 hover:bg-rose-500 transition"
             title="Sair da conta"
           >
             <LogOut className="w-4 h-4" />
@@ -159,10 +160,9 @@ export function ContaPage() {
                 placeholder="escolha um usuário (ex.: wesleytune)"
                 className="input flex-1"
               />
-              <button onClick={() => void saveUsername()} disabled={userBusy}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition">
+              <Button onClick={() => void saveUsername()} loading={userBusy} className="flex items-center gap-2">
                 {userBusy ? 'Salvando…' : 'Salvar'}
-              </button>
+              </Button>
             </div>
             {userMsg && <p className={`text-xs mt-2 ${userMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{userMsg.text}</p>}
           </div>
@@ -207,10 +207,9 @@ export function ContaPage() {
               className="input sm:col-span-2" />
           </div>
           {pwdMsg && <p className={`text-xs ${pwdMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{pwdMsg.text}</p>}
-          <button onClick={changePassword} disabled={pwdBusy}
-            className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition">
+          <Button onClick={changePassword} loading={pwdBusy}>
             {pwdBusy ? 'Alterando…' : 'Alterar senha'}
-          </button>
+          </Button>
         </section>
 
         {/* Planos */}
@@ -226,22 +225,24 @@ export function ContaPage() {
                 {p.description && <p className="text-xs text-muted">{p.description}</p>}
                 <p className="text-xs text-muted">{p.lead_limit} leads</p>
                 {p.lead_limit > 0 && (
-                  <button onClick={() => buy(p)} disabled={buyBusy}
-                    className="mt-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition">
-                    {buyBusy ? 'Processando…' : plan?.id === p.id ? 'Ativo' : 'Assinar'}
-                  </button>
+                  <Button onClick={() => buy(p)} loading={buyBusy} size="sm" className="mt-1">
+                  {buyBusy ? 'Processando…' : plan?.id === p.id ? 'Ativo' : 'Assinar'}
+                </Button>
                 )}
               </div>
             ))}
           </div>
           <div className="mt-4 flex items-center gap-2">
-            <input placeholder="Cupom de desconto" value={coupon} onChange={(e) => setCoupon(e.target.value)}
-              className="input max-w-xs" />
+            <Input
+              placeholder="Cupom de desconto"
+              value={coupon}
+              onChange={(e) => setCoupon(e.target.value)}
+              className="max-w-xs"
+            />
             {plans[0] && (
-              <button onClick={() => validateCouponFor(plans[0])}
-                className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition">
+              <Button onClick={() => validateCouponFor(plans[0])} size="sm">
                 Validar
-              </button>
+              </Button>
             )}
           </div>
           {couponInfo && (
