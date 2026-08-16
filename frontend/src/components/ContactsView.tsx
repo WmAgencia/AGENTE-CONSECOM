@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   UploadCloud, FileSpreadsheet, Table, CheckCircle2, XCircle, AlertTriangle, RefreshCcw,
-  ListChecks, Users, Loader2, ChevronLeft, AlertCircle, ContactRound,
+  Users, Loader2, ChevronLeft, AlertCircle, ContactRound,
 } from 'lucide-react'
 import { contactsApi, type ContactImportResponse, type Contact, type ContactList } from '../lib/api'
 import { parseSpreadsheet, validateContacts, type ValidationReport } from '../lib/contacts'
+import { Button } from './ui'
 
 function fmtDate(iso: string) {
   const d = new Date(iso)
@@ -132,7 +133,7 @@ export function ContactsView() {
       {/* ===== Importação ===== */}
       <div className="rounded-xl border border-line bg-subtle p-5">
         <div className="flex items-center gap-2 mb-3">
-          <FileSpreadsheet className="w-4 h-4 text-indigo-300" />
+          <FileSpreadsheet className="w-4 h-4 text-accent-300" />
           <span className="text-sm font-semibold">Importar planilha</span>
         </div>
 
@@ -212,14 +213,14 @@ export function ContactsView() {
             </div>
           )}
 
-          <button
+<Button
             onClick={() => void importAll()}
             disabled={importing || !stats.valid}
-            className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-xl font-medium inline-flex items-center gap-2 transition"
+            loading={importing}
+            className="inline-flex items-center gap-2"
           >
-            {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ListChecks className="w-4 h-4" />}
             {importing ? 'Importando...' : `Importar ${stats.valid} contato${stats.valid === 1 ? '' : 's'}`}
-          </button>
+          </Button>
 
           {done && (
             <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm text-emerald-200">
@@ -251,12 +252,12 @@ export function ContactsView() {
       {/* ===== Listas + contatos ===== */}
       {activeList ? (
         <div className="rounded-xl border border-line bg-subtle p-5">
-          <button
+          <Button variant="secondary"
             onClick={() => setActiveList(null)}
-            className="text-xs text-muted hover:text-fg inline-flex items-center gap-1 mb-3"
+            className="inline-flex items-center gap-1 mb-3"
           >
             <ChevronLeft className="w-3.5 h-3.5" /> Voltar para listas
-          </button>
+          </Button>
           <div className="flex items-center gap-2 mb-4">
             <ContactRound className="w-4 h-4 text-indigo-300" />
             <span className="text-sm font-semibold">{activeList.name}</span>

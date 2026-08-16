@@ -176,10 +176,10 @@ export function LeadsView({ leads, campaigns }: { leads: Lead[]; campaigns?: Cam
                       {list.map((lead) => {
                         const run = runsByLead[lead.id]
                         return (
-                          <tr key={lead.id} id={`lead-row-${lead.id}`} className={`hover:bg-subtle ${highlighted === lead.id ? 'bg-indigo-500/10' : ''}`}>
+                          <tr key={lead.id} id={`lead-row-${lead.id}`} className={`hover:bg-subtle ${highlighted === lead.id ? 'bg-accent-500/10' : ''}`}>
                             <td className="px-3 py-2.5">
                               <div className="font-medium">{lead.name || '—'}</div>
-                              {lead.niche && <div className="text-[11px] text-indigo-300/80">{lead.niche}</div>}
+                              {lead.niche && <div className="text-[11px] text-accent-300/80">{lead.niche}</div>}
                             </td>
                             <td className="px-3 py-2.5 text-muted">{lead.phone || '—'}</td>
                             <td className="px-3 py-2.5 text-muted">{lead.city ? `${lead.city}${lead.state ? ', ' + lead.state : ''}` : '—'}</td>
