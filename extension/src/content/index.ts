@@ -445,37 +445,38 @@ export class MapsScanner {
     })
   }
 
+  /** Dispara a busca no campo de busca do Google Maps (ou força re-scan). */
+  private doMapsSearch(q: string): void {
+    const mapsInput = document.querySelector<HTMLInputElement>(
+      'input#searchboxinput, input[aria-label*="pesquisa"], input[aria-label*="search"]',
+    )
+    if (mapsInput) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(mapsInput, q)
+      mapsInput.dispatchEvent(new Event('input', { bubbles: true }))
+      mapsInput.dispatchEvent(new Event('change', { bubbles: true }))
+      mapsInput.focus()
+      mapsInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    } else {
+      this.lastQuery = q
+      this.selected.clear()
+      this.found = []
+      this.scan('force')
+    }
+  }
+
   private buildBalloon(): HTMLElement {
     const balloon = document.createElement('aside')
     balloon.className = 'consecom-balloon'
 
-    // Header (área de drag: grip + título + controles)
+    // Header fino (drag + minimizar + fechar), sem branding grande.
     const header = document.createElement('div')
-    header.className = 'cs-panel__header'
+    header.className = 'cs-panel__header cs-panel__header--slim'
     this.headerEl = header
-
     const grip = document.createElement('div')
     grip.className = 'cs-panel__grip'
     grip.title = 'Arrastar painel'
-    grip.innerHTML = '&#8230;<br>&#8230;<br>&#8230;'
-
-    const logo = document.createElement('div')
-    logo.className = 'cs-panel__logo'
-    logo.textContent = 'V'
-    const titles = document.createElement('div')
-    titles.className = 'cs-panel__titles'
-    const name = document.createElement('div')
-    name.className = 'cs-panel__name'
-    name.textContent = 'VYNTRA'
-    const tag = document.createElement('div')
-    tag.className = 'cs-panel__tag'
-    tag.textContent = 'Prospecção Automática'
-    const tagline = document.createElement('div')
-    tagline.className = 'cs-panel__tagline'
-    tagline.textContent = 'Encontre empresas qualificadas no Google Maps e importe os melhores leads.'
-    titles.append(name, tag, tagline)
-
-    // Controles do header: minimizar + fechar
+    grip.innerHTML = '&#8942;&#8942;'
     const controls = document.createElement('div')
     controls.className = 'cs-panel__controls'
     const minimizeBtn = document.createElement('button')
@@ -483,7 +484,7 @@ export class MapsScanner {
     minimizeBtn.className = 'cs-panel__btn'
     minimizeBtn.title = 'Minimizar'
     minimizeBtn.innerHTML =
-      '<svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M19 13h-4v4h-2v-4H5v-2h4V7h2v4h4z"/></svg>'
+      '<svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M19 13h-4v4h-2v-4H5v-2h4V7h2v4h4z"/></svg>'
     minimizeBtn.addEventListener('click', (e) => {
       e.stopPropagation()
       this.minimizeBalloon()
@@ -493,67 +494,76 @@ export class MapsScanner {
     closeBtn.className = 'cs-panel__btn'
     closeBtn.title = 'Fechar'
     closeBtn.innerHTML =
-      '<svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1 1L12 14l-6.3 6.3-1-1L10.8 12 4.5 5.7l1-1L12 10.8l6.3-6.3z"/></svg>'
+      '<svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1 1L12 14l-6.3 6.3-1-1L10.8 12 4.5 5.7l1-1L12 10.8l6.3-6.3z"/></svg>'
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation()
       this.toggleBalloon(false)
     })
     controls.append(minimizeBtn, closeBtn)
-    header.append(grip, logo, titles, controls)
+    header.append(grip, controls)
     this.enableDrag(header, balloon)
 
-    // Corpo com scroll interno
     const body = document.createElement('div')
     body.className = 'cs-panel__body'
 
-    // Busca + localização
+    // Faixa de sites (Google Maps ativo; demais cinza/neutros).
+    const sites = document.createElement('div')
+    sites.className = 'cs-sites'
+    const siteDefs = [
+      { key: 'maps', label: 'GOOGLE MAPS', active: true },
+      { key: 'webmotors', label: 'WEBMOTORS', active: false },
+      { key: 'wepsy', label: 'WEPSY', active: false },
+    ]
+    for (const s of siteDefs) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'cs-site'
+      b.dataset.site = s.key
+      b.textContent = s.label
+      if (s.active) b.classList.add('cs-site--active')
+      sites.appendChild(b)
+    }
+
+    // Busca por palavra-chave + PESQUISAR
     const search = document.createElement('div')
-    search.className = 'cs-panel__search'
+    search.className = 'cs-search'
     const input = document.createElement('input')
-    input.className = 'cs-panel__input'
+    input.className = 'cs-search__input'
     input.type = 'text'
-    input.placeholder = 'Buscar empresas'
+    input.placeholder = 'Ex.: Psicólogos em Sorocaba'
     input.spellcheck = false
+    input.autocomplete = 'off'
+    const runSearch = () => {
+      const q = input.value.trim()
+      if (!q) return
+      this.doMapsSearch(q)
+    }
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const q = input.value.trim()
-        if (!q) return
-        const mapsInput = document.querySelector<HTMLInputElement>(
-          'input#searchboxinput, input[aria-label*="pesquisa"], input[aria-label*="search"]',
-        )
-        if (mapsInput) {
-          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-          setter?.call(mapsInput, q)
-          mapsInput.dispatchEvent(new Event('input', { bubbles: true }))
-          mapsInput.dispatchEvent(new Event('change', { bubbles: true }))
-          mapsInput.focus()
-          mapsInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-        } else {
-          this.lastQuery = q
-          this.selected.clear()
-          this.found = []
-          this.scan('force')
-        }
-      }
+      if (e.key === 'Enter') runSearch()
     })
+    const searchBtn = document.createElement('button')
+    searchBtn.type = 'button'
+    searchBtn.className = 'cs-search__btn'
+    searchBtn.textContent = 'PESQUISAR'
+    searchBtn.addEventListener('click', runSearch)
     const loc = document.createElement('div')
     loc.className = 'cs-panel__loc'
     loc.innerHTML = pinIcon
     this.locEl = document.createElement('span')
     this.locEl.textContent = 'Aguardando busca…'
     loc.append(this.locEl)
-    search.append(input, loc)
+    search.append(input, searchBtn, loc)
 
-    // Botão PROSPECTAR
+    // FILTROS (prospecção automática)
+    const filtersPanel = this.buildFiltersPanel()
+    this.filtersPanel = filtersPanel
+
+    // PROSPECTAR
     const prospectBtn = document.createElement('button')
     prospectBtn.type = 'button'
     prospectBtn.className = 'cs-prospect'
     prospectBtn.textContent = 'PROSPECTAR'
     prospectBtn.addEventListener('click', () => void this.runProspect(prospectBtn))
-
-    // Painel de filtros (Prospecção Automática)
-    const filtersPanel = this.buildFiltersPanel()
-    this.filtersPanel = filtersPanel
 
     // Painel de resultado (preenchido após prospecção)
     const resultPanel = document.createElement('div')
@@ -561,41 +571,44 @@ export class MapsScanner {
     resultPanel.style.display = 'none'
     this.resultPanel = resultPanel
 
-    // Lista de cards
+    // Área de leads com scroll
+    const leads = document.createElement('div')
+    leads.className = 'cs-leads'
+    const leadsTitle = document.createElement('div')
+    leadsTitle.className = 'cs-leads__title'
+    leadsTitle.textContent = 'AREA DE LEADS E SCROLL'
     const list = document.createElement('div')
     list.className = 'cs-panel__list'
     this.listEl = list
+    leads.append(leadsTitle, resultPanel, list)
 
-     // Rodapé: ações de manutenção (o prospecting é via PROSPECTAR +
-     // IMPORTAR no painel de resultado — não há botões de prospecção concorrentes)
-     const footer = document.createElement('div')
-     footer.className = 'cs-panel__footer'
-     // Contador da sessão de captura (atualizado em renderBalloonList)
-     const countEl = document.createElement('div')
-     countEl.className = 'cs-footer__count'
-     this.countEl = countEl
-     const row2 = document.createElement('div')
-     row2.className = 'cs-footer__row'
-     const clearBtn = document.createElement('button')
-     clearBtn.type = 'button'
-     clearBtn.className = 'cs-footer__btn cs-foot-clear'
-     clearBtn.innerHTML = 'Limpar' + trashIcon
-     clearBtn.addEventListener('click', () => void this.confirmClear())
-     const deleteBtn = document.createElement('button')
-     deleteBtn.type = 'button'
-     deleteBtn.className = 'cs-footer__btn cs-foot-delete'
-     deleteBtn.innerHTML = 'Excluir' + trashIcon
-     deleteBtn.addEventListener('click', () => void this.doDelete(deleteBtn))
-     const configBtn = document.createElement('button')
-     configBtn.type = 'button'
-     configBtn.className = 'cs-footer__btn cs-foot-config'
-     configBtn.title = 'Configurar Supabase'
-     configBtn.innerHTML = 'Configurar' + gearIcon
-     configBtn.addEventListener('click', () => void this.promptConfig())
-      row2.append(clearBtn, deleteBtn, configBtn)
-      footer.append(countEl, row2)
+    body.append(sites, search, filtersPanel, prospectBtn, leads)
 
-    body.append(search, prospectBtn, filtersPanel, resultPanel, list)
+    // Rodapé: EXCLUIR / LIMPAR + IMPORTAR LEADS
+    const footer = document.createElement('div')
+    footer.className = 'cs-panel__footer'
+    const countEl = document.createElement('div')
+    countEl.className = 'cs-footer__count'
+    this.countEl = countEl
+    const row = document.createElement('div')
+    row.className = 'cs-footer__row'
+    const deleteBtn = document.createElement('button')
+    deleteBtn.type = 'button'
+    deleteBtn.className = 'cs-footer__btn cs-foot-delete'
+    deleteBtn.textContent = 'EXCLUIR'
+    deleteBtn.addEventListener('click', () => void this.doDelete(deleteBtn))
+    const clearBtn = document.createElement('button')
+    clearBtn.type = 'button'
+    clearBtn.className = 'cs-footer__btn cs-foot-clear'
+    clearBtn.textContent = 'LIMPAR'
+    clearBtn.addEventListener('click', () => void this.confirmClear())
+    row.append(deleteBtn, clearBtn)
+    const importBtn = document.createElement('button')
+    importBtn.type = 'button'
+    importBtn.className = 'cs-footer__btn cs-foot-import cs-import'
+    importBtn.textContent = 'IMPORTAR LEADS'
+    importBtn.addEventListener('click', () => void this.doImport(importBtn))
+    footer.append(countEl, row, importBtn)
 
     balloon.append(header, body, footer)
     this.balloon = balloon

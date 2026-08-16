@@ -367,7 +367,7 @@ export class GlobalScanner {
         b.classList.add('cs-site--off')
         b.disabled = true
         b.title = 'Desativado no painel Master'
-      } else if (s.key === 'maps' || (this.mode === s.key)) {
+      } else if (this.mode === s.key) {
         b.classList.add('cs-site--active')
       }
       sites.appendChild(b)
