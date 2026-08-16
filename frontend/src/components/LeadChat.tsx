@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, type Lead, type LeadStatus, type ConversationMessage, type FollowUp } from '../lib/supabase'
 import { followUpsApi } from '../lib/api'
+import { Button } from './ui'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL as string | undefined
 const API = BACKEND ?? 'https://consecom-backend-production.up.railway.app'
@@ -245,13 +246,13 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
           <button
             onClick={() => void toggleAiControl()}
             disabled={controlSaving || !userId}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50 ${aiMode === 'human' ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'}`}
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-medium transition disabled:opacity-50 ${aiMode === 'human' ? 'bg-accent-600 text-white hover:bg-accent-500' : 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/30'}`}
           >
             {aiMode === 'human' ? 'Deixar IA responder' : 'Assumir conversa'}
           </button>
           <button
             onClick={() => setFollowUpOpen((open) => !open)}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30"
+            className="px-2.5 py-1.5 rounded-xl text-xs font-medium bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30"
           >
             ↩ Responder depois
           </button>
@@ -261,20 +262,26 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
           <div className="px-4 py-3 bg-subtle border-b border-line space-y-2">
             <div className="text-xs font-semibold text-secondary">Agendar follow-up</div>
             {leadFollowUps.filter((item) => ['agendado', 'processando'].includes(item.status)).map((item) => (
-              <div key={item.id} className="rounded-md border border-line px-2 py-1.5 text-[11px] text-muted flex items-center gap-2">
+              <div key={item.id} className="rounded-xl border border-line px-2 py-1.5 text-[11px] text-muted flex items-center gap-2">
                 <span className="flex-1">{item.scheduled_date} · {item.scheduled_time ?? 'sem horário'} · {item.message}</span>
-                <button onClick={() => { setEditingFollowUpId(item.id); setFollowUpDate(item.scheduled_date); setFollowUpTime(item.scheduled_time ?? ''); setFollowUpMessage(item.message) }} className="text-cyan-300 hover:text-cyan-100">Editar</button>
-                <button onClick={() => void followUpsApi.update(item.id, { status: 'cancelado' }).then(() => followUpsApi.list({ leadId: lead.id })).then(setLeadFollowUps)} className="text-rose-300 hover:text-rose-100">Cancelar</button>
+<button onClick={() => { setEditingFollowUpId(item.id); setFollowUpDate(item.scheduled_date); setFollowUpTime(item.scheduled_time ?? ''); setFollowUpMessage(item.message) }} className="text-accent-300 hover:text-accent-100">Editar</button>
+                <Button variant="danger" size="sm" onClick={() => void followUpsApi.update(item.id, { status: 'cancelado' }).then(() => followUpsApi.list({ leadId: lead.id })).then(setLeadFollowUps)}>
+                  Cancelar
+                </Button>
               </div>
             ))}
             <div className="grid grid-cols-2 gap-2">
-              <input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} className="rounded-md bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
-              <input type="time" value={followUpTime} onChange={(e) => setFollowUpTime(e.target.value)} className="rounded-md bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
+              <input type="date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} className="rounded-xl bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
+              <input type="time" value={followUpTime} onChange={(e) => setFollowUpTime(e.target.value)} className="rounded-xl bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
             </div>
-            <textarea value={followUpMessage} onChange={(e) => setFollowUpMessage(e.target.value)} placeholder="Mensagem que será enviada" rows={2} className="w-full rounded-md bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
-            <button onClick={() => void saveFollowUp()} disabled={followUpSaving || !followUpDate || !followUpMessage.trim()} className="px-3 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-xs font-medium text-white">
-              {followUpSaving ? 'Salvando...' : editingFollowUpId ? 'Salvar alterações' : 'Salvar follow-up'}
-            </button>
+            <textarea value={followUpMessage} onChange={(e) => setFollowUpMessage(e.target.value)} placeholder="Mensagem que será enviada" rows={2} className="w-full rounded-xl bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
+<Button
+            onClick={() => void saveFollowUp()}
+            disabled={followUpSaving || !followUpDate || !followUpMessage.trim()}
+            loading={followUpSaving}
+          >
+            {followUpSaving ? 'Salvando...' : editingFollowUpId ? 'Salvar alterações' : 'Salvar follow-up'}
+          </Button>
           </div>
         )}
 
@@ -360,7 +367,7 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
                 }
               }}
               placeholder="Mensagem"
-              className="flex-1 bg-chat-input text-fg rounded-lg px-4 py-2.5 text-sm outline-none placeholder:text-faint"
+              className="flex-1 bg-chat-input text-fg rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-faint"
             />
             <button
               onClick={() => void handleSend()}

@@ -489,7 +489,7 @@ async function fireCampaign(c: Campaign) {
                           <td className="px-4 py-2.5 text-right">
                             <button
                               onClick={() => setQueueFor(c)}
-                              className="text-[11px] px-2.5 py-1 rounded-xl bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30"
+                              className="text-[11px] px-2.5 py-1 rounded-xl bg-accent-600/20 text-indigo-300 hover:bg-accent-600/30"
                             >
                               Fila de leads ({rs.length})
                             </button>
@@ -908,7 +908,7 @@ function QueueModal({
           <button onClick={() => void onChanged()} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">
             Atualizar
           </button>
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-xl font-medium">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-accent-600 hover:bg-indigo-500 rounded-xl font-medium">
             Fechar
           </button>
         </div>
@@ -1096,7 +1096,7 @@ function ScheduleModal({
             <button
               onClick={() => void submit()}
               disabled={saving || !campaignId}
-              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium"
+              className="px-4 py-2 text-sm bg-accent-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium"
             >
               {saving ? 'Agendando...' : 'Agendar'}
             </button>

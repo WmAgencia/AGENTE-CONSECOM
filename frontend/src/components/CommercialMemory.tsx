@@ -467,7 +467,7 @@ export function CommercialMemory() {
       </div>
 
       {error && (
-        <div className="mx-5 mt-4 px-3 py-2 rounded-lg text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 flex items-center gap-2">
+        <div className="mx-5 mt-4 px-3 py-2 rounded-xl text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 flex items-center gap-2">
           <TriangleAlert className="w-3.5 h-3.5 shrink-0" />
           {error}
         </div>
@@ -488,7 +488,7 @@ export function CommercialMemory() {
             { label: 'Estrat├®gias de reuni├úo', value: dash?.meetingStrategies ?? 0, accent: 'text-fuchsia-300' },
             { label: 'Lotes de importa├º├úo', value: dash?.totalImports ?? 0, accent: 'text-fg' },
           ].map((s) => (
-            <div key={s.label} className="rounded-lg border border-line bg-subtle-2 px-3 py-2.5">
+            <div key={s.label} className="rounded-xl border border-line bg-subtle-2 px-3 py-2.5">
               <div className={`text-lg font-semibold leading-tight ${s.accent}`}>{s.value}</div>
               <div className="mt-0.5 text-[10px] uppercase tracking-wide text-faint">{s.label}</div>
             </div>
@@ -497,7 +497,7 @@ export function CommercialMemory() {
 
         {/* ===== O que a IA aprendeu ===== */}
         {tab === 'aprendizados' && learnings.length > 0 && (
-          <div className="rounded-lg border border-line bg-subtle p-4">
+          <div className="rounded-xl border border-line bg-subtle p-4">
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-4 h-4 text-emerald-300" />
               <span className="text-xs font-semibold uppercase tracking-wide text-muted">O que a IA aprendeu</span>
@@ -557,7 +557,7 @@ export function CommercialMemory() {
               <div className="text-xs text-faint py-6 text-center">Nenhum lote importado ainda. Clique em ÔÇ£Importar conversasÔÇØ.</div>
             )}
             {imports.map((imp) => (
-              <div key={imp.id} className="rounded-lg border border-line bg-subtle-2 px-4 py-3 flex flex-wrap items-center gap-3">
+              <div key={imp.id} className="rounded-xl border border-line bg-subtle-2 px-4 py-3 flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm text-fg font-medium">{imp.file_name}</span>
@@ -605,7 +605,7 @@ export function CommercialMemory() {
             {convs.map((c) => {
               const st = STATUS_TEXT[c.status] ?? STATUS_TEXT.imported
               return (
-                <div key={c.id} className="rounded-lg border border-line bg-subtle-2 px-4 py-3 flex flex-wrap items-center gap-3">
+                <div key={c.id} className="rounded-xl border border-line bg-subtle-2 px-4 py-3 flex flex-wrap items-center gap-3">
                   <MessageSquareText className="w-4 h-4 text-indigo-300 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -629,14 +629,14 @@ export function CommercialMemory() {
                   </div>
                   <button
                     onClick={() => void onReprocess(c.id)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition"
                     title="Reanalisar conversa (gera ou atualiza aprendizados, sem duplicar)"
                   >
                     <RotateCcw className="w-3.5 h-3.5" /> Reanalisar
                   </button>
                   <button
                     onClick={() => void onDeleteConversation(c.id)}
-                    className="p-2 rounded-lg text-faint hover:text-rose-300 hover:bg-rose-500/10 transition"
+                    className="p-2 rounded-xl text-faint hover:text-rose-300 hover:bg-rose-500/10 transition"
                     title="Excluir conversa"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -652,7 +652,7 @@ export function CommercialMemory() {
           <div className="space-y-3">
             {/* Filtros + busca */}
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-subtle-2 border border-line text-muted">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-subtle-2 border border-line text-muted">
                 <Search className="w-3.5 h-3.5 shrink-0" />
                 <input
                   value={query}
@@ -693,7 +693,7 @@ export function CommercialMemory() {
               const evidence = normalizeEvidence(l.evidence)
               const expanded = expandedEvidence.has(l.id)
               return (
-                <div key={l.id} className="rounded-lg border border-line bg-subtle-2 px-4 py-3 flex items-start gap-3">
+                <div key={l.id} className="rounded-xl border border-line bg-subtle-2 px-4 py-3 flex items-start gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${chip}`}>{categoryLabel(l.category)}</span>
@@ -769,21 +769,21 @@ export function CommercialMemory() {
                   <div className="flex flex-col gap-1.5 shrink-0">
                     <button
                       onClick={() => void onToggleImportant(l)}
-                      className={`p-1.5 rounded-lg transition ${l.important ? 'text-amber-300 bg-amber-500/15' : 'text-faint hover:text-amber-300 hover:bg-subtle'}`}
+                      className={`p-1.5 rounded-xl transition ${l.important ? 'text-amber-300 bg-amber-500/15' : 'text-faint hover:text-amber-300 hover:bg-subtle'}`}
                       title={l.important ? 'Desmarcar importante' : 'Marcar importante'}
                     >
                       <Star className="w-4 h-4" fill={l.important ? 'currentColor' : 'none'} />
                     </button>
                     <button
                       onClick={() => openEdit(l)}
-                      className="p-1.5 rounded-lg text-faint hover:text-fg hover:bg-subtle transition"
+                      className="p-1.5 rounded-xl text-faint hover:text-fg hover:bg-subtle transition"
                       title="Editar aprendizado"
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => void onToggleActive(l)}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition ${
+                      className={`flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] border transition ${
                         l.status === 'ativo'
                           ? 'text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10'
                           : 'text-muted border-line-2 hover:text-fg hover:bg-subtle'
@@ -794,7 +794,7 @@ export function CommercialMemory() {
                     </button>
                     <button
                       onClick={() => void onDeleteLearning(l.id)}
-                      className="p-1.5 rounded-lg text-faint hover:text-rose-300 hover:bg-rose-500/10 transition"
+                      className="p-1.5 rounded-xl text-faint hover:text-rose-300 hover:bg-rose-500/10 transition"
                       title="Remover aprendizado"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -933,7 +933,7 @@ export function CommercialMemory() {
                   onChange={(e) => setForm({ ...form, content: e.target.value })}
                   rows={3}
                   placeholder="Ex.: Sempre entender o problema antes de apresentar pre├ºo"
-                  className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
+                  className="w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                 />
               </div>
               <div className="grid sm:grid-cols-2 gap-3">
@@ -942,7 +942,7 @@ export function CommercialMemory() {
                   <select
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value as LearningCategory })}
-                    className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
+                    className="w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                   >
                     {CATEGORY_OPTIONS.map((c) => (
                       <option key={c} value={c}>{categoryLabel(c)}</option>
@@ -954,7 +954,7 @@ export function CommercialMemory() {
                   <select
                     value={form.confidence}
                     onChange={(e) => setForm({ ...form, confidence: e.target.value as LearningForm['confidence'] })}
-                    className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
+                    className="w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                   >
                     <option value="alta">Alta</option>
                     <option value="media">M├®dia</option>
@@ -968,7 +968,7 @@ export function CommercialMemory() {
                   <select
                     value={form.status}
                     onChange={(e) => setForm({ ...form, status: e.target.value as LearningStatus })}
-                    className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
+                    className="w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                   >
                     <option value="identificado">Identificado (pendente)</option>
                     <option value="validado">Validado</option>
@@ -981,7 +981,7 @@ export function CommercialMemory() {
                   <select
                     value={form.performance}
                     onChange={(e) => setForm({ ...form, performance: e.target.value as LearningForm['performance'] })}
-                    className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
+                    className="w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                   >
                     <option value="neutro">Neutro</option>
                     <option value="positivo">Funcionou</option>
@@ -996,7 +996,7 @@ export function CommercialMemory() {
                   onChange={(e) => setForm({ ...form, evidenceText: e.target.value })}
                   rows={3}
                   placeholder={'Trecho 1\nTrecho 2'}
-                  className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
+                  className="w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-500 text-fg"
                 />
               </div>
               <label className="flex items-center gap-2 text-xs text-secondary cursor-pointer select-none">
@@ -1019,21 +1019,21 @@ export function CommercialMemory() {
               </label>
 
               {modalError && (
-                <div className="text-xs text-rose-300 bg-rose-500/10 rounded-lg px-3 py-2">{modalError}</div>
+                <div className="text-xs text-rose-300 bg-rose-500/10 rounded-xl px-3 py-2">{modalError}</div>
               )}
 
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   onClick={() => !saving && setModal(null)}
                   disabled={saving}
-                  className="px-4 py-2 rounded-lg text-sm text-muted hover:text-fg transition disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl text-sm text-muted hover:text-fg transition disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={() => void saveLearning()}
                   disabled={saving}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-sm font-medium text-white transition"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-sm font-medium text-white transition"
                 >
                   {saving ? <span className="inline-flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> SalvandoÔÇª</span> : 'Salvar'}
                 </button>

@@ -115,7 +115,7 @@ function TrainingChat() {
     }
   }
 
-  const inputCls = 'w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const inputCls = 'w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500'
   const labelCls = 'block text-xs text-muted mb-1'
 
   return (
@@ -186,7 +186,7 @@ function TrainingChat() {
           </div>
         ))}
         {error && (
-          <div className="text-[11px] text-rose-300 bg-rose-500/10 rounded-lg px-3 py-2">
+          <div className="text-[11px] text-rose-300 bg-rose-500/10 rounded-xl px-3 py-2">
             {error} — confira se o backend responde.
           </div>
         )}
@@ -197,9 +197,9 @@ function TrainingChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Fale como vendedor para o cliente (ex: Olá, como posso ajudar seu negócio?)..."
-          className="flex-1 bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-500"
+          className="flex-1 bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-teal-500"
         />
-        <button type="submit" disabled={busy || !input.trim()} className="px-3.5 py-2 rounded-lg bg-teal-700 hover:bg-teal-600 disabled:opacity-40 transition">
+        <button type="submit" disabled={busy || !input.trim()} className="px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 disabled:opacity-40 transition">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>
       </form>
@@ -237,7 +237,7 @@ function FlowTest() {
     }
   }
 
-  const inputCls = 'w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500'
+  const inputCls = 'w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500'
   const labelCls = 'block text-xs text-muted mb-1'
 
   return (
@@ -250,7 +250,7 @@ function FlowTest() {
         <p className="text-xs text-muted mb-4">
           Simula o comportamento comercial do agente com a configuração real. Nenhuma mensagem é enviada.
         </p>
-        <button onClick={() => setOpen(true)} className="px-4 py-2 text-sm bg-amber-600/80 hover:bg-amber-500 rounded-lg font-medium transition">
+        <button onClick={() => setOpen(true)} className="px-4 py-2 text-sm bg-amber-600/80 hover:bg-amber-500 rounded-xl font-medium transition">
           Testar fluxo de mensagem
         </button>
       </div>
@@ -285,11 +285,11 @@ function FlowTest() {
                 <label className={labelCls}>Mensagem inicial</label>
                 <textarea value={initialMessage} onChange={(e) => setInitialMessage(e.target.value)} rows={2} className={inputCls} />
               </div>
-              {error && <div className="text-xs text-rose-300 bg-rose-500/10 rounded-lg px-3 py-2">{error}</div>}
+              {error && <div className="text-xs text-rose-300 bg-rose-500/10 rounded-xl px-3 py-2">{error}</div>}
               <button
                 type="submit"
                 disabled={running}
-                className="px-4 py-2 text-sm bg-amber-600/80 hover:bg-amber-500 disabled:opacity-50 rounded-lg font-medium"
+                className="px-4 py-2 text-sm bg-amber-600/80 hover:bg-amber-500 disabled:opacity-50 rounded-xl font-medium"
               >
                 {running ? <span className="inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Executando...</span> : 'Executar teste'}
               </button>
@@ -317,7 +317,7 @@ function FlowTest() {
                 </div>
                 <div>
                   <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Mensagem gerada</div>
-                  <div className="text-sm text-fg whitespace-pre-wrap bg-field border border-line rounded-lg p-3">
+                  <div className="text-sm text-fg whitespace-pre-wrap bg-field border border-line rounded-xl p-3">
                     {result.signed || result.mensagem}
                   </div>
                 </div>
@@ -368,7 +368,7 @@ export function AICenter() {
       </div>
 
       {error && (
-        <div className="text-sm text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-lg px-4 py-3">
+        <div className="text-sm text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3">
           Não foi possível obter o status do backend: {error}
         </div>
       )}
