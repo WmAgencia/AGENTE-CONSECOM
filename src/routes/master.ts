@@ -43,14 +43,18 @@ async function getJson<T>(path: string, select: string): Promise<T[] | null> {
 export function registerMasterRoutes(app: FastifyInstance): void {
   const log = getLogger();
 
-  app.addHook('preHandler', async (req, reply) => {
+  // Encapsulamento: o hook preHandler de MASTER fica escopado APENAS às
+  // rotas /api/master/*. Sem isto o addHook valeria para o app inteiro
+  // (mesma instância), exigindo MASTER em TODAS as rotas (inclusive /health).
+  void app.register(async function masterScoped(scoped: FastifyInstance) {
+  scoped.addHook('preHandler', async (req, reply) => {
     const auth = authOf(req);
     const guard = requireMaster(auth);
     if (!guard.ok) return reply.status(guard.statusCode).send({ error: guard.error, statusCode: guard.statusCode });
   });
 
   // Dashboard: métricas reais.
-  app.get('/api/master/dashboard', async (_req, reply) => {
+  scoped.get('/api/master/dashboard', async (_req, reply) => {
     const [appUsers, payments, subs, requests, leads] = await Promise.all([
       getJson<{ role: string; status: string }>('/app_users', 'role,status'),
       getJson<{ status: string; amount: number }>('/payments', 'status,amount'),
@@ -79,7 +83,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   });
 
   // ---- Usuários ----
-  app.get('/api/master/users', async (_req, reply) => {
+  scoped.get('/api/master/users', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>(
       '/app_users',
       'id,user_id,tenant_id,email,role,status,plan,last_login_at,created_at',
@@ -87,7 +91,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ users: rows ?? [] });
   });
 
-  app.patch('/api/master/users/:id', async (req, reply) => {
+  scoped.patch('/api/master/users/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as { role?: unknown; status?: unknown };
     const patch: Record<string, unknown> = {};
@@ -106,12 +110,12 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   });
 
   // ---- Planos ----
-  app.get('/api/master/plans', async (_req, reply) => {
+  scoped.get('/api/master/plans', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>('/plans', '*');
     return reply.send({ plans: rows ?? [] });
   });
 
-  app.post('/api/master/plans', async (req, reply) => {
+  scoped.post('/api/master/plans', async (req, reply) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name) return reply.status(400).send({ error: 'name_required', statusCode: 400 });
@@ -139,7 +143,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true, id: rows[0]?.id });
   });
 
-  app.patch('/api/master/plans/:id', async (req, reply) => {
+  scoped.patch('/api/master/plans/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
@@ -163,7 +167,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true });
   });
 
-  app.delete('/api/master/plans/:id', async (req, reply) => {
+  scoped.delete('/api/master/plans/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const res = await fetch(`${serviceBaseUrl()}/rest/v1/plans?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -177,7 +181,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   });
 
   // ---- Assinaturas / Pagamentos ----
-  app.get('/api/master/subscriptions', async (_req, reply) => {
+  scoped.get('/api/master/subscriptions', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>(
       '/subscriptions',
       '*,plan:plans(name,slug,price,lead_limit)',
@@ -185,13 +189,13 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ subscriptions: rows ?? [] });
   });
 
-  app.get('/api/master/payments', async (_req, reply) => {
+  scoped.get('/api/master/payments', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>('/payments', '*,plan:plans(name,slug)');
     return reply.send({ payments: rows ?? [] });
   });
 
   // ---- Gateways ----
-  app.get('/api/master/gateways', async (_req, reply) => {
+  scoped.get('/api/master/gateways', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>(
       '/payment_gateways',
       'id,provider,enabled,sandbox,active,created_at,updated_at',
@@ -199,7 +203,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ gateways: rows ?? [] });
   });
 
-  app.post('/api/master/gateways', async (req, reply) => {
+  scoped.post('/api/master/gateways', async (req, reply) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const provider = typeof body.provider === 'string' ? body.provider : 'mercadopago';
     const cfg = (typeof body.config === 'object' && body.config ? body.config : {}) as Record<string, unknown>;
@@ -244,7 +248,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true });
   });
 
-  app.post('/api/master/gateways/:id/test', async (req, reply) => {
+  scoped.post('/api/master/gateways/:id/test', async (req, reply) => {
     const { id } = req.params as { id: string };
     const rows = await getJson<{ provider: string; sandbox: boolean; config: Record<string, unknown> }>(
       `/payment_gateways?id=eq.${encodeURIComponent(id)}`,
@@ -259,7 +263,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ ok: test.ok, error: test.error ?? null });
   });
 
-  app.post('/api/master/gateways/:id/toggle', async (req, reply) => {
+  scoped.post('/api/master/gateways/:id/toggle', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as { enabled?: unknown; active?: unknown };
     const patch: Record<string, unknown> = {};
@@ -275,12 +279,12 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   });
 
   // ---- Cupons ----
-  app.get('/api/master/coupons', async (_req, reply) => {
+  scoped.get('/api/master/coupons', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>('/coupons', '*');
     return reply.send({ coupons: rows ?? [] });
   });
 
-  app.post('/api/master/coupons', async (req, reply) => {
+  scoped.post('/api/master/coupons', async (req, reply) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
     if (!code) return reply.status(400).send({ error: 'code_required', statusCode: 400 });
@@ -306,7 +310,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true, id: rows[0]?.id });
   });
 
-  app.patch('/api/master/coupons/:id', async (req, reply) => {
+  scoped.patch('/api/master/coupons/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
@@ -328,7 +332,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true });
   });
 
-  app.delete('/api/master/coupons/:id', async (req, reply) => {
+  scoped.delete('/api/master/coupons/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     await fetch(`${serviceBaseUrl()}/rest/v1/coupons?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -339,12 +343,12 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   });
 
   // ---- Pixels ----
-  app.get('/api/master/pixels', async (_req, reply) => {
+  scoped.get('/api/master/pixels', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>('/marketing_settings', '*');
     return reply.send({ settings: rows?.[0] ?? null });
   });
 
-  app.patch('/api/master/pixels', async (req, reply) => {
+  scoped.patch('/api/master/pixels', async (req, reply) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
     if (body.meta_pixel_id != null) patch.meta_pixel_id = typeof body.meta_pixel_id === 'string' ? body.meta_pixel_id : null;
@@ -374,12 +378,12 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   });
 
   // ---- Solicitações de fonte ----
-  app.get('/api/master/source-requests', async (_req, reply) => {
+  scoped.get('/api/master/source-requests', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>('/source_requests', '*');
     return reply.send({ requests: rows ?? [] });
   });
 
-  app.patch('/api/master/source-requests/:id', async (req, reply) => {
+  scoped.patch('/api/master/source-requests/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as { status?: unknown };
     const status = typeof body.status === 'string' ? body.status : '';
@@ -398,7 +402,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   });
 
   // ---- Auditoria ----
-  app.get('/api/master/audit-logs', async (req, reply) => {
+  scoped.get('/api/master/audit-logs', async (req, reply) => {
     const query = req.query as { limit?: unknown };
     const limit = Math.min(Number(query.limit) || 100, 500);
     const rows = await getJson<Record<string, unknown>>(
@@ -409,5 +413,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   });
 
   log.info('master: routes registered');
+  });
 }
+
 
