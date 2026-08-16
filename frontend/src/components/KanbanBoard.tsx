@@ -290,10 +290,10 @@ export function KanbanBoard({
         </div>
         <div className="flex items-center gap-3">
           {campaignFilter !== 'all' && (
-            <button onClick={() => setCampaignFilter('all')}
-              className="text-xs text-indigo-300 hover:text-fg transition">
-              ← Todas as campanhas
-            </button>
+<button onClick={() => setCampaignFilter('all')}
+               className="text-xs text-accent-400 hover:text-fg transition font-medium">
+               ← Todas
+             </button>
           )}
           {campaignFilter !== 'all' && (
             <div className="relative">

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Download, ShieldCheck } from 'lucide-react'
+import { Menu, Download, ShieldCheck, ChevronRight } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
+import { Button } from './components/ui'
 import { KanbanBoard } from './components/KanbanBoard'
 import { CampaignsView } from './components/CampaignsView'
 import { LeadsView } from './components/LeadsView'
@@ -98,26 +99,24 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
         />
       )}
 
-      <aside
+<aside
         className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-sidebar border-r border-line flex flex-col transition-transform duration-200 ease-out md:static md:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
+        style={{ boxShadow: 'var(--shadow-2)' }}
       >
-        <div className="px-5 py-5 border-b border-line">
-          <div className="flex items-center gap-2.5">
-            <img
-              src="/vyntra-logo.png"
-              alt="Vyntra"
-              className="w-8 h-8 rounded-lg object-contain bg-white"
-            />
-            <div>
-              <div className="font-semibold leading-none">Vyntra</div>
-              <div className="text-[11px] text-faint mt-1">Alex · Prospecção</div>
-            </div>
-          </div>
-        </div>
+         <div className="px-5 py-5 border-b border-line"
+           style={{ background: 'linear-gradient(180deg, var(--c-subtle-2), transparent)' }}>
+           <div className="flex items-center gap-3">
+             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center text-sm font-extrabold text-white shadow-2 shrink-0">V</div>
+             <div className="min-w-0">
+               <div className="font-semibold text-sm leading-none truncate">Vyntra</div>
+               <div className="text-[11px] text-faint mt-1 truncate">Alex · Prospecção</div>
+             </div>
+           </div>
+         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-0.5">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon
             const active = activeTab === item.key
@@ -126,21 +125,23 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
                 key={item.key}
                 onClick={() => navigateTab(item.key)}
                 aria-current={active ? 'page' : undefined}
-                className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${
+                className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 ${
                   active
-                    ? 'bg-indigo-500/15 text-fg'
+                    ? 'bg-accent-500/12 text-fg shadow-sm'
                     : 'text-muted hover:bg-subtle hover:text-fg'
                 }`}
+                style={active ? { boxShadow: 'inset 0 0 0 1px var(--c-accent-200)' } : undefined}
               >
                 {active && (
-                  <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-indigo-400" />
+                  <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-accent-500 shadow-[0_0_8px_var(--c-accent-400)]" />
                 )}
                 <Icon
-                  className={`w-[18px] h-[18px] shrink-0 ${
-                    active ? 'text-indigo-300' : 'text-faint group-hover:text-secondary'
+                  className={`w-[18px] h-[18px] shrink-0 transition-colors duration-200 ${
+                    active ? 'text-accent-400' : 'text-faint group-hover:text-secondary'
                   }`}
                 />
-                <span className="truncate">{item.label}</span>
+                <span className="truncate font-medium">{item.label}</span>
+                {active && <ChevronRight className="w-3 h-3 ml-auto text-accent-400" />}
               </button>
             )
           })}
@@ -159,24 +160,26 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           )}
         </nav>
 
-        <div className="px-5 py-4 border-t border-line space-y-2">
-          <div className="text-[11px] text-faint">{leads.length} leads no total</div>
-          <div className="text-[11px] text-faint">v{APP_VERSION}</div>
-
-          {/* Atalho rápido — download da extensão personalizada p/ conta logada */}
-          <button
+        <div className="px-5 py-4 border-t border-line space-y-3">
+          <div className="flex items-center justify-between text-[11px] text-faint">
+            <span>{leads.length} leads no total</span>
+            <span className="font-mono opacity-70">v{APP_VERSION}</span>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => {
               void downloadPersonalizedExtension().then((r) => setExtStatus(r.message))
             }}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition focus:ring-2 focus:ring-indigo-400 focus:outline-none"
-            title="Baixar extensão já conectada à sua conta"
+            icon={<Download size={14} />}
+            className="w-full"
           >
-            <Download className="w-3.5 h-3.5" />
-            Baixar extensão (.zip)
-          </button>
-          {extStatus && <div className="text-[11px] text-faint">{extStatus}</div>}
-
-          <ThemeToggle className="-ml-2" />
+            Baixar extensão
+          </Button>
+          {extStatus && (
+            <div className="text-[11px] text-faint animate-fade-in px-1">{extStatus}</div>
+          )}
+          <ThemeToggle />
         </div>
       </aside>
 
