@@ -90,8 +90,11 @@ export async function resolveAuthContext(req: FastifyRequest): Promise<AuthConte
 
   let ctx: AuthContext | null = null;
   try {
+    // Valida o token DO USUÁRIO em /auth/v1/user. Usamos o service role apenas
+    // como apikey; o Authorization deve carregar o token do usuário (o JWT do
+    // service role não tem claim `sub` e é rejeitado com 403 bad_jwt).
     const res = await fetch(`${s.url}/auth/v1/user`, {
-      headers: supHeaders(s.key),
+      headers: { apikey: s.key, Authorization: `Bearer ${token}` },
     }).catch(() => null);
     if (res && res.ok) {
       const body = (await res.json()) as { id?: string; email?: string };

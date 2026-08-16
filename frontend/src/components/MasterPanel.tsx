@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { masterApi, formatBRL, type MasterDashboard, type MasterPlan, type MasterCoupon, type MasterGateway } from '../lib/api'
 
 type TabKey = 'dashboard' | 'users' | 'plans' | 'coupons' | 'gateways' | 'pixels' | 'requests' | 'logs'
@@ -34,14 +35,27 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 const inputCls = 'input'
 
-export function MasterPanel() {
+export function MasterPanel({ onBack }: { onBack?: () => void }) {
   const [tab, setTab] = useState<TabKey>('dashboard')
 
   return (
     <div className="h-full overflow-auto">
       <div className="max-w-6xl mx-auto p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Painel Master</h1>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            {onBack && (
+              <button onClick={onBack}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-subtle hover:bg-subtle-2 border border-line-2 transition"
+                title="Voltar ao app">
+                <ArrowLeft className="w-4 h-4" />
+                Voltar ao app
+              </button>
+            )}
+            <div>
+              <h1 className="text-xl font-semibold">Painel Master</h1>
+              <p className="text-xs text-muted">Gestão de usuários, planos, pagamentos e configurações</p>
+            </div>
+          </div>
           <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-300">Administração</span>
         </div>
 

@@ -57,6 +57,16 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
     setSidebarOpen(false)
   }
 
+  // Painel Master = modo de gestão em tela cheia (sem a sidebar do app).
+  if (location.pathname.startsWith('/master')) {
+    return (
+      <div className="h-full">
+        <MasterPanel onBack={() => navigate('/kanban')} />
+        <ConnectionQrOverlay />
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full">
       <div className="md:hidden fixed top-0 inset-x-0 z-40 flex items-center gap-3 h-14 px-4 bg-sidebar/95 backdrop-blur border-b border-line">

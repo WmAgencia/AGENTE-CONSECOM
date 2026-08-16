@@ -1636,6 +1636,18 @@ const start = () => {
   const host = window.location.hostname
   const href = window.location.href
   const isMaps = /(^|\.)google\.(com|com\.br|[a-z.]+)\/maps\//.test(href) || host.startsWith('maps.google')
+  // Sites permitidos (adapters): a extensão só aparece aqui e desaparece nos demais.
+  const isAllowedAdapter = () => {
+    const h = host.toLowerCase()
+    if (/(^|\.)wepsy\.com\.br$/.test(h)) return true
+    if (/(^|\.)webmotors\.com\.br$/.test(h)) return true
+    if (/(^|\.)airbnb\.com(\.br)?$/.test(h)) return true
+    return false
+  }
+
+  // Site fora da lista → não injeta nada (a extensão fica invisível).
+  if (!isMaps && !isAllowedAdapter()) return
+
   if (typeof document !== 'undefined') {
     import('./welcome').then(({ detectWelcomeSite, showWelcome }) => {
       const site = detectWelcomeSite(host, href)
