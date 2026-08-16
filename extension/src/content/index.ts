@@ -1641,7 +1641,6 @@ const start = () => {
     const h = host.toLowerCase()
     if (/(^|\.)wepsy\.com\.br$/.test(h)) return true
     if (/(^|\.)webmotors\.com\.br$/.test(h)) return true
-    if (/(^|\.)airbnb\.com(\.br)?$/.test(h)) return true
     return false
   }
 
@@ -1654,15 +1653,20 @@ const start = () => {
       if (site && site !== 'global') showWelcome(site)
     })
   }
-  if (isMaps) {
-    const scanner = new MapsScanner()
-    void scanner.init()
-  } else {
-    import('./global').then(({ GlobalScanner }) => {
-      const scanner = new GlobalScanner()
+  void import('../shared/leads').then(async ({ getExtensionSites }) => {
+    const sites = await getExtensionSites()
+    if (isMaps) {
+      // Google Maps desligado no Master → extensão não opera aqui.
+      if (sites.maps === false) return
+      const scanner = new MapsScanner()
       void scanner.init()
-    })
-  }
+    } else {
+      import('./global').then(({ GlobalScanner }) => {
+        const scanner = new GlobalScanner()
+        void scanner.init()
+      })
+    }
+  })
 }
 
 if (typeof window !== 'undefined') start()
