@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { masterApi, formatBRL, type MasterDashboard, type MasterPlan, type MasterCoupon, type MasterGateway } from '../lib/api'
 
-type TabKey = 'dashboard' | 'users' | 'plans' | 'coupons' | 'gateways' | 'pixels' | 'extensao' | 'requests' | 'logs'
+type TabKey = 'dashboard' | 'users' | 'plans' | 'coupons' | 'gateways' | 'pixels' | 'extensao' | 'referencias' | 'requests' | 'logs'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -12,6 +12,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'gateways', label: 'Gateways' },
   { key: 'pixels', label: 'Pixels' },
   { key: 'extensao', label: 'Extensão' },
+  { key: 'referencias', label: 'Referências' },
   { key: 'requests', label: 'Solicitações' },
   { key: 'logs', label: 'Auditoria' },
 ]
@@ -35,6 +36,95 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 const inputCls = 'input'
+
+function RefCard({ title, description, value, onChange, onTest, onSave, onRemove, isLoading, currentRef }: {
+  title: string; description: string; value: string; onChange: (v: string) => void; onTest: () => void; onSave: () => void; onRemove: () => void; isLoading: boolean; currentRef: string | null
+}) {
+  return (
+    <div className="rounded-lg border border-line bg-bg p-4">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <p className="text-xs text-muted mt-0.5 mb-3">{description}</p>
+      <label className="text-xs text-muted block mb-1">URL de referência</label>
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="https://exemplo.com" className={`${inputCls} mb-2`} />
+      <div className="text-xs mb-3">{currentRef ? (
+        <span className="text-emerald-400 flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" /> Referência configurada</span>
+      ) : <span className="text-muted">Nenhuma referência configurada</span>}</div>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={onTest} disabled={isLoading} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-subtle text-fg hover:bg-line transition disabled:opacity-50">{isLoading ? 'Testando…' : 'Testar URL'}</button>
+        <button onClick={onSave} disabled={isLoading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition disabled:opacity-50">Salvar referência</button>
+        <button onClick={onRemove} disabled={isLoading} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-300 hover:text-red-200 hover:bg-red-500/10 transition disabled:opacity-50">Remover referência</button>
+      </div>
+    </div>
+  )
+}
+
+function VisualReferencesTab() {
+  const [refs, setRefs] = useState<{ landing_reference_url: string | null; dashboard_reference_url: string | null } | null>(null)
+  const [landingUrl, setLandingUrl] = useState('')
+  const [dashboardUrl, setDashboardUrl] = useState('')
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [loading, setLoading] = useState<string | null>(null)
+
+  useEffect(() => {
+    masterApi.visualReferences().then((r) => {
+      setRefs(r)
+      setLandingUrl(r.landing_reference_url ?? '')
+      setDashboardUrl(r.dashboard_reference_url ?? '')
+    }).catch(() => setRefs(null))
+  }, [])
+
+  async function testUrl(field: 'landing' | 'dashboard') {
+    const raw = field === 'landing' ? landingUrl : dashboardUrl
+    if (!raw.trim()) { setMsg({ ok: false, text: 'Informe uma URL antes de testar.' }); setTimeout(() => setMsg(null), 4000); return }
+    try { const u = new URL(raw.trim()); if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('Use http(s)://') } catch { setMsg({ ok: false, text: 'URL malformada. Use https://...' }); setTimeout(() => setMsg(null), 4000); return }
+    setLoading(field); setMsg(null)
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 8000)
+    try {
+      const r = await fetch(raw.trim(), { method: 'HEAD', signal: ctrl.signal, redirect: 'manual' })
+      clearTimeout(t)
+      if (r.status < 400 || r.status === 301 || r.status === 302) setMsg({ ok: true, text: `URL acessível (HTTP ${r.status}).` })
+      else setMsg({ ok: false, text: `Resposta HTTP ${r.status} ao acessar a URL.` })
+    } catch (e) {
+      clearTimeout(t)
+      const em = e instanceof Error ? e.message : String(e)
+      setMsg({ ok: false, text: em === 'The user aborted a request.' ? 'Timeout (8s) ao acessar a URL.' : `Falha ao acessar: ${em}` })
+    } finally { setLoading(null); setTimeout(() => setMsg(null), 6000) }
+  }
+
+  async function saveRef(field: 'landing' | 'dashboard') {
+    const raw = field === 'landing' ? landingUrl : dashboardUrl
+    if (!raw.trim()) { setMsg({ ok: false, text: 'URL vazia. Preencha ou use Remover.' }); setTimeout(() => setMsg(null), 4000); return }
+    try { const u = new URL(raw.trim()); if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('Use http(s)://') } catch { setMsg({ ok: false, text: 'URL inválida. Aceitamos apenas http(s):// válido.' }); setTimeout(() => setMsg(null), 4000); return }
+    const patch: Record<string, string | null> = {}
+    if (field === 'landing') patch.landing_reference_url = raw.trim(); else patch.dashboard_reference_url = raw.trim()
+    const r = await masterApi.saveVisualReferences(patch)
+    if (r) setRefs({ landing_reference_url: r.landing_reference_url ?? null, dashboard_reference_url: r.dashboard_reference_url ?? null })
+    setMsg({ ok: true, text: 'Referência salva.' }); setTimeout(() => setMsg(null), 4000)
+  }
+
+  async function removeRef(field: 'landing' | 'dashboard') {
+    const patch: Record<string, string | null> = {}
+    if (field === 'landing') { patch.landing_reference_url = null; setLandingUrl('') } else { patch.dashboard_reference_url = null; setDashboardUrl('') }
+    const r = await masterApi.saveVisualReferences(patch)
+    if (r) setRefs({ landing_reference_url: r.landing_reference_url ?? null, dashboard_reference_url: r.dashboard_reference_url ?? null })
+    setMsg({ ok: true, text: 'Referência removida.' }); setTimeout(() => setMsg(null), 4000)
+  }
+
+  return (
+    <Section title="Referências de Interface">
+      <p className="text-xs text-muted mb-4">Informe URLs de referência visual para Landing Page e Painel do Usuário. A equipe utilizará essas páginas como inspiração de UX/UI, preservando a identidade e marca do Vyntra.</p>
+      {msg && <div className={`text-xs font-semibold mb-3 ${msg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{msg.text}</div>}
+      {!refs && <div className="text-sm text-muted">Carregando…</div>}
+      {refs && (
+        <div className="grid lg:grid-cols-2 gap-5">
+          <RefCard title="Landing Page" description="Ex.: https://nexxus-pro.online/" value={landingUrl} onChange={setLandingUrl} onTest={() => testUrl('landing')} onSave={() => saveRef('landing')} onRemove={() => removeRef('landing')} isLoading={loading === 'landing'} currentRef={refs.landing_reference_url} />
+          <RefCard title="Painel do Usuário" description="Ex.: https://nexxus-pro.online/members" value={dashboardUrl} onChange={setDashboardUrl} onTest={() => testUrl('dashboard')} onSave={() => saveRef('dashboard')} onRemove={() => removeRef('dashboard')} isLoading={loading === 'dashboard'} currentRef={refs.dashboard_reference_url} />
+        </div>
+      )}
+    </Section>
+  )
+}
 
 export function MasterPanel({ onBack }: { onBack?: () => void }) {
   const [tab, setTab] = useState<TabKey>('dashboard')
@@ -78,6 +168,7 @@ export function MasterPanel({ onBack }: { onBack?: () => void }) {
         {tab === 'gateways' && <GatewaysTab />}
         {tab === 'pixels' && <PixelsTab />}
         {tab === 'extensao' && <ExtensionSitesTab />}
+        {tab === 'referencias' && <VisualReferencesTab />}
         {tab === 'requests' && <RequestsTab />}
         {tab === 'logs' && <LogsTab />}
       </div>

@@ -311,6 +311,12 @@ export const masterApi = {
     const r = await api.get<{ logs: Array<Record<string, unknown>> }>(`/api/master/audit-logs?limit=${limit}`)
     return r.logs ?? []
   },
+  async visualReferences(): Promise<{ landing_reference_url: string | null; dashboard_reference_url: string | null }> {
+    return api.get('/api/master/visual-references')
+  },
+  async saveVisualReferences(patch: { landing_reference_url?: string | null; dashboard_reference_url?: string | null }): Promise<{ ok: boolean; landing_reference_url: string | null; dashboard_reference_url: string | null }> {
+    return api.patch('/api/master/visual-references', patch)
+  },
 }
 
 // ===== Inteligência Comercial (Metas + Faturamento) =====

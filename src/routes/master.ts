@@ -414,6 +414,67 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true });
   });
 
+  // ---- Referências Visuais (Landing Page + Painel do Usuário) ----
+  function isValidVisualUrl(v: unknown): boolean {
+    if (typeof v !== 'string' || !v.trim()) return true // empty/null = remove
+    try {
+      const u = new URL(v.trim())
+      return u.protocol === 'http:' || u.protocol === 'https:'
+    } catch {
+      return false
+    }
+  }
+
+  scoped.get('/api/master/visual-references', async (_req, reply) => {
+    const rows = await getJson<Record<string, unknown>>('/extension_settings', 'landing_reference_url,dashboard_reference_url');
+    const row = rows?.[0] ?? {};
+    return reply.send({
+      landing_reference_url: typeof row.landing_reference_url === 'string' ? row.landing_reference_url : null,
+      dashboard_reference_url: typeof row.dashboard_reference_url === 'string' ? row.dashboard_reference_url : null,
+    });
+  });
+
+  scoped.patch('/api/master/visual-references', async (req, reply) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const patch: Record<string, unknown> = {};
+    if ('landing_reference_url' in body) {
+      const v = body.landing_reference_url
+      if (v !== null && v !== undefined && typeof v === 'string' && v.trim()) {
+        if (!isValidVisualUrl(v)) return reply.status(400).send({ error: 'invalid_landing_url', statusCode: 400 })
+        patch.landing_reference_url = v.trim()
+      } else {
+        patch.landing_reference_url = null
+      }
+    }
+    if ('dashboard_reference_url' in body) {
+      const v = body.dashboard_reference_url
+      if (v !== null && v !== undefined && typeof v === 'string' && v.trim()) {
+        if (!isValidVisualUrl(v)) return reply.status(400).send({ error: 'invalid_dashboard_url', statusCode: 400 })
+        patch.dashboard_reference_url = v.trim()
+      } else {
+        patch.dashboard_reference_url = null
+      }
+    }
+    if (Object.keys(patch).length === 0) return reply.status(400).send({ error: 'nothing_to_update', statusCode: 400 });
+    const rows = await getJson<{ id: number }>('/extension_settings', 'id');
+    if (rows && rows.length > 0) {
+      await fetch(`${serviceBaseUrl()}/rest/v1/extension_settings?id=eq.${encodeURIComponent(String(rows[0].id))}`, {
+        method: 'PATCH',
+        headers: serviceHeaders(true),
+        body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
+      });
+    } else {
+      await fetch(`${serviceBaseUrl()}/rest/v1/extension_settings`, {
+        method: 'POST',
+        headers: serviceHeaders(true),
+        body: JSON.stringify({ id: 1, ...patch }),
+      });
+    }
+    const auth = authOf(req);
+    await writeAudit({ actor: auth!.userId, action: 'VISUAL_REFERENCES_UPDATED', tenantId: auth!.tenantId, targetType: 'extension_settings', targetIds: [], details: patch });
+    return reply.send({ ok: true, landing_reference_url: patch.landing_reference_url ?? null, dashboard_reference_url: patch.dashboard_reference_url ?? null });
+  });
+
   // ---- Solicitações de fonte ----
   scoped.get('/api/master/source-requests', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>('/source_requests', '*');
