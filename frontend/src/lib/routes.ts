@@ -6,13 +6,13 @@ import {
   Users,
   Plug,
   Settings,
-  Smartphone,
   Puzzle,
   BellRing,
   Bot,
   ContactRound,
   CalendarDays,
   UserPlus,
+  UserCircle,
 } from 'lucide-react'
 
 export type Tab =
@@ -30,6 +30,7 @@ export type Tab =
   | 'extensao'
   | 'app-mobile'
   | 'prospeccao-manual'
+  | 'conta'
 
 export interface NavItem {
   key: Tab
@@ -54,6 +55,7 @@ export const TAB_PATHS: Record<Tab, string> = {
   extensao: '/extensao',
   'app-mobile': '/app-mobile',
   'prospeccao-manual': '/prospeccao-manual',
+  conta: '/conta',
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -68,9 +70,9 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'conexoes', label: 'Conexões', icon: Plug, path: TAB_PATHS.conexoes },
   { key: 'agente', label: 'Config. do Agente', icon: Settings, path: TAB_PATHS.agente },
   { key: 'voz', label: 'Voz', icon: BellRing, path: TAB_PATHS.voz },
-  { key: 'extensao', label: 'Extensão', icon: Puzzle, path: TAB_PATHS.extensao },
-  { key: 'app-mobile', label: 'App mobile', icon: Smartphone, path: TAB_PATHS['app-mobile'] },
+  { key: 'extensao', label: 'Extensão e app', icon: Puzzle, path: TAB_PATHS.extensao },
   { key: 'prospeccao-manual', label: 'Prospecção Manual', icon: UserPlus, path: '/prospeccao-manual' },
+  { key: 'conta', label: 'Conta', icon: UserCircle, path: TAB_PATHS.conta },
 ]
 
 export const DEFAULT_TAB: Tab = 'kanban'

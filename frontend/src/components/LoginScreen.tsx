@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { authLogin } from '../lib/api'
 import { ThemeToggle } from './ThemeToggle'
 
 export function LoginScreen() {
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -12,9 +13,18 @@ export function LoginScreen() {
     e.preventDefault()
     setError(null)
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setLoading(false)
-    if (error) setError(error.message)
+    try {
+      const res = await authLogin(identifier, password)
+      const { error } = await supabase.auth.setSession({
+        access_token: res.access_token,
+        refresh_token: res.refresh_token,
+      })
+      if (error) setError(error.message)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao entrar.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -24,7 +34,7 @@ export function LoginScreen() {
       </div>
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center text-2xl font-bold mx-auto mb-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center text-2xl font-bold mx-auto mb-4">
             C
           </div>
           <h1 className="text-xl font-semibold">Vyntra</h1>
@@ -33,11 +43,11 @@ export function LoginScreen() {
 
         <form onSubmit={submit} className="space-y-3">
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email"
-            autoComplete="email"
+            type="text"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="E-mail ou nome de usuário"
+            autoComplete="username"
             className="w-full bg-field border border-line-2 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-indigo-500"
           />
           <input

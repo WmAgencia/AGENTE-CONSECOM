@@ -70,7 +70,7 @@ export function registerSaaSRoutes(app: FastifyInstance): void {
       })(),
     ]);
     return reply.send({
-      user: { id: a.userId, email: a.email, role: a.role, status: a.status },
+      user: { id: a.userId, email: a.email, username: a.username, role: a.role, status: a.status },
       tenantId: a.tenantId,
       subscription,
       plan,

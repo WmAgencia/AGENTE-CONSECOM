@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
-import { saasApi, formatBRL, type SaasMe, type SaasPlan } from '../lib/api'
+import { LogOut } from 'lucide-react'
+import { supabase } from '../lib/supabase'
+import { saasApi, authUpdateUsername, formatBRL, type SaasMe, type SaasPlan } from '../lib/api'
 
 export function ContaPage() {
   const [me, setMe] = useState<SaasMe | null>(null)
   const [plans, setPlans] = useState<SaasPlan[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // Nome de usuário
+  const [username, setUsername] = useState('')
+  const [userMsg, setUserMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [userBusy, setUserBusy] = useState(false)
 
   // Segurança
   const [cur, setCur] = useState('')
@@ -26,6 +33,7 @@ export function ContaPage() {
         const [m, p] = await Promise.all([saasApi.me(), saasApi.plans()])
         setMe(m)
         setPlans(p)
+        setUsername(m.user.username ?? '')
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Falha ao carregar a conta')
       } finally {
@@ -33,6 +41,28 @@ export function ContaPage() {
       }
     })()
   }, [])
+
+  async function saveUsername() {
+    setUserMsg(null)
+    if (!username.trim()) {
+      setUserMsg({ ok: false, text: 'Digite um nome de usuário.' })
+      return
+    }
+    setUserBusy(true)
+    try {
+      const saved = await authUpdateUsername(username.trim())
+      setUserMsg({ ok: true, text: 'Nome de usuário atualizado.' })
+      setMe((m) => (m ? { ...m, user: { ...m.user, username: saved } } : m))
+    } catch (e) {
+      setUserMsg({ ok: false, text: e instanceof Error ? e.message : 'Não foi possível salvar.' })
+    } finally {
+      setUserBusy(false)
+    }
+  }
+
+  async function logout() {
+    await supabase.auth.signOut()
+  }
 
   async function changePassword() {
     setPwdMsg(null)
@@ -96,7 +126,17 @@ export function ContaPage() {
   return (
     <div className="h-full overflow-auto">
       <div className="max-w-4xl mx-auto p-6 space-y-6">
-        <h1 className="text-xl font-semibold">Minha conta</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">Minha conta</h1>
+          <button
+            onClick={() => void logout()}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-500 transition"
+            title="Sair da conta"
+          >
+            <LogOut className="w-4 h-4" />
+            Sair da conta
+          </button>
+        </div>
 
         {/* Perfil + plano */}
         <section className="rounded-xl border border-line bg-subtle p-5">
@@ -106,6 +146,25 @@ export function ContaPage() {
             <div><div className="text-faint text-xs">Papel</div><div>{me.user.role === 'MASTER' ? 'Administrador' : 'Usuário'}</div></div>
             <div><div className="text-faint text-xs">Status</div><div className={me.user.status === 'active' ? 'text-emerald-400' : 'text-red-400'}>{me.user.status === 'active' ? 'Ativo' : 'Bloqueado'}</div></div>
             <div><div className="text-faint text-xs">Tenant</div><div className="font-mono text-xs break-all">{me.tenantId}</div></div>
+          </div>
+
+          {/* Nome de usuário */}
+          <div className="mt-4 pt-4 border-t border-line">
+            <div className="text-xs text-faint mb-1">Nome de usuário (login por usuário)</div>
+            <div className="flex items-center gap-2 max-w-md">
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="escolha um usuário (ex.: wesleytune)"
+                className="input flex-1"
+              />
+              <button onClick={() => void saveUsername()} disabled={userBusy}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition">
+                {userBusy ? 'Salvando…' : 'Salvar'}
+              </button>
+            </div>
+            {userMsg && <p className={`text-xs mt-2 ${userMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{userMsg.text}</p>}
           </div>
         </section>
 

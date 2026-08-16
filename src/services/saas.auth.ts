@@ -21,6 +21,7 @@ export interface AuthContext {
   tenantId: string;
   role: Role;
   email: string;
+  username: string | null;
   status: 'active' | 'blocked';
   blocked: boolean;
 }
@@ -30,6 +31,7 @@ interface AppUserRow {
   tenant_id: string;
   email: string;
   full_name: string | null;
+  username: string | null;
   role: Role;
   status: 'active' | 'blocked';
 }
@@ -55,7 +57,7 @@ function supHeaders(key: string, json = false): Record<string, string> {
 async function fetchAppUser(s: SupabaseMeta, userId: string): Promise<AppUserRow | null> {
   try {
     const res = await fetch(
-      `${s.url}/rest/v1/app_users?select=id,tenant_id,email,full_name,role,status&id=eq.${encodeURIComponent(userId)}&limit=1`,
+      `${s.url}/rest/v1/app_users?select=id,tenant_id,email,full_name,username,role,status&id=eq.${encodeURIComponent(userId)}&limit=1`,
       { headers: supHeaders(s.key) },
     );
     if (!res.ok) return null;
@@ -102,6 +104,7 @@ export async function resolveAuthContext(req: FastifyRequest): Promise<AuthConte
             tenantId: appUser.tenant_id,
             role: appUser.role,
             email: appUser.email ?? body.email ?? '',
+            username: appUser.username ?? null,
             status: appUser.status,
             blocked: appUser.status === 'blocked',
           };

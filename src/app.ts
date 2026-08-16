@@ -33,6 +33,7 @@ import { registerAgendaRoutes } from './routes/agenda.js';
 import { registerCampaignScheduleRoutes } from './routes/campaigns.js';
 import { registerFollowUpRoutes } from './routes/followups.js';
 import { registerSaaSRoutes } from './routes/saas.js';
+import { registerAuthRoutes } from './routes/auth.js';
 import { registerMasterRoutes } from './routes/master.js';
 import { resolveAuthContext } from './services/saas.auth.js';
 import { buildDefaultRegistry } from './tools/index.js';
@@ -230,6 +231,7 @@ export function buildApp(): BuiltApp {
   registerCampaignScheduleRoutes(app);
   registerFollowUpRoutes(app);
   registerSaaSRoutes(app);
+  registerAuthRoutes(app);
   registerMasterRoutes(app);
 
   return { app };

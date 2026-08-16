@@ -71,6 +71,35 @@ export const api = {
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
+// ===== Vyntra — Autenticação (login por usuário ou e-mail) =====
+
+export interface AuthLoginResult {
+  ok: boolean
+  access_token: string
+  refresh_token: string
+  token_type: string
+  expires_in: number | null
+  user: Record<string, unknown> | null
+}
+
+/** Login direto no backend (aceita e-mail OU nome de usuário). */
+export async function authLogin(identifier: string, password: string): Promise<AuthLoginResult> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier, password }),
+  })
+  const data = (await res.json()) as AuthLoginResult & ApiError
+  if (!res.ok) throw new ApiRequestError(res.status, data as unknown as ApiError)
+  return data
+}
+
+/** Atualiza o nome de usuário do usuário autenticado. */
+export async function authUpdateUsername(username: string): Promise<string | null> {
+  const data = await api.post<{ ok: boolean; username?: string | null }>('/api/auth/update-username', { username })
+  return data.username ?? null
+}
+
 // ===== Vyntra SaaS (minha conta + catálogo de planos) =====
 
 export interface SaasPlan {
@@ -104,7 +133,7 @@ export interface SaasUsage {
 }
 
 export interface SaasMe {
-  user: { id: string; email: string; role: 'USER' | 'MASTER'; status: string }
+  user: { id: string; email: string; username: string | null; role: 'USER' | 'MASTER'; status: string }
   tenantId: string
   subscription: SaasSubscription | null
   plan: SaasPlan | null

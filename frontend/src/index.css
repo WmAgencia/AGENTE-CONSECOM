@@ -26,28 +26,42 @@
   --color-chat-bg: var(--c-chat-bg);
   --color-chat-in: var(--c-chat-in);
   --color-chat-input: var(--c-chat-input);
+  /* Marca/accent: verde escuro no modo claro (WhatsApp), indigo no escuro */
+  --color-indigo-200: var(--c-indigo-200);
+  --color-indigo-300: var(--c-indigo-300);
+  --color-indigo-400: var(--c-indigo-400);
+  --color-indigo-500: var(--c-indigo-500);
+  --color-indigo-600: var(--c-indigo-600);
+  --color-indigo-700: var(--c-indigo-700);
 }
 
-/* Padrão: tema claro */
+/* Padrão: tema claro (branco + verde escuro, estilo WhatsApp) */
 :root {
   color-scheme: light;
-  --c-app: #eef1f6;
+  --c-app: #eef3f1;
   --c-sidebar: #ffffff;
   --c-panel: #ffffff;
   --c-field: #ffffff;
-  --c-subtle: rgba(15, 23, 42, 0.04);
-  --c-subtle-2: rgba(15, 23, 42, 0.07);
-  --c-line: #e4e7ee;
-  --c-line-2: #d5dae4;
-  --c-line-strong: #c6cdd9;
-  --c-fg: #0f172a;
-  --c-secondary: #334155;
-  --c-muted: #64748b;
-  --c-faint: #94a3b8;
-  --c-chat-bar: #e9edf3;
-  --c-chat-bg: #e7eaf2;
+  --c-subtle: rgba(4, 120, 87, 0.05);
+  --c-subtle-2: rgba(4, 120, 87, 0.09);
+  --c-line: #e3e8e6;
+  --c-line-2: #d5ddd9;
+  --c-line-strong: #c3cec9;
+  --c-fg: #10231c;
+  --c-secondary: #1f2b26;
+  --c-muted: #5b6b64;
+  --c-faint: #8a9a93;
+  --c-chat-bar: #ffffff;
+  --c-chat-bg: #eef3f1;
   --c-chat-in: #ffffff;
   --c-chat-input: #ffffff;
+  /* Accent: verde escuro (WhatsApp) */
+  --c-indigo-200: #a7f3d0;
+  --c-indigo-300: #34d399;
+  --c-indigo-400: #10b981;
+  --c-indigo-500: #059669;
+  --c-indigo-600: #047857;
+  --c-indigo-700: #065f46;
 }
 
 /* Tema escuro (visual original) */
@@ -70,6 +84,13 @@ html[data-theme="dark"] {
   --c-chat-bg: #0b141a;
   --c-chat-in: #202c33;
   --c-chat-input: #2a3942;
+  /* Accent: indigo (mantém o visual original) */
+  --c-indigo-200: #c7d2fe;
+  --c-indigo-300: #a5b4fc;
+  --c-indigo-400: #818cf8;
+  --c-indigo-500: #6366f1;
+  --c-indigo-600: #4f46e5;
+  --c-indigo-700: #4338ca;
 }
 
 html, body, #root {

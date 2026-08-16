@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Download, UserCircle, ShieldCheck } from 'lucide-react'
+import { Menu, Download, ShieldCheck } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
 import { KanbanBoard } from './components/KanbanBoard'
@@ -10,8 +10,7 @@ import { ImportedLeadsView } from './components/ImportedLeadsView'
 import { DashboardView } from './components/DashboardView'
 import { AgentConfig } from './components/AgentConfig'
 import { ConnectionsPage } from './components/ConnectionsPage'
-import { MobileAppView } from './components/MobileAppView'
-import { ExtensionView } from './components/ExtensionView'
+import { ExtensionAndAppView } from './components/ExtensionAndAppView'
 import { VoiceSettings } from './components/VoiceSettings'
 import { AICenter } from './components/AICenter'
 import { ContactsView } from './components/ContactsView'
@@ -167,24 +166,6 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           </button>
           {extStatus && <div className="text-[11px] text-faint">{extStatus}</div>}
 
-          <button
-            onClick={() => { navigate('/conta'); setSidebarOpen(false) }}
-            className="flex items-center gap-2 text-xs text-muted hover:text-fg transition"
-          >
-            <UserCircle className="w-4 h-4" />
-            Minha conta
-          </button>
-
-          <button
-            onClick={() => {
-              setSidebarOpen(false)
-              void supabase.auth.signOut()
-            }}
-            className="text-xs text-muted hover:text-fg transition"
-          >
-            Sair
-          </button>
-
           <ThemeToggle className="-ml-2" />
         </div>
       </aside>
@@ -202,8 +183,8 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           <Route path="/agente" element={<AgentConfig />} />
           <Route path="/voz" element={<VoiceSettings />} />
           <Route path="/conexoes" element={<ConnectionsPage />} />
-          <Route path="/extensao" element={<ExtensionView />} />
-          <Route path="/app-mobile" element={<MobileAppView />} />
+          <Route path="/extensao" element={<ExtensionAndAppView />} />
+          <Route path="/app-mobile" element={<Navigate to="/extensao" replace />} />
           <Route path="/contatos" element={<ContactsView />} />
           <Route path="/conta" element={<ContaPage />} />
           <Route path="/master" element={<MasterPanel />} />
