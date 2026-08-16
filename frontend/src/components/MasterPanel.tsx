@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { masterApi, formatBRL, type MasterDashboard, type MasterPlan, type MasterCoupon, type MasterGateway } from '../lib/api'
 
-type TabKey = 'dashboard' | 'users' | 'plans' | 'coupons' | 'gateways' | 'pixels' | 'requests' | 'logs'
+type TabKey = 'dashboard' | 'users' | 'plans' | 'coupons' | 'gateways' | 'pixels' | 'extensao' | 'requests' | 'logs'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -11,6 +11,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'coupons', label: 'Cupons' },
   { key: 'gateways', label: 'Gateways' },
   { key: 'pixels', label: 'Pixels' },
+  { key: 'extensao', label: 'Extensão' },
   { key: 'requests', label: 'Solicitações' },
   { key: 'logs', label: 'Auditoria' },
 ]
@@ -76,10 +77,67 @@ export function MasterPanel({ onBack }: { onBack?: () => void }) {
         {tab === 'coupons' && <CouponsTab />}
         {tab === 'gateways' && <GatewaysTab />}
         {tab === 'pixels' && <PixelsTab />}
+        {tab === 'extensao' && <ExtensionSitesTab />}
         {tab === 'requests' && <RequestsTab />}
         {tab === 'logs' && <LogsTab />}
       </div>
     </div>
+  )
+}
+
+function ExtensionSitesTab() {
+  const [sites, setSites] = useState<{ maps: boolean; webmotors: boolean; wepsy: boolean } | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    masterApi.extensionSites().then(setSites).catch(() => setSites(null))
+  }, [])
+
+  async function toggle(key: 'maps' | 'webmotors' | 'wepsy') {
+    if (!sites) return
+    const next = { ...sites, [key]: !sites[key] }
+    setSites(next)
+    try {
+      await masterApi.updateExtensionSites({ [key]: next[key] })
+      setMsg({ ok: true, text: 'Configuração salva. A extensão será atualizada na próxima abertura.' })
+    } catch {
+      setSites(sites)
+      setMsg({ ok: false, text: 'Erro ao salvar. Tente novamente.' })
+    }
+    setTimeout(() => setMsg(null), 4000)
+  }
+
+  const rows = [
+    { key: 'maps' as const, label: 'Google Maps', desc: 'Busca por palavra-chave (ex.: "Psicólogos em Sorocaba")' },
+    { key: 'webmotors' as const, label: 'WebMotors', desc: 'Busca por cidade e estado (lojas e concessionárias)' },
+    { key: 'wepsy' as const, label: 'Wepsy', desc: 'Busca por cidade e estado (psicólogos)' },
+  ]
+
+  return (
+    <Section title="Sites ativos na extensão">
+      <p className="text-xs text-muted mb-4">Ligue ou desligue cada site. Quando desligado, a opção fica esmaecida e cinza na extensão e o site não opera.</p>
+      {!sites && <div className="text-sm text-muted">Carregando…</div>}
+      {sites && (
+        <div className="space-y-3">
+          {rows.map((r) => (
+            <div key={r.key} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-bg p-4">
+              <div>
+                <div className="text-sm font-semibold">{r.label}</div>
+                <div className="text-xs text-muted mt-0.5">{r.desc}</div>
+              </div>
+              <button onClick={() => void toggle(r.key)}
+                className={`relative w-11 h-6 rounded-full transition ${sites[r.key] ? 'bg-emerald-500' : 'bg-zinc-600'}`}
+                title={sites[r.key] ? 'Ativo' : 'Desativado'}>
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${sites[r.key] ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+          ))}
+          {msg && (
+            <div className={`text-xs font-semibold ${msg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{msg.text}</div>
+          )}
+        </div>
+      )}
+    </Section>
   )
 }
 

@@ -62,6 +62,34 @@ export interface PlanQuota {
   remaining: number | null
 }
 
+/** Sites que a extensão pode operar, com flag de ativação (controlada no Master). */
+export interface ExtensionSites {
+  maps: boolean
+  webmotors: boolean
+  wepsy: boolean
+}
+
+const ALL_SITES_ON: ExtensionSites = { maps: true, webmotors: true, wepsy: true }
+
+/** Consulta os sites ativos da extensão (público). Fica tudo ligado se falhar. */
+export async function getExtensionSites(): Promise<ExtensionSites> {
+  try {
+    const res = await chrome.runtime.sendMessage({
+      type: 'consecom:api',
+      path: '/api/extension/sites',
+      method: 'GET',
+    })
+    const d = (res?.data ?? {}) as Partial<ExtensionSites>
+    return {
+      maps: d.maps !== false,
+      webmotors: d.webmotors !== false,
+      wepsy: d.wepsy !== false,
+    }
+  } catch {
+    return { ...ALL_SITES_ON }
+  }
+}
+
 export interface KnownResult {
   used: string[]
   noInterest: Record<string, string>

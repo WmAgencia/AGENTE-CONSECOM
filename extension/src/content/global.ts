@@ -1,5 +1,5 @@
 import { getStoredConfig, type StoredConfig } from '../shared/config'
-import { getPlanQuota, importLeads, type PlanQuota, type ScrapedLead } from '../shared/leads'
+import { getPlanQuota, getExtensionSites, importLeads, type ExtensionSites, type PlanQuota, type ScrapedLead } from '../shared/leads'
 import { classifyBrazilianPhone } from '../shared/phone'
 import { injectStyles, showToast } from './index'
 import {
@@ -12,13 +12,8 @@ import {
   isWebMotorsList,
   type WebMotorsContact,
 } from './webmotors'
-import {
-  prospectAirbnb,
-  isAirbnbSearch,
-  type AirbnbContact,
-} from './airbnb'
 
-type AdapterMode = 'global' | 'wepsy' | 'webmotors' | 'airbnb'
+type AdapterMode = 'global' | 'wepsy' | 'webmotors'
 
 interface Contact {
   key: string
@@ -66,17 +61,24 @@ export class GlobalScanner {
   private stopBtn: HTMLButtonElement | null = null
   private statusEl: HTMLElement | null = null
   private maxInput: HTMLInputElement | null = null
+  private sites: ExtensionSites = { maps: true, webmotors: true, wepsy: true }
+  private sitesEl: HTMLElement | null = null
+  private searchCity: HTMLInputElement | null = null
+  private searchState: HTMLInputElement | null = null
+  private filterBtns: HTMLButtonElement[] = []
 
   async init(): Promise<void> {
     this.cfg = await getStoredConfig()
     injectStyles()
+    this.sites = await getExtensionSites()
     this.mode = isWepsyCatalog(location.href)
       ? 'wepsy'
       : isWebMotorsList(location.href)
         ? 'webmotors'
-        : isAirbnbSearch(location.href)
-          ? 'airbnb'
-          : 'global'
+        : 'global'
+    // Se o site atual estiver desativado no Master, não opera.
+    const activeHere = this.mode === 'wepsy' ? this.sites.wepsy : this.sites.webmotors
+    if (this.mode !== 'global' && !activeHere) return
     if (this.mode === 'global') {
       this.scan()
       const obs = new MutationObserver(() => this.debounceScan())
@@ -321,193 +323,209 @@ export class GlobalScanner {
     const balloon = document.createElement('aside')
     balloon.className = 'consecom-balloon'
 
+    // Grip fino (arrastar) + fechar. Sem branding grande, mantém o arraste.
     const header = document.createElement('div')
-    header.className = 'cs-panel__header'
+    header.className = 'cs-panel__header cs-panel__header--slim'
     this.headerEl = header
-
     const grip = document.createElement('div')
     grip.className = 'cs-panel__grip'
     grip.title = 'Arrastar painel'
-    grip.innerHTML = '&#8230;<br>&#8230;<br>&#8230;'
-
-    const logo = document.createElement('div')
-    logo.className = 'cs-panel__logo'
-    logo.textContent = 'V'
-    const titles = document.createElement('div')
-    titles.className = 'cs-panel__titles'
-    const name = document.createElement('div')
-    name.className = 'cs-panel__name'
-    name.textContent = 'VYNTRA'
-    const tag = document.createElement('div')
-    tag.className = 'cs-panel__tag'
-    tag.textContent =
-      this.mode === 'wepsy'
-        ? 'Prospector Wepsy'
-        : this.mode === 'webmotors'
-          ? 'Prospector WebMotors'
-          : this.mode === 'airbnb'
-            ? 'Prospector Airbnb'
-            : 'Prospector Global'
-    const tagline = document.createElement('div')
-    tagline.className = 'cs-panel__tagline'
-    tagline.textContent =
-      this.mode === 'wepsy'
-        ? 'Busca psicólogos do catálogo Wepsy e importa os contatos com WhatsApp público.'
-        : this.mode === 'webmotors'
-          ? 'Busca lojas e concessionárias do WebMotors e importa os contatos com telefone público.'
-          : this.mode === 'airbnb'
-            ? 'Lê a descrição dos anúncios e importa anfitriões que divulgam WhatsApp. Baixo rendimento: poucos hosts compartilham telefone.'
-            : 'Contatos encontrados nesta página. Revise e importe como leads.'
-    titles.append(name, tag, tagline)
-    const planEl = document.createElement('div')
-    planEl.className = 'cs-panel__plan'
-    planEl.style.display = 'none'
-    this.planEl = planEl
-    titles.append(planEl)
-
-    const controls = document.createElement('div')
-    controls.className = 'cs-panel__controls'
+    grip.innerHTML = '&#8942;&#8942;'
     const closeBtn = document.createElement('button')
     closeBtn.type = 'button'
     closeBtn.className = 'cs-panel__btn'
     closeBtn.title = 'Fechar'
     closeBtn.innerHTML =
-      '<svg viewBox="0 0 24 24" width="13" height="13"><path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1 1L12 14l-6.3 6.3-1-1L10.8 12 4.5 5.7l1-1L12 10.8l6.3-6.3z"/></svg>'
+      '<svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1 1L12 14l-6.3 6.3-1-1L10.8 12 4.5 5.7l1-1L12 10.8l6.3-6.3z"/></svg>'
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation()
       this.toggleBalloon(false)
     })
-    controls.appendChild(closeBtn)
-    header.append(grip, logo, titles, controls)
+    header.append(grip, closeBtn)
     this.enableDrag(header, balloon)
 
     const body = document.createElement('div')
     body.className = 'cs-panel__body'
 
-    if (this.mode !== 'global') {
-      // Barra de prospecção do adaptador (Wepsy / WebMotors): CTA + max + status + parar.
-      const cta = document.createElement('div')
-      cta.className = 'cs-filters'
-      const prospectBtn = document.createElement('button')
-      prospectBtn.type = 'button'
-      prospectBtn.className = 'cs-prospect'
-      prospectBtn.textContent = 'PROSPECTAR'
-      prospectBtn.addEventListener('click', () => void this.doProspect())
-      this.prospectBtn = prospectBtn
-      const stopBtn = document.createElement('button')
-      stopBtn.type = 'button'
-      stopBtn.className = 'cs-footer__btn cs-foot-clear'
-      stopBtn.textContent = 'Parar'
-      stopBtn.style.display = 'none'
-      stopBtn.addEventListener('click', () => {
-        this.stopFlag.cancelled = true
-      })
-      this.stopBtn = stopBtn
-      const maxWrap = document.createElement('label')
-      maxWrap.className = 'cs-adv__item'
-      maxWrap.style.margin = '0 0 0 8px'
-      const maxLab = document.createElement('span')
-      maxLab.textContent = 'Máx.'
-      const maxInput = document.createElement('input')
-      maxInput.type = 'number'
-      maxInput.min = '10'
-      maxInput.max = String(this.adapterMax())
-      maxInput.value = '200'
-      maxInput.style.width = '70px'
-      maxInput.className = 'bg-field border border-line-2 rounded px-2 py-1 text-sm'
-      this.maxInput = maxInput
-      maxWrap.append(maxLab, maxInput)
-      const ctaRow = document.createElement('div')
-      ctaRow.className = 'cs-chips'
-      ctaRow.style.flexWrap = 'wrap'
-      ctaRow.append(prospectBtn, maxWrap, stopBtn)
-      const status = document.createElement('div')
-      status.className = 'cs-panel__loc'
-      status.innerHTML = pinIcon
-      this.statusEl = document.createElement('span')
-      this.statusEl.textContent =
-        this.contacts.length > 0
-          ? `${this.contacts.length} contato(s) encontrado(s)`
-          : this.mode === 'wepsy'
-            ? 'Toque em PROSPECTAR para buscar os psicólogos desta página.'
-            : this.mode === 'webmotors'
-              ? 'Toque em PROSPECTAR para buscar as lojas desta busca.'
-              : 'Toque em PROSPECTAR para ler os anúncios desta busca no Airbnb.'
-      status.append(this.statusEl)
-      cta.append(ctaRow, status)
-      body.appendChild(cta)
-    } else {
-      const loc = document.createElement('div')
-      loc.className = 'cs-panel__loc'
-      loc.innerHTML = pinIcon
-      this.locEl = document.createElement('span')
-      this.locEl.textContent = `${this.contacts.length} contato(s) encontrado(s)`
-      loc.append(this.locEl)
-      body.appendChild(loc)
+    // Faixa de sites (ativação controlada no Master; desativados ficam cinza).
+    const sites = document.createElement('div')
+    sites.className = 'cs-sites'
+    this.sitesEl = sites
+    const siteDefs = [
+      { key: 'maps' as const, label: 'GOOGLE MAPS' },
+      { key: 'webmotors' as const, label: 'WEBMOTORS' },
+      { key: 'wepsy' as const, label: 'WEPSY' },
+    ]
+    for (const s of siteDefs) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'cs-site'
+      b.dataset.site = s.key
+      b.textContent = s.label
+      const on = this.sites[s.key] !== false
+      if (!on) {
+        b.classList.add('cs-site--off')
+        b.disabled = true
+        b.title = 'Desativado no painel Master'
+      } else if (s.key === 'maps' || (this.mode === s.key)) {
+        b.classList.add('cs-site--active')
+      }
+      sites.appendChild(b)
     }
 
+    // Barra de busca: cidade + estado (Wepsy / WebMotors) + botão PESQUISAR.
+    const search = document.createElement('div')
+    search.className = 'cs-search'
+    const fields = document.createElement('div')
+    fields.className = 'cs-search__fields'
+    const cityWrap = document.createElement('label')
+    cityWrap.className = 'cs-search__field'
+    const cityLab = document.createElement('span')
+    cityLab.textContent = 'CIDADE'
+    const cityInput = document.createElement('input')
+    cityInput.type = 'text'
+    cityInput.className = 'cs-search__input'
+    cityInput.placeholder = 'Ex.: Sorocaba'
+    cityInput.autocomplete = 'off'
+    this.searchCity = cityInput
+    cityWrap.append(cityLab, cityInput)
+    const stateWrap = document.createElement('label')
+    stateWrap.className = 'cs-search__field cs-search__field--sm'
+    const stateLab = document.createElement('span')
+    stateLab.textContent = 'ESTADO'
+    const stateInput = document.createElement('input')
+    stateInput.type = 'text'
+    stateInput.className = 'cs-search__input'
+    stateInput.placeholder = 'SP'
+    stateInput.maxLength = 2
+    stateInput.autocomplete = 'off'
+    this.searchState = stateInput
+    stateWrap.append(stateLab, stateInput)
+    fields.append(cityWrap, stateWrap)
+    const searchBtn = document.createElement('button')
+    searchBtn.type = 'button'
+    searchBtn.className = 'cs-search__btn'
+    searchBtn.textContent = 'PESQUISAR'
+    searchBtn.addEventListener('click', () => void this.doSearch())
+    search.append(fields, searchBtn)
+    body.appendChild(sites)
+
+    // Filtros: NOTA BAIXA / SEM SITE / COM WHATSAPP.
+    const filters = document.createElement('div')
+    filters.className = 'cs-filters2'
+    const filtersTitle = document.createElement('div')
+    filtersTitle.className = 'cs-filters2__title'
+    filtersTitle.textContent = 'FILTROS'
+    const chips = document.createElement('div')
+    chips.className = 'cs-chips'
+    const chipDefs = ['NOTA BAIXA', 'SEM SITE', 'COM WHATSAPP']
+    this.filterBtns = []
+    for (const t of chipDefs) {
+      const c = document.createElement('button')
+      c.type = 'button'
+      c.className = 'cs-chip'
+      c.textContent = t
+      c.addEventListener('click', () => {
+        c.classList.toggle('cs-chip--on')
+        this.renderList()
+      })
+      this.filterBtns.push(c)
+      chips.appendChild(c)
+    }
+    filters.append(filtersTitle, chips)
+
+    // PROSPECTAR (CTA principal).
+    const prospectBtn = document.createElement('button')
+    prospectBtn.type = 'button'
+    prospectBtn.className = 'cs-prospect'
+    prospectBtn.textContent = 'PROSPECTAR'
+    prospectBtn.addEventListener('click', () => void this.doProspect())
+    this.prospectBtn = prospectBtn
+
+    const status = document.createElement('div')
+    status.className = 'cs-panel__loc'
+    status.innerHTML = pinIcon
+    this.statusEl = document.createElement('span')
+    this.statusEl.textContent =
+      this.contacts.length > 0
+        ? `${this.contacts.length} contato(s) encontrado(s)`
+        : this.mode === 'wepsy'
+          ? 'Preencha cidade/estado e toque em PESQUISAR, ou PROSPECTAR para buscar o catálogo.'
+          : 'Preencha cidade/estado e toque em PESQUISAR, ou PROSPECTAR para buscar as lojas desta busca.'
+    status.append(this.statusEl)
+
+    // Área de leads com scroll.
+    const leads = document.createElement('div')
+    leads.className = 'cs-leads'
+    const leadsTitle = document.createElement('div')
+    leadsTitle.className = 'cs-leads__title'
+    leadsTitle.textContent = 'AREA DE LEADS E SCROLL'
     const list = document.createElement('div')
     list.className = 'cs-panel__list'
     this.listEl = list
-    body.appendChild(list)
+    const planEl = document.createElement('div')
+    planEl.className = 'cs-panel__plan'
+    planEl.style.display = 'none'
+    this.planEl = planEl
+    leads.append(leadsTitle, list, planEl)
 
+    body.append(search, filters, prospectBtn, status, leads)
+
+    // Rodapé: EXCLUIR / LIMPAR + IMPORTAR LEADS.
     const footer = document.createElement('div')
     footer.className = 'cs-panel__footer'
     const countEl = document.createElement('div')
     countEl.className = 'cs-footer__count'
     this.countEl = countEl
-    const row2 = document.createElement('div')
-    row2.className = 'cs-footer__row'
+    const row = document.createElement('div')
+    row.className = 'cs-footer__row'
+    const excludeBtn = document.createElement('button')
+    excludeBtn.type = 'button'
+    excludeBtn.className = 'cs-footer__btn cs-foot-delete'
+    excludeBtn.textContent = 'EXCLUIR'
+    excludeBtn.addEventListener('click', () => {
+      this.contacts = this.contacts.filter((c) => !this.selected.has(c.key))
+      this.selected.clear()
+      this.renderList()
+    })
     const clearBtn = document.createElement('button')
     clearBtn.type = 'button'
     clearBtn.className = 'cs-footer__btn cs-foot-clear'
-    clearBtn.innerHTML = 'Limpar' + trashIcon
+    clearBtn.textContent = 'LIMPAR'
     clearBtn.addEventListener('click', () => {
+      this.contacts = []
       this.selected.clear()
       this.renderList()
-      showToast('Seleção limpa')
     })
-    const selectAllBtn = document.createElement('button')
-    selectAllBtn.type = 'button'
-    selectAllBtn.className = 'cs-footer__btn cs-foot-config'
-    selectAllBtn.title = 'Seleciona até 50 contatos (limite por importação)'
-    selectAllBtn.textContent = 'Sel. todos'
-    selectAllBtn.addEventListener('click', () => {
-      const keys = this.contacts.slice(0, 50).map((c) => c.key)
-      this.selected = new Set(keys)
-      this.renderList()
-      showToast(`✓ ${Math.min(50, this.contacts.length)} selecionado(s)`)
-    })
+    row.append(excludeBtn, clearBtn)
     const importBtn = document.createElement('button')
     importBtn.type = 'button'
-    importBtn.className = 'cs-footer__btn cs-foot-config'
-    importBtn.title = 'Importar selecionados'
-    importBtn.innerHTML = 'Importar' + downloadIcon
+    importBtn.className = 'cs-footer__btn cs-foot-import cs-import'
+    importBtn.textContent = 'IMPORTAR LEADS'
     importBtn.addEventListener('click', () => void this.doImport(importBtn))
-    // Importa todos automaticamente em lotes de 50 (50 → próximos 50 → ...).
-    const importAllBtn = document.createElement('button')
-    importAllBtn.type = 'button'
-    importAllBtn.className = 'cs-footer__btn cs-foot-config'
-    importAllBtn.style.background = 'rgba(99, 102, 241, .25)'
-    importAllBtn.title = 'Importa todos em lotes de 50, automaticamente'
-    importAllBtn.textContent = 'Importar todos (50 em 50)'
-    importAllBtn.addEventListener('click', () => void this.doImportBatches(importAllBtn))
-    const stopImportBtn = document.createElement('button')
-    stopImportBtn.type = 'button'
-    stopImportBtn.className = 'cs-footer__btn cs-foot-clear'
-    stopImportBtn.textContent = 'Parar'
-    stopImportBtn.style.display = 'none'
-    stopImportBtn.addEventListener('click', () => {
-      this.importStop = true
-    })
-    row2.append(clearBtn, selectAllBtn, importBtn, stopImportBtn)
-    const row3 = document.createElement('div')
-    row3.className = 'cs-footer__row'
-    row3.append(importAllBtn)
-    footer.append(countEl, row2, row3)
+    footer.append(countEl, row, importBtn)
 
     balloon.append(header, body, footer)
     return balloon
+  }
+
+  /** Busca: navega para a busca do site (cidade/estado) com os valores digitados. */
+  private doSearch(): void {
+    const city = (this.searchCity?.value ?? '').trim()
+    const state = (this.searchState?.value ?? '').trim().toUpperCase()
+    if (this.mode === 'webmotors') {
+      if (!city) return showToast('Digite a cidade para pesquisar no WebMotors.', 'warn')
+      const url = state
+        ? `https://www.webmotors.com.br/carros/${state.toLowerCase()}/${city.toLowerCase().replace(/\s+/g, '-')}`
+        : `https://www.webmotors.com.br/carros/${city.toLowerCase().replace(/\s+/g, '-')}`
+      window.location.href = url
+    } else if (this.mode === 'wepsy') {
+      if (!city) return showToast('Digite a cidade para pesquisar na Wepsy.', 'warn')
+      window.location.href = `https://www.wepsy.com.br/catalogo`
+      showToast('Pesquise a cidade na página da Wepsy e toque em PROSPECTAR.')
+    } else {
+      showToast('Selecione um site para pesquisar.', 'warn')
+    }
   }
 
   private renderList(): void {
@@ -522,9 +540,7 @@ export class GlobalScanner {
           ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para buscar os psicólogos do catálogo Wepsy.'
           : this.mode === 'webmotors'
             ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para buscar as lojas desta busca no WebMotors.'
-            : this.mode === 'airbnb'
-              ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para ler a descrição dos anúncios. Poucos hosts compartilham WhatsApp, então o rendimento é baixo.'
-              : '<b>0 contatos encontrados</b><br/>Nenhum telefone móvel detectado nesta página. Acesse uma página com contatos e tente novamente.'
+            : '<b>0 contatos encontrados</b><br/>Nenhum telefone móvel detectado nesta página. Acesse uma página com contatos e tente novamente.'
       this.listEl.appendChild(empty)
       return
     }
@@ -693,9 +709,7 @@ export class GlobalScanner {
           ? 'Psicólogo'
           : this.mode === 'webmotors'
             ? 'Loja de Carros'
-            : this.mode === 'airbnb'
-              ? 'Anfitrião Airbnb'
-              : null,
+            : null,
       website: null,
       address: null,
       city: c.city,
@@ -803,7 +817,7 @@ export class GlobalScanner {
   }
 
   /** Adiciona um contato vindo de um adaptador (Wepsy/WebMotors, dedup por número). */
-  private addAdapterContact(wc: WepsyContact | WebMotorsContact | AirbnbContact): void {
+  private addAdapterContact(wc: WepsyContact | WebMotorsContact): void {
     if (this.contacts.some((c) => c.key === wc.key)) {
       // Aproveita o nome se o novo for melhor.
       const ex = this.contacts.find((c) => c.key === wc.key)!
@@ -881,21 +895,6 @@ export class GlobalScanner {
             if (this.statusEl) this.statusEl.textContent = `${msg} · ${this.contacts.length} ok`
           },
         })
-      } else if (this.mode === 'airbnb') {
-        const res = await prospectAirbnb({
-          max,
-          signal: this.stopFlag,
-          onResult: (wc) => {
-            this.addAdapterContact(wc)
-            renderThrottle()
-          },
-          onProgress: (msg) => {
-            if (this.statusEl) this.statusEl.textContent = `${msg} · ${this.contacts.length} ok`
-          },
-        })
-        if (res.total === 0 && !this.stopFlag.cancelled) {
-          showToast('Nenhum anúncio detectado nesta busca do Airbnb.')
-        }
       }
       if (!this.stopFlag.cancelled) {
         showToast(`✓ ${this.contacts.length} contato(s) encontrado(s).`)

@@ -294,6 +294,12 @@ export const masterApi = {
   async updatePixels(patch: Record<string, unknown>): Promise<void> {
     await api.patch('/api/master/pixels', patch)
   },
+  async extensionSites(): Promise<{ maps: boolean; webmotors: boolean; wepsy: boolean }> {
+    return api.get<{ maps: boolean; webmotors: boolean; wepsy: boolean }>('/api/master/extension-sites')
+  },
+  async updateExtensionSites(patch: { maps?: boolean; webmotors?: boolean; wepsy?: boolean }): Promise<void> {
+    await api.patch('/api/master/extension-sites', patch)
+  },
   async sourceRequests(): Promise<Array<Record<string, unknown>>> {
     const r = await api.get<{ requests: Array<Record<string, unknown>> }>('/api/master/source-requests')
     return r.requests ?? []

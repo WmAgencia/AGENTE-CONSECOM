@@ -25,7 +25,7 @@ import { getImportQuota } from '../services/saas.js';
 import { z } from 'zod';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
-const VERSION = '1.11.0';
+const VERSION = '1.12.0';
 
 const DEFAULT_BASE_ZIP_URL =
   'https://frontend-seven-sooty-78.vercel.app/downloads/consecom-extension.zip';
@@ -126,6 +126,29 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       bucket: env.EXTENSION_BUCKET,
       path: env.EXTENSION_OBJECT_PATH,
     });
+  });
+
+  // Sites ativos da extensão (público). O painel Master liga/desliga e a
+  // extensão esmaece/desativa os sites desligados.
+  app.get('/api/extension/sites', async (_req, reply) => {
+    const s = sup();
+    if (!s) return reply.status(503).send({ error: 'server_misconfigured', statusCode: 503 });
+    const defaults = { maps_enabled: true, webmotors_enabled: true, wepsy_enabled: true };
+    try {
+      const res = await fetch(`${s.url}/rest/v1/extension_settings?id=eq.1&select=*`, {
+        headers: headers(s.key),
+      });
+      if (!res.ok) return reply.send({ ...defaults });
+      const rows = (await res.json().catch(() => [])) as Array<Record<string, unknown>>;
+      const row = rows[0] ?? {};
+      return reply.send({
+        maps: row.maps_enabled !== false,
+        webmotors: row.webmotors_enabled !== false,
+        wepsy: row.wepsy_enabled !== false,
+      });
+    } catch {
+      return reply.send({ ...defaults });
+    }
   });
 
   app.post('/api/extension/download', async (req, reply) => {

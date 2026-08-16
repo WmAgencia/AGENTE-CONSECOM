@@ -377,6 +377,43 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ ok: true });
   });
 
+  // ---- Sites ativos da extensão ----
+  scoped.get('/api/master/extension-sites', async (_req, reply) => {
+    const rows = await getJson<Record<string, unknown>>('/extension_settings', '*');
+    const row = rows?.[0] ?? {};
+    return reply.send({
+      maps: row.maps_enabled !== false,
+      webmotors: row.webmotors_enabled !== false,
+      wepsy: row.wepsy_enabled !== false,
+    });
+  });
+
+  scoped.patch('/api/master/extension-sites', async (req, reply) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const patch: Record<string, unknown> = {};
+    if (body.maps === true || body.maps === false) patch.maps_enabled = body.maps;
+    if (body.webmotors === true || body.webmotors === false) patch.webmotors_enabled = body.webmotors;
+    if (body.wepsy === true || body.wepsy === false) patch.wepsy_enabled = body.wepsy;
+    if (Object.keys(patch).length === 0) return reply.status(400).send({ error: 'nothing_to_update', statusCode: 400 });
+    const rows = await getJson<{ id: number }>('/extension_settings', 'id');
+    if (rows && rows.length > 0) {
+      await fetch(`${serviceBaseUrl()}/rest/v1/extension_settings?id=eq.${encodeURIComponent(String(rows[0].id))}`, {
+        method: 'PATCH',
+        headers: serviceHeaders(true),
+        body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
+      });
+    } else {
+      await fetch(`${serviceBaseUrl()}/rest/v1/extension_settings`, {
+        method: 'POST',
+        headers: serviceHeaders(true),
+        body: JSON.stringify({ id: 1, ...patch }),
+      });
+    }
+    const auth = authOf(req);
+    await writeAudit({ actor: auth!.userId, action: 'EXTENSION_SITES_UPDATED', tenantId: auth!.tenantId, targetType: 'extension_settings', targetIds: [], details: patch });
+    return reply.send({ ok: true });
+  });
+
   // ---- Solicitações de fonte ----
   scoped.get('/api/master/source-requests', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>('/source_requests', '*');
