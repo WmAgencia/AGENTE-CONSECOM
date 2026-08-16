@@ -12,6 +12,7 @@ import {
   isWebMotorsList,
   type WebMotorsContact,
 } from './webmotors'
+import { rowPassesQuickFilters } from '../shared/filters'
 
 type AdapterMode = 'global' | 'wepsy' | 'webmotors'
 
@@ -24,6 +25,8 @@ interface Contact {
   context: string | null
   city: string | null
   state: string | null
+  website: string | null
+  rating: number | null
   el: HTMLElement | null
 }
 
@@ -66,6 +69,7 @@ export class GlobalScanner {
   private searchCity: HTMLInputElement | null = null
   private searchState: HTMLInputElement | null = null
   private filterBtns: HTMLButtonElement[] = []
+  private activeFilters = new Set<string>()
 
   async init(): Promise<void> {
     this.cfg = await getStoredConfig()
@@ -204,6 +208,8 @@ export class GlobalScanner {
         context: this.guessContext(raw.el),
         city: null,
         state: null,
+        website: this.guessWebsite(raw.el),
+        rating: null,
         el: raw.el,
       })
     }
@@ -280,6 +286,29 @@ export class GlobalScanner {
     // Fallback: título do documento, exceto quando igual à URL/domínio.
     const title = document.title?.trim()
     if (title && title.length < 80 && !/^\d+$/.test(title)) return title
+    return null
+  }
+
+  /** Heurística: procura um link externo (site) próximo ao elemento do contato. */
+  private guessWebsite(el: HTMLElement | null): string | null {
+    if (!el) return null
+    let scope: HTMLElement | null = el
+    for (let i = 0; i < 3 && scope; i++) {
+      const links = scope.querySelectorAll<HTMLAnchorElement>('a[href]')
+      for (const a of Array.from(links)) {
+        try {
+          const href = a.href
+          if (!href || !/^https?:\/\//i.test(href)) continue
+          const u = new URL(href)
+          if (/wa\.me|whatsapp|mailto|tel:|google\.|facebook|instagram|youtube|maps\./.test(u.hostname)) continue
+          if (u.hostname === window.location.hostname) continue
+          return u.href
+        } catch {
+          /* ignora link inválido */
+        }
+      }
+      scope = scope.parentElement
+    }
     return null
   }
 
@@ -418,15 +447,22 @@ export class GlobalScanner {
     filtersTitle.textContent = 'FILTROS'
     const chips = document.createElement('div')
     chips.className = 'cs-chips'
-    const chipDefs = ['NOTA BAIXA', 'SEM SITE', 'COM WHATSAPP']
+    const chipDefs = [
+      { id: 'nota_baixa', label: 'NOTA BAIXA' },
+      { id: 'sem_site', label: 'SEM SITE' },
+      { id: 'com_whatsapp', label: 'COM WHATSAPP' },
+    ]
     this.filterBtns = []
-    for (const t of chipDefs) {
+    for (const chip of chipDefs) {
       const c = document.createElement('button')
       c.type = 'button'
       c.className = 'cs-chip'
-      c.textContent = t
+      c.dataset.id = chip.id
+      c.textContent = chip.label
       c.addEventListener('click', () => {
-        c.classList.toggle('cs-chip--on')
+        if (this.activeFilters.has(chip.id)) this.activeFilters.delete(chip.id)
+        else this.activeFilters.add(chip.id)
+        c.classList.toggle('cs-chip--on', this.activeFilters.has(chip.id))
         this.renderList()
       })
       this.filterBtns.push(c)
@@ -544,8 +580,20 @@ export class GlobalScanner {
       this.listEl.appendChild(empty)
       return
     }
+    // Aplica filtros rápidos (NOTA BAIXA / SEM SITE / COM WHATSAPP), se ativos.
+    const visible = this.activeFilters.size > 0
+      ? this.contacts.filter((c) => rowPassesQuickFilters({ rating: c.rating, website: c.website, whatsapp: c.whatsapp }, this.activeFilters))
+      : this.contacts
+    if (visible.length === 0) {
+      this.listEl.innerHTML = ''
+      const empty = document.createElement('div')
+      empty.className = 'cs-empty'
+      empty.innerHTML = `<b>Nenhum contato</b><br/>com os filtros selecionados. Desmarque um filtro para ver mais resultados.`
+      this.listEl.appendChild(empty)
+      return
+    }
     const frag = document.createDocumentFragment()
-    for (const c of this.contacts) {
+    for (const c of visible) {
       frag.appendChild(this.buildRow(c))
     }
     this.listEl.replaceChildren(frag)
@@ -833,6 +881,8 @@ export class GlobalScanner {
       context: [wc.city, wc.state].filter(Boolean).join(' · ') || null,
       city: wc.city,
       state: wc.state,
+      website: null,
+      rating: null,
       el: null,
     })
   }

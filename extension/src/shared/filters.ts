@@ -43,6 +43,27 @@ export type ScoreBand = 'alta' | 'boa' | 'media' | 'baixa'
 
 export type ServiceInterest = 'site' | 'sistema' | 'trafego' | 'automacao' | 'presenca' | 'todos'
 
+/** Filtros rápidos do painel da extensão (chips: NOTA BAIXA / SEM SITE / COM WHATSAPP). */
+export interface QuickRow {
+  rating: number | null
+  website: string | null
+  whatsapp: boolean | undefined
+}
+
+/**
+ * Decide se um contato passa pelos filtros rápidos ativos.
+ * - nota_baixa: mantém contatos sem nota (rating nulo) ou com nota < 3.5.
+ * - sem_site: mantém contatos sem website.
+ * - com_whatsapp: mantém contatos com WhatsApp confirmado (whatsapp === true);
+ *   contatos sem dado de WhatsApp (undefined) passam (não há o que filtrar).
+ */
+export function rowPassesQuickFilters(row: QuickRow, active: Set<string>): boolean {
+  if (active.has('com_whatsapp') && row.whatsapp === false) return false
+  if (active.has('sem_site') && row.website) return false
+  if (active.has('nota_baixa') && row.rating != null && row.rating >= 3.5) return false
+  return true
+}
+
 /** Um chip de filtro individual (referência: "No website", "High opportunity", ...). */
 export interface FilterChip {
   id: string
