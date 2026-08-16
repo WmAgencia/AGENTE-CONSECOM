@@ -14,6 +14,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { supabase, type Lead } from '../lib/supabase'
+import { Button } from './ui'
 import { agenda, type AgendaBlock, type AgendaMeeting, type AgendaSettings, type AvailableSlot, type WeeklySlot } from '../lib/agenda'
 import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDate } from '../lib/month'
 
@@ -322,13 +323,13 @@ export function AgendaView() {
             >
               <RotateCcw className="w-4 h-4" />
             </button>
-            <button
+            <Button
               onClick={() => setMeetingModal({ mode: 'create', dateKey: todayKey })}
-              className={`${btnPrimary} flex items-center gap-1.5`}
+              className="flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
               Nova reunião
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -372,7 +373,7 @@ export function AgendaView() {
                         <span
                           className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs ${
                             isToday
-                              ? 'bg-indigo-600 text-white font-semibold'
+                              ? 'bg-accent-600 text-white font-semibold'
                               : cell.inMonth
                                 ? 'text-fg'
                                 : 'text-faint'
@@ -381,12 +382,12 @@ export function AgendaView() {
                           {cell.day}
                         </span>
                         {isToday && (
-                          <span className="text-[9px] font-semibold text-indigo-300">Hoje</span>
+                          <span className="text-[9px] font-semibold text-accent-300">Hoje</span>
                         )}
                       </div>
                       <div
                         className={`mt-1 px-1 text-[10px] leading-tight ${
-                          count > 0 ? 'text-indigo-300 font-medium' : 'text-faint'
+                          count > 0 ? 'text-accent-300 font-medium' : 'text-faint'
                         }`}
                       >
                         {count > 0 ? `${count} reunião${count > 1 ? 'ões' : ''}` : 'Nenhuma reunião'}
@@ -595,7 +596,7 @@ export function AgendaView() {
                       className="rounded-xl border border-line bg-subtle-2 px-2 py-1.5 text-xs text-secondary"
                     >
                       <span className="text-muted">{humanDate(s.day)}</span> ·{' '}
-                      <span className="text-indigo-300">{s.time}</span>
+                      <span className="text-accent-300">{s.time}</span>
                     </div>
                   ))}
                 </div>
@@ -669,13 +670,14 @@ function DayModal({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               onClick={onCreate}
-              className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 rounded-xl flex items-center gap-1"
+              size="sm"
+              className="inline-flex items-center gap-1"
             >
               <Plus className="w-3.5 h-3.5" />
               Nova
-            </button>
+            </Button>
             <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">
               ×
             </button>
@@ -705,34 +707,22 @@ function DayModal({
                   <div className="text-[11px] text-emerald-300 mt-1">✓ Reunião realizada</div>
                 )}
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                  <button
-                    onClick={() => onOpenLead(m.leadId)}
-                    className="text-[11px] px-2 py-1 rounded-md border border-line text-secondary hover:bg-subtle-2 flex items-center gap-1"
-                  >
+                  <Button variant="secondary" size="sm" onClick={() => onOpenLead(m.leadId)}>
                     <ExternalLink className="w-3 h-3" />
                     Abrir lead
-                  </button>
-                  <button
-                    onClick={() => onEdit(m)}
-                    className="text-[11px] px-2 py-1 rounded-md border border-line text-secondary hover:bg-subtle-2 flex items-center gap-1"
-                  >
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => onEdit(m)}>
                     <Pencil className="w-3 h-3" />
                     Editar
-                  </button>
+                  </Button>
                   {st === 'reuniao_marcada' && (
                     <>
-                      <button
-                        onClick={() => onRealized(m)}
-                        className="text-[11px] px-2 py-1 rounded-md border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10"
-                      >
+                      <Button size="sm" onClick={() => onRealized(m)}>
                         Realizada
-                      </button>
-                      <button
-                        onClick={() => onCancel(m)}
-                        className="text-[11px] px-2 py-1 rounded-md border border-rose-500/30 text-rose-300 hover:bg-rose-500/10"
-                      >
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => onCancel(m)}>
                         Cancelar
-                      </button>
+                      </Button>
                     </>
                   )}
                 </div>
@@ -882,16 +872,16 @@ function MeetingModal({
           )}
 
           <div className="flex justify-end gap-2">
-            <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">
+            <Button variant="secondary" onClick={onClose}>
               Cancelar
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => void submit()}
               disabled={saving || busy}
-              className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium"
+              loading={saving}
             >
               {saving ? 'Salvando...' : mode === 'create' ? 'Agendar' : 'Salvar'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
