@@ -1634,7 +1634,14 @@ export class MapsScanner {
 
 const start = () => {
   const host = window.location.hostname
-  const isMaps = /(^|\.)google\.(com|com\.br|[a-z.]+)\/maps\//.test(window.location.href) || host.startsWith('maps.google')
+  const href = window.location.href
+  const isMaps = /(^|\.)google\.(com|com\.br|[a-z.]+)\/maps\//.test(href) || host.startsWith('maps.google')
+  if (typeof document !== 'undefined') {
+    import('./welcome').then(({ detectWelcomeSite, showWelcome }) => {
+      const site = detectWelcomeSite(host, href)
+      if (site && site !== 'global') showWelcome(site)
+    })
+  }
   if (isMaps) {
     const scanner = new MapsScanner()
     void scanner.init()

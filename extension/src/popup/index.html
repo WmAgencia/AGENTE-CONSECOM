@@ -3,12 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <style>
-      :root {
-        color-scheme: dark;
-      }
+      :root { color-scheme: dark; }
       * { box-sizing: border-box; margin: 0; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
-      body { width: 320px; background: #10071d; color: #e9e4f4; font-size: 13px; }
-      .wrap { padding: 16px; }
+      body { width: 340px; background: #0a0414; color: #e9e4f4; font-size: 13px; }
+      .wrap { padding: 16px 16px 14px; }
       .head { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
       .logo {
         width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto;
@@ -19,23 +17,52 @@
       }
       h1 { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
       .sub { font-size: 11px; color: #8d82a8; margin-top: 1px; }
-      button {
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+      .site {
+        position: relative;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        padding: 14px 12px 12px;
+        text-align: left;
+        color: #e9e4f4;
+        cursor: pointer;
+        transition: transform .12s, background .15s, border-color .15s;
+        overflow: hidden;
+      }
+      .site:hover { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.4); transform: translateY(-2px); }
+      .site:active { transform: translateY(0); }
+      .site img {
+        width: 28px; height: 28px; border-radius: 8px;
+        background: #fff;
+        padding: 4px;
+        margin-bottom: 8px;
+        display: block;
+      }
+      .site .name { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+      .site .desc { font-size: 10.5px; color: #8d82a8; margin-top: 2px; line-height: 1.4; }
+      .site .arrow {
+        position: absolute; right: 10px; top: 10px;
+        width: 18px; height: 18px;
+        border-radius: 6px;
+        background: rgba(255,255,255,0.05);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 11px; color: #c4b5fd;
+      }
+      button.primary, button.secondary {
         width: 100%; margin-top: 12px; padding: 11px; border: none; border-radius: 10px;
         font-weight: 700; font-size: 12.5px; letter-spacing: .03em; color: #fff;
-        background: linear-gradient(135deg,#8b5cf6,#a855f7); cursor: pointer;
-        box-shadow: 0 10px 24px rgba(139,92,246,.35);
+        cursor: pointer;
         transition: transform .12s, filter .15s;
       }
-      button.secondary { background: rgba(255,255,255,0.08); margin-top: 8px; box-shadow: none; }
+      button.primary {
+        background: linear-gradient(135deg,#8b5cf6,#a855f7);
+        box-shadow: 0 10px 24px rgba(139,92,246,.35);
+      }
+      button.secondary { background: rgba(255,255,255,0.06); margin-top: 10px; }
       button:hover { filter: brightness(1.1); transform: translateY(-1px); }
       button:active { transform: translateY(0); }
       .status { margin-top: 10px; font-size: 11px; color: #34d399; text-align: center; min-height: 14px; }
-      .hint {
-        margin-top: 14px; padding: 10px 12px;
-        background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2);
-        border-radius: 10px; font-size: 11px; color: #8d82a8; line-height: 1.6;
-      }
-      .hint b { color: #c4b5fd; }
     </style>
   </head>
   <body>
@@ -44,19 +71,39 @@
         <div class="logo">V</div>
         <div>
           <h1>Vyntra Prospector</h1>
-          <div class="sub">Captura de leads do Google Maps</div>
+          <div class="sub">Escolha onde prospectar</div>
         </div>
       </div>
 
-      <button id="open" class="primary">Abrir painel no Maps</button>
-      <div class="status" id="status"></div>
-      <div class="hint">
-        Extensão conectada à sua conta Vyntra. Abra o <b>Google Maps</b>, faça uma busca
-        (ex.: &quot;clínicas odontológicas em Sorocaba&quot;), role a lista e toque em
-        <b>PROSPECTAR</b> no painel para importar. Os leads importados aparecem em
-        <b>Importados</b> no painel Vyntra; ao atribuí-los a uma campanha, a lista é
-        zerada e você pode capturar de novo.
+      <div class="grid">
+        <button class="site" data-url="https://wepsy.com.br/catalogo">
+          <span class="arrow">↗</span>
+          <img src="https://www.google.com/s2/favicons?domain=wepsy.com.br&amp;sz=64" alt="" />
+          <div class="name">Wepsy</div>
+          <div class="desc">Psicólogos com WhatsApp público</div>
+        </button>
+        <button class="site" data-url="https://www.webmotors.com.br/carros">
+          <span class="arrow">↗</span>
+          <img src="https://www.google.com/s2/favicons?domain=webmotors.com.br&amp;sz=64" alt="" />
+          <div class="name">WebMotors</div>
+          <div class="desc">Lojas e concessionárias</div>
+        </button>
+        <button class="site" data-url="https://www.airbnb.com.br/">
+          <span class="arrow">↗</span>
+          <img src="https://www.google.com/s2/favicons?domain=airbnb.com.br&amp;sz=64" alt="" />
+          <div class="name">Airbnb</div>
+          <div class="desc">Anfitriões (tel. na descrição)</div>
+        </button>
+        <button class="site" data-url="https://www.google.com.br/maps">
+          <span class="arrow">↗</span>
+          <img src="https://www.google.com/s2/favicons?domain=google.com.br&amp;sz=64" alt="" />
+          <div class="name">Google Maps</div>
+          <div class="desc">Empresas locais</div>
+        </button>
       </div>
+
+      <button id="openHere" class="secondary">Abrir nesta página</button>
+      <div class="status" id="status"></div>
     </div>
     <script type="module" src="./index.ts"></script>
   </body>

@@ -12,8 +12,13 @@ import {
   isWebMotorsList,
   type WebMotorsContact,
 } from './webmotors'
+import {
+  prospectAirbnb,
+  isAirbnbSearch,
+  type AirbnbContact,
+} from './airbnb'
 
-type AdapterMode = 'global' | 'wepsy' | 'webmotors'
+type AdapterMode = 'global' | 'wepsy' | 'webmotors' | 'airbnb'
 
 interface Contact {
   key: string
@@ -67,7 +72,9 @@ export class GlobalScanner {
       ? 'wepsy'
       : isWebMotorsList(location.href)
         ? 'webmotors'
-        : 'global'
+        : isAirbnbSearch(location.href)
+          ? 'airbnb'
+          : 'global'
     if (this.mode === 'global') {
       this.scan()
       const obs = new MutationObserver(() => this.debounceScan())
@@ -327,7 +334,13 @@ export class GlobalScanner {
     const tag = document.createElement('div')
     tag.className = 'cs-panel__tag'
     tag.textContent =
-      this.mode === 'wepsy' ? 'Prospector Wepsy' : this.mode === 'webmotors' ? 'Prospector WebMotors' : 'Prospector Global'
+      this.mode === 'wepsy'
+        ? 'Prospector Wepsy'
+        : this.mode === 'webmotors'
+          ? 'Prospector WebMotors'
+          : this.mode === 'airbnb'
+            ? 'Prospector Airbnb'
+            : 'Prospector Global'
     const tagline = document.createElement('div')
     tagline.className = 'cs-panel__tagline'
     tagline.textContent =
@@ -335,7 +348,9 @@ export class GlobalScanner {
         ? 'Busca psicólogos do catálogo Wepsy e importa os contatos com WhatsApp público.'
         : this.mode === 'webmotors'
           ? 'Busca lojas e concessionárias do WebMotors e importa os contatos com telefone público.'
-          : 'Contatos encontrados nesta página. Revise e importe como leads.'
+          : this.mode === 'airbnb'
+            ? 'Lê a descrição dos anúncios e importa anfitriões que divulgam WhatsApp. Baixo rendimento: poucos hosts compartilham telefone.'
+            : 'Contatos encontrados nesta página. Revise e importe como leads.'
     titles.append(name, tag, tagline)
 
     const controls = document.createElement('div')
@@ -403,7 +418,9 @@ export class GlobalScanner {
           ? `${this.contacts.length} contato(s) encontrado(s)`
           : this.mode === 'wepsy'
             ? 'Toque em PROSPECTAR para buscar os psicólogos desta página.'
-            : 'Toque em PROSPECTAR para buscar as lojas desta busca.'
+            : this.mode === 'webmotors'
+              ? 'Toque em PROSPECTAR para buscar as lojas desta busca.'
+              : 'Toque em PROSPECTAR para ler os anúncios desta busca no Airbnb.'
       status.append(this.statusEl)
       cta.append(ctaRow, status)
       body.appendChild(cta)
@@ -493,7 +510,9 @@ export class GlobalScanner {
           ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para buscar os psicólogos do catálogo Wepsy.'
           : this.mode === 'webmotors'
             ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para buscar as lojas desta busca no WebMotors.'
-            : '<b>0 contatos encontrados</b><br/>Nenhum telefone móvel detectado nesta página. Acesse uma página com contatos e tente novamente.'
+            : this.mode === 'airbnb'
+              ? '<b>0 contatos</b><br/>Toque em PROSPECTAR para ler a descrição dos anúncios. Poucos hosts compartilham WhatsApp, então o rendimento é baixo.'
+              : '<b>0 contatos encontrados</b><br/>Nenhum telefone móvel detectado nesta página. Acesse uma página com contatos e tente novamente.'
       this.listEl.appendChild(empty)
       return
     }
@@ -632,7 +651,13 @@ export class GlobalScanner {
       name: c.name,
       phone: c.phone,
       category:
-        this.mode === 'wepsy' ? 'Psicólogo' : this.mode === 'webmotors' ? 'Loja de Carros' : null,
+        this.mode === 'wepsy'
+          ? 'Psicólogo'
+          : this.mode === 'webmotors'
+            ? 'Loja de Carros'
+            : this.mode === 'airbnb'
+              ? 'Anfitrião Airbnb'
+              : null,
       website: null,
       address: null,
       city: c.city,
@@ -728,7 +753,7 @@ export class GlobalScanner {
   }
 
   /** Adiciona um contato vindo de um adaptador (Wepsy/WebMotors, dedup por número). */
-  private addAdapterContact(wc: WepsyContact | WebMotorsContact): void {
+  private addAdapterContact(wc: WepsyContact | WebMotorsContact | AirbnbContact): void {
     if (this.contacts.some((c) => c.key === wc.key)) {
       // Aproveita o nome se o novo for melhor.
       const ex = this.contacts.find((c) => c.key === wc.key)!
@@ -750,7 +775,7 @@ export class GlobalScanner {
 
   /** Limite máximo de contatos por adaptador. */
   private adapterMax(): number {
-    return this.mode === 'webmotors' ? 167000 : 2965
+    return this.mode === 'webmotors' ? 167000 : this.mode === 'wepsy' ? 2965 : 500
   }
 
   /** Prospecção via adaptador: pagina a fonte e coleta contatos (API pública). */
@@ -806,6 +831,21 @@ export class GlobalScanner {
             if (this.statusEl) this.statusEl.textContent = `${msg} · ${this.contacts.length} ok`
           },
         })
+      } else if (this.mode === 'airbnb') {
+        const res = await prospectAirbnb({
+          max,
+          signal: this.stopFlag,
+          onResult: (wc) => {
+            this.addAdapterContact(wc)
+            renderThrottle()
+          },
+          onProgress: (msg) => {
+            if (this.statusEl) this.statusEl.textContent = `${msg} · ${this.contacts.length} ok`
+          },
+        })
+        if (res.total === 0 && !this.stopFlag.cancelled) {
+          showToast('Nenhum anúncio detectado nesta busca do Airbnb.')
+        }
       }
       if (!this.stopFlag.cancelled) {
         showToast(`✓ ${this.contacts.length} contato(s) encontrado(s).`)
