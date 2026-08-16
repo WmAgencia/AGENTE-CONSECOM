@@ -301,7 +301,7 @@ export function KanbanBoard({
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Buscar por nome ou telefone…"
-                className="w-56 bg-field border border-line-2 rounded-lg pl-3 pr-7 py-1.5 text-sm text-fg outline-none focus:border-indigo-500 placeholder:text-faint"
+                className="w-56 bg-field border border-line-2 rounded-xl pl-3 pr-7 py-1.5 text-sm text-fg outline-none focus:border-indigo-500 placeholder:text-faint"
               />
               {searchInput && (
                 <button
@@ -317,7 +317,7 @@ export function KanbanBoard({
           <label className="text-xs text-muted">
             Filtrar por campanha
             <select value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)}
-              className="ml-2 bg-field border border-line-2 rounded-lg px-2 py-1.5 text-sm text-fg outline-none focus:border-indigo-500">
+              className="ml-2 bg-field border border-line-2 rounded-xl px-2 py-1.5 text-sm text-fg outline-none focus:border-indigo-500">
               <option value="all">Todos</option>
               <option value={NO_CAMPAIGN}>Sem campanha</option>
               {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -410,7 +410,7 @@ export function KanbanBoard({
                     />
                   ))}
                   {ordered.length === 0 && (
-                    <div className="text-xs text-slate-600 text-center py-6 border border-dashed border-line rounded-lg">Sem leads</div>
+                    <div className="text-xs text-slate-600 text-center py-6 border border-dashed border-line rounded-xl">Sem leads</div>
                   )}
                 </div>
               </div>
@@ -480,7 +480,7 @@ export function LeadCard({ lead, engagement, followUps, onAction, onChat, onMeet
   const badge = STATUS_BADGE[lead.status]
   const tooltip = engagementTooltip(engagement)
   return (
-    <div className="group relative rounded-lg bg-panel border border-line p-3 hover:border-line-2 transition cursor-pointer"
+    <div className="group relative rounded-xl bg-panel border border-line p-3 hover:border-line-2 transition cursor-pointer"
       onClick={onChat}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -598,17 +598,17 @@ function MeetingModal({ lead, onClose, onSave }: {
         <label className="block text-xs text-muted mb-3">
           Data e hora
           <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)}
-            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+            className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500 transition-all" />
         </label>
         <label className="block text-xs text-muted mb-3">
           Observações
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
-            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 resize-none" />
+            className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500 transition-all resize-none" />
         </label>
         {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Cancelar</button>
-          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Cancelar</button>
+          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium">
             {busy ? 'Salvando...' : 'Salvar'}
           </button>
         </div>
@@ -676,18 +676,18 @@ function CloseModal({ lead, onClose, onSave }: {
             Valor da venda (R$)
             <input value={valor} onChange={(e) => setValor(e.target.value)}
               inputMode="decimal" placeholder="Ex.: 1500"
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+              className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500" />
           </label>
         )}
         <label className="block text-xs text-muted mb-3">
           Motivo
           <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: fora do orçamento, já tem fornecedor..."
-            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+            className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500" />
         </label>
         {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Cancelar</button>
-          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Cancelar</button>
+          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-medium">
             {busy ? 'Salvando...' : 'Concluir'}
           </button>
         </div>
