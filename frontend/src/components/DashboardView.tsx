@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Target, RefreshCw, TrendingUp, CalendarDays, Coins, Users, MessagesSquare, ChevronDown } from 'lucide-react'
+import { Target, RefreshCw, TrendingUp, CalendarDays, Coins, Users, MessagesSquare, ChevronDown, X } from 'lucide-react'
 import { type Lead } from '../lib/supabase'
+import { Button, Card } from './ui'
 import {
   commercialApi,
   formatBRL,
@@ -37,32 +38,6 @@ function ProgressRing({ pct, size = 140 }: { pct: number | null; size?: number }
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <div className="text-2xl font-bold" style={{ color }}>{pct == null ? '—' : `${Math.round(pct)}%`}</div>
         <div className="text-[10px] text-faint uppercase tracking-wide">da meta</div>
-      </div>
-    </div>
-  )
-}
-
-// ===== Card base =====
-function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-xl border border-line bg-subtle p-5 ${className}`}>{children}</div>
-}
-
-function StatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
-  return (
-    <Card>
-      <div className="text-xs text-muted uppercase tracking-wide">{label}</div>
-      <div className={`text-3xl font-bold mt-2 ${accent ?? ''}`}>{value}</div>
-      {sub && <div className="text-xs text-faint mt-1">{sub}</div>}
-    </Card>
-  )
-}
-
-function RateCell({ label, value, tooltip }: { label: string; value: number | null; tooltip?: string }) {
-  return (
-    <div className="rounded-xl border border-line bg-subtle p-5" title={tooltip}>
-      <div className="text-xs text-muted uppercase tracking-wide">{label}</div>
-      <div className="text-3xl font-bold mt-2">
-        {value == null ? <span className="text-base text-faint font-normal">Sem dados suficientes</span> : `${value}%`}
       </div>
     </div>
   )
@@ -136,7 +111,7 @@ function GoalModal({
               <div className="text-xs text-muted">A projeção é calculada em tempo real conforme você digita</div>
             </div>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none"><X size={16}/></button>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -214,10 +189,8 @@ function GoalModal({
 
         {error && <p className="text-sm text-rose-400 mt-3">{error}</p>}
         <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-lg">Cancelar</button>
-          <button onClick={() => void save()} disabled={busy} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium">
-            {busy ? 'Salvando...' : 'Salvar meta'}
-          </button>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" onClick={() => void save()} loading={busy}>{busy ? 'Salvando...' : 'Salvar meta'}</Button>
         </div>
       </div>
     </div>
@@ -273,12 +246,8 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
           <p className="text-sm text-muted">Projeção vs resultados reais — tudo com dados reais, sem estimativas fictícias</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => void load()} className="flex items-center gap-2 text-xs text-muted hover:text-fg bg-subtle hover:bg-subtle-2 rounded-lg px-3 py-2 transition">
-            <RefreshCw className="w-3.5 h-3.5" /> Atualizar
-          </button>
-          <button onClick={() => setShowGoal(true)} className="flex items-center gap-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg px-3 py-2 transition">
-            <Target className="w-3.5 h-3.5" /> {goal ? 'Editar meta' : 'Configurar meta'}
-          </button>
+          <Button variant="ghost" size="sm" onClick={() => void load()} icon={<RefreshCw size={14}/>}>Atualizar</Button>
+          <Button size="sm" onClick={() => setShowGoal(true)} icon={<Target size={14}/>}>{goal ? 'Editar meta' : 'Configurar meta'}</Button>
         </div>
       </div>
 
@@ -292,7 +261,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
       ) : error ? (
         <Card>
           <p className="text-sm text-rose-400">{error}</p>
-          <button onClick={() => void load()} className="mt-3 text-xs text-indigo-300 hover:text-fg">Tentar novamente</button>
+          <Button variant="outline" size="sm" onClick={() => void load()} className="mt-3">Tentar novamente</Button>
         </Card>
       ) : real ? (
         <>
@@ -359,9 +328,21 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
               <CalendarDays className="w-4 h-4 text-indigo-400" /> Hoje
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
-              <StatCard label="Faturamento hoje" value={formatBRL(real.hoje.faturamento)} accent="text-emerald-300" sub={`${real.hoje.vendas} venda${real.hoje.vendas === 1 ? '' : 's'} hoje`} />
-              <StatCard label="Reuniões hoje" value={formatNumber(real.hoje.reunioes)} sub="agendadas para hoje" />
-              <StatCard label="Faturamento total" value={formatBRL(real.faturamento)} sub="período da meta" />
+              <Card>
+                <div className="text-xs text-muted uppercase tracking-wide">Faturamento hoje</div>
+                <div className="text-3xl font-bold mt-2 text-emerald-300">{formatBRL(real.hoje.faturamento)}</div>
+                <div className="text-xs text-faint mt-1">{real.hoje.vendas} venda{real.hoje.vendas === 1 ? '' : 's'} hoje</div>
+              </Card>
+              <Card>
+                <div className="text-xs text-muted uppercase tracking-wide">Reuniões hoje</div>
+                <div className="text-3xl font-bold mt-2">{formatNumber(real.hoje.reunioes)}</div>
+                <div className="text-xs text-faint mt-1">agendadas para hoje</div>
+              </Card>
+              <Card>
+                <div className="text-xs text-muted uppercase tracking-wide">Faturamento total</div>
+                <div className="text-3xl font-bold mt-2">{formatBRL(real.faturamento)}</div>
+                <div className="text-xs text-faint mt-1">período da meta</div>
+              </Card>
             </div>
           </div>
 
@@ -372,10 +353,26 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
                 <TrendingUp className="w-4 h-4 text-indigo-400" /> Projeção para atingir a meta
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Vendas necessárias" value={formatNumber(projection.vendasNecessarias)} sub="meta ÷ ticket médio" />
-                <StatCard label="Reuniões necessárias" value={formatNumber(projection.reunioesNecessarias)} sub={`com ${goal.meeting_close_rate}% de conversão`} />
-                <StatCard label="Reuniões/dia" value={formatNumber(projection.reunioesPorDia)} sub={`em ${goal.period_days} dias`} />
-                <StatCard label="Leads necessários" value={projection.leadsNecessarios != null ? formatNumber(projection.leadsNecessarios) : '—'} sub={projection.leadsPorDia != null ? `${formatNumber(projection.leadsPorDia)}/dia configurado` : 'Configure leads/dia para calcular'} />
+                <Card>
+                  <div className="text-xs text-muted uppercase tracking-wide">Vendas necessárias</div>
+                  <div className="text-3xl font-bold mt-2">{formatNumber(projection.vendasNecessarias)}</div>
+                  <div className="text-xs text-faint mt-1">meta ÷ ticket médio</div>
+                </Card>
+                <Card>
+                  <div className="text-xs text-muted uppercase tracking-wide">Reuniões necessárias</div>
+                  <div className="text-3xl font-bold mt-2">{formatNumber(projection.reunioesNecessarias)}</div>
+                  <div className="text-xs text-faint mt-1">com {goal.meeting_close_rate}% de conversão</div>
+                </Card>
+                <Card>
+                  <div className="text-xs text-muted uppercase tracking-wide">Reuniões/dia</div>
+                  <div className="text-3xl font-bold mt-2">{formatNumber(projection.reunioesPorDia)}</div>
+                  <div className="text-xs text-faint mt-1">em {goal.period_days} dias</div>
+                </Card>
+                <Card>
+                  <div className="text-xs text-muted uppercase tracking-wide">Leads necessários</div>
+                  <div className="text-3xl font-bold mt-2">{projection.leadsNecessarios != null ? formatNumber(projection.leadsNecessarios) : '—'}</div>
+                  <div className="text-xs text-faint mt-1">{projection.leadsPorDia != null ? `${formatNumber(projection.leadsPorDia)}/dia configurado` : 'Configure leads/dia para calcular'}</div>
+                </Card>
               </div>
             </div>
           )}
@@ -386,9 +383,27 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
               <Coins className="w-4 h-4 text-indigo-400" /> Conversões reais
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
-              <RateCell label="Lead → Reunião" value={real.conversaoLeadReuniao} tooltip={`${real.reunioesMarcadas} reuniões marcadas ÷ ${real.leadsTrabalhados} leads trabalhados`} />
-              <RateCell label="Reunião → Venda" value={real.conversaoReuniaoVenda} tooltip={`${real.vendas} vendas ÷ ${real.reunioesRealizadas} reuniões realizadas`} />
-              <RateCell label="Lead → Venda" value={real.conversaoLeadVenda} tooltip={`${real.vendas} vendas ÷ ${real.leadsTrabalhados} leads trabalhados`} />
+              <Card>
+                <div className="text-xs text-muted uppercase tracking-wide">Lead → Reunião</div>
+                <div className="text-3xl font-bold mt-2">
+                  {real.conversaoLeadReuniao == null ? <span className="text-base text-faint font-normal">Sem dados</span> : `${real.conversaoLeadReuniao}%`}
+                </div>
+                <div className="text-[10px] text-faint mt-1">{real.reunioesMarcadas} reuniões marcadas ÷ {real.leadsTrabalhados} leads</div>
+              </Card>
+              <Card>
+                <div className="text-xs text-muted uppercase tracking-wide">Reunião → Venda</div>
+                <div className="text-3xl font-bold mt-2">
+                  {real.conversaoReuniaoVenda == null ? <span className="text-base text-faint font-normal">Sem dados</span> : `${real.conversaoReuniaoVenda}%`}
+                </div>
+                <div className="text-[10px] text-faint mt-1">{real.vendas} vendas ÷ {real.reunioesRealizadas} reuniões</div>
+              </Card>
+              <Card>
+                <div className="text-xs text-muted uppercase tracking-wide">Lead → Venda</div>
+                <div className="text-3xl font-bold mt-2">
+                  {real.conversaoLeadVenda == null ? <span className="text-base text-faint font-normal">Sem dados</span> : `${real.conversaoLeadVenda}%`}
+                </div>
+                <div className="text-[10px] text-faint mt-1">{real.vendas} vendas ÷ {real.leadsTrabalhados} leads</div>
+              </Card>
             </div>
           </div>
 

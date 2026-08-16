@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 export function Card({ title, subtitle, children, className, actions }: {
   title?: string
