@@ -70,6 +70,7 @@ export class GlobalScanner {
   private searchState: HTMLInputElement | null = null
   private filterBtns: HTMLButtonElement[] = []
   private activeFilters = new Set<string>()
+  private accountEl: HTMLElement | null = null
 
   async init(): Promise<void> {
     this.cfg = await getStoredConfig()
@@ -352,59 +353,42 @@ export class GlobalScanner {
     const balloon = document.createElement('aside')
     balloon.className = 'consecom-balloon'
 
-    // Grip fino (arrastar) + fechar. Sem branding grande, mantém o arraste.
+    // Header (grip + logo + título + Conta + fechar)
     const header = document.createElement('div')
-    header.className = 'cs-panel__header cs-panel__header--slim'
+    header.className = 'cs-balloon-header'
     this.headerEl = header
     const grip = document.createElement('div')
-    grip.className = 'cs-panel__grip'
+    grip.className = 'cs-grip'
     grip.title = 'Arrastar painel'
     grip.innerHTML = '&#8942;&#8942;'
+    const logo = document.createElement('div')
+    logo.className = 'cs-logo'
+    logo.textContent = 'V'
+    const title = document.createElement('div')
+    title.className = 'cs-title'
+    title.textContent = 'VYNTRA'
+    const headActions = document.createElement('div')
+    headActions.className = 'cs-head-actions'
     const closeBtn = document.createElement('button')
     closeBtn.type = 'button'
-    closeBtn.className = 'cs-panel__btn'
+    closeBtn.className = 'cs-icon-btn'
     closeBtn.title = 'Fechar'
     closeBtn.innerHTML =
-      '<svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1 1L12 14l-6.3 6.3-1-1L10.8 12 4.5 5.7l1-1L12 10.8l6.3-6.3z"/></svg>'
+      '<svg viewBox="0 0 24 24"><path fill="currentColor" d="M18.3 5.71 12 12l6.3 6.29-1 1L12 14l-6.3 6.3-1-1L10.8 12 4.5 5.7l1-1L12 10.8l6.3-6.3z"/></svg>'
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation()
       this.toggleBalloon(false)
     })
-    header.append(grip, closeBtn)
+    headActions.append(closeBtn)
+    header.append(grip, logo, title, headActions)
     this.enableDrag(header, balloon)
 
     const body = document.createElement('div')
-    body.className = 'cs-panel__body'
+    body.className = 'cs-balloon-body'
 
-    // Faixa de sites (ativação controlada no Master; desativados ficam cinza).
-    const sites = document.createElement('div')
-    sites.className = 'cs-sites'
-    this.sitesEl = sites
-    const siteDefs = [
-      { key: 'maps' as const, label: 'GOOGLE MAPS' },
-      { key: 'webmotors' as const, label: 'WEBMOTORS' },
-      { key: 'wepsy' as const, label: 'WEPSY' },
-    ]
-    for (const s of siteDefs) {
-      const b = document.createElement('button')
-      b.type = 'button'
-      b.className = 'cs-site'
-      b.dataset.site = s.key
-      b.textContent = s.label
-      const on = this.sites[s.key] !== false
-      if (!on) {
-        b.classList.add('cs-site--off')
-        b.disabled = true
-        b.title = 'Desativado no painel Master'
-      } else if (this.mode === s.key) {
-        b.classList.add('cs-site--active')
-      }
-      sites.appendChild(b)
-    }
-
-    // Barra de busca: cidade + estado (Wepsy / WebMotors) + botão PESQUISAR.
+    // Bloco de busca: cidade + estado + PESQUISAR
     const search = document.createElement('div')
-    search.className = 'cs-search'
+    search.className = 'cs-block cs-search'
     const fields = document.createElement('div')
     fields.className = 'cs-search__fields'
     const cityWrap = document.createElement('label')
@@ -437,19 +421,28 @@ export class GlobalScanner {
     searchBtn.textContent = 'PESQUISAR'
     searchBtn.addEventListener('click', () => void this.doSearch())
     search.append(fields, searchBtn)
-    body.appendChild(sites)
+    const loc = document.createElement('div')
+    loc.className = 'cs-loc'
+    loc.innerHTML = pinIcon
+    this.statusEl = document.createElement('span')
+    this.statusEl.textContent =
+      this.contacts.length > 0
+        ? `${this.contacts.length} contato(s) encontrado(s)`
+        : 'Preencha cidade/estado e PESQUISE, ou toque em PROSPECTAR.'
+    loc.append(this.statusEl)
+    search.appendChild(loc)
 
-    // Filtros: NOTA BAIXA / SEM SITE / COM WHATSAPP.
+    // Bloco de filtros: SEM SITE / NOTA BAIXA / COM WHATSAPP
     const filters = document.createElement('div')
-    filters.className = 'cs-filters2'
+    filters.className = 'cs-block'
     const filtersTitle = document.createElement('div')
-    filtersTitle.className = 'cs-filters2__title'
+    filtersTitle.className = 'cs-block__title'
     filtersTitle.textContent = 'FILTROS'
     const chips = document.createElement('div')
     chips.className = 'cs-chips'
     const chipDefs = [
-      { id: 'nota_baixa', label: 'NOTA BAIXA' },
       { id: 'sem_site', label: 'SEM SITE' },
+      { id: 'nota_baixa', label: 'NOTA BAIXA' },
       { id: 'com_whatsapp', label: 'COM WHATSAPP' },
     ]
     this.filterBtns = []
@@ -470,7 +463,7 @@ export class GlobalScanner {
     }
     filters.append(filtersTitle, chips)
 
-    // PROSPECTAR (CTA principal).
+    // PROSPECTAR (CTA principal) + PARAR
     const prospectBtn = document.createElement('button')
     prospectBtn.type = 'button'
     prospectBtn.className = 'cs-prospect'
@@ -478,71 +471,170 @@ export class GlobalScanner {
     prospectBtn.addEventListener('click', () => void this.doProspect())
     this.prospectBtn = prospectBtn
 
-    const status = document.createElement('div')
-    status.className = 'cs-panel__loc'
-    status.innerHTML = pinIcon
-    this.statusEl = document.createElement('span')
-    this.statusEl.textContent =
-      this.contacts.length > 0
-        ? `${this.contacts.length} contato(s) encontrado(s)`
-        : this.mode === 'wepsy'
-          ? 'Preencha cidade/estado e toque em PESQUISAR, ou PROSPECTAR para buscar o catálogo.'
-          : 'Preencha cidade/estado e toque em PESQUISAR, ou PROSPECTAR para buscar as lojas desta busca.'
-    status.append(this.statusEl)
+    const stopBtn = document.createElement('button')
+    stopBtn.type = 'button'
+    stopBtn.className = 'cs-btn cs-btn--danger'
+    stopBtn.textContent = 'PARAR'
+    stopBtn.style.display = 'none'
+    stopBtn.addEventListener('click', () => {
+      this.stopFlag = { cancelled: true }
+    })
+    this.stopBtn = stopBtn
 
-    // Área de leads com scroll.
+    const actions = document.createElement('div')
+    actions.className = 'cs-prospect-actions'
+    actions.append(prospectBtn, stopBtn)
+
+    // Área de leads com scroll
     const leads = document.createElement('div')
     leads.className = 'cs-leads'
-    const leadsTitle = document.createElement('div')
-    leadsTitle.className = 'cs-leads__title'
-    leadsTitle.textContent = 'AREA DE LEADS E SCROLL'
     const list = document.createElement('div')
-    list.className = 'cs-panel__list'
+    list.className = 'cs-list'
     this.listEl = list
-    const planEl = document.createElement('div')
-    planEl.className = 'cs-panel__plan'
-    planEl.style.display = 'none'
-    this.planEl = planEl
-    leads.append(leadsTitle, list, planEl)
+    leads.append(list)
 
-    body.append(search, filters, prospectBtn, status, leads)
+    // Mini-card CONTA (toggle)
+    const account = this.buildAccountCard()
+    this.accountEl = account
 
-    // Rodapé: EXCLUIR / LIMPAR + IMPORTAR LEADS.
+    body.append(search, filters, actions, leads, account)
+
+    // Rodapé: LIMPAR LISTA | CONTA (linha 1), EXCLUIR | IMPORTAR LEADS (linha 2)
     const footer = document.createElement('div')
-    footer.className = 'cs-panel__footer'
-    const countEl = document.createElement('div')
-    countEl.className = 'cs-footer__count'
-    this.countEl = countEl
-    const row = document.createElement('div')
-    row.className = 'cs-footer__row'
+    footer.className = 'cs-balloon-footer'
+    const row1 = document.createElement('div')
+    row1.className = 'cs-foot-row'
+    const clearBtn = document.createElement('button')
+    clearBtn.type = 'button'
+    clearBtn.className = 'cs-btn'
+    clearBtn.textContent = 'LIMPAR LISTA'
+    clearBtn.addEventListener('click', () => {
+      this.contacts = []
+      this.selected.clear()
+      this.renderList()
+    })
+    const contaBtn = document.createElement('button')
+    contaBtn.type = 'button'
+    contaBtn.className = 'cs-btn'
+    contaBtn.textContent = 'CONTA'
+    contaBtn.addEventListener('click', () => void this.toggleAccount())
+    row1.append(clearBtn, contaBtn)
+    const row2 = document.createElement('div')
+    row2.className = 'cs-foot-row'
     const excludeBtn = document.createElement('button')
     excludeBtn.type = 'button'
-    excludeBtn.className = 'cs-footer__btn cs-foot-delete'
+    excludeBtn.className = 'cs-btn cs-btn--danger'
     excludeBtn.textContent = 'EXCLUIR'
     excludeBtn.addEventListener('click', () => {
       this.contacts = this.contacts.filter((c) => !this.selected.has(c.key))
       this.selected.clear()
       this.renderList()
     })
-    const clearBtn = document.createElement('button')
-    clearBtn.type = 'button'
-    clearBtn.className = 'cs-footer__btn cs-foot-clear'
-    clearBtn.textContent = 'LIMPAR'
-    clearBtn.addEventListener('click', () => {
-      this.contacts = []
-      this.selected.clear()
-      this.renderList()
-    })
-    row.append(excludeBtn, clearBtn)
     const importBtn = document.createElement('button')
     importBtn.type = 'button'
-    importBtn.className = 'cs-footer__btn cs-foot-import cs-import'
+    importBtn.className = 'cs-btn cs-btn--primary'
     importBtn.textContent = 'IMPORTAR LEADS'
     importBtn.addEventListener('click', () => void this.doImport(importBtn))
-    footer.append(countEl, row, importBtn)
+    row2.append(excludeBtn, importBtn)
+    footer.append(row1, row2)
 
     balloon.append(header, body, footer)
     return balloon
+  }
+
+  /** Constrói o mini-card CONTA (mostrado/oculto pelo botão Conta). */
+  private buildAccountCard(): HTMLElement {
+    const card = document.createElement('div')
+    card.className = 'cs-account'
+    card.style.display = 'none'
+    const head = document.createElement('div')
+    head.className = 'cs-account__head'
+    const avatar = document.createElement('div')
+    avatar.className = 'cs-account__avatar'
+    avatar.textContent = 'V'
+    const txt = document.createElement('div')
+    txt.className = 'cs-account__head-text'
+    const t = document.createElement('div')
+    t.className = 'cs-account__title'
+    t.textContent = 'Sua conta'
+    const s = document.createElement('div')
+    s.className = 'cs-account__sub'
+    s.textContent = 'Carregando...'
+    txt.append(t, s)
+    head.append(avatar, txt)
+    const quota = document.createElement('div')
+    quota.className = 'cs-account__quota'
+    quota.innerHTML = '<span>Leads usados</span><strong>—</strong>'
+    const progress = document.createElement('div')
+    progress.className = 'cs-account__progress'
+    const fill = document.createElement('div')
+    fill.className = 'cs-account__progress-fill'
+    progress.appendChild(fill)
+    const badgeRow = document.createElement('div')
+    badgeRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center'
+    const badge = document.createElement('span')
+    badge.className = 'cs-account__badge'
+    badge.textContent = '—'
+    const remaining = document.createElement('span')
+    remaining.style.cssText = 'font-size:11px;color:var(--vy-muted)'
+    remaining.textContent = '— restantes'
+    badgeRow.append(badge, remaining)
+    card.append(head, quota, progress, badgeRow)
+    return card
+  }
+
+  /** Abre/fecha o mini-card CONTA e atualiza os dados. */
+  private async toggleAccount(): Promise<void> {
+    if (!this.accountEl) return
+    const open = this.accountEl.style.display === 'none'
+    this.accountEl.style.display = open ? 'flex' : 'none'
+    if (open) await this.refreshAccountCard()
+  }
+
+  /** Atualiza o mini-card CONTA com a cota atual. */
+  private async refreshAccountCard(): Promise<void> {
+    if (!this.accountEl) return
+    const sub = this.accountEl.querySelector<HTMLElement>('.cs-account__sub')
+    const quota = this.accountEl.querySelector<HTMLElement>('.cs-account__quota')
+    const fill = this.accountEl.querySelector<HTMLElement>('.cs-account__progress-fill')
+    const badge = this.accountEl.querySelector<HTMLElement>('.cs-account__badge')
+    const remaining = this.accountEl.querySelector<HTMLElement>('span:last-child')
+    const cfg = this.cfg ?? (await getStoredConfig())
+    if (!cfg || !cfg.extensionKey || !cfg.ownerUserId) {
+      if (sub) sub.textContent = 'Extensão não vinculada. Baixe pelo painel.'
+      if (badge) { badge.textContent = 'NÃO VINCULADA'; badge.classList.add('cs-account__badge--off') }
+      return
+    }
+    const plan = await getPlanQuota(cfg)
+    if (!plan) {
+      if (sub) sub.textContent = 'Plano ilimitado (sem tenant vinculado).'
+      if (badge) { badge.textContent = 'ILIMITADO'; badge.classList.remove('cs-account__badge--off') }
+      if (quota) quota.innerHTML = '<span>Leads usados</span><strong>—</strong>'
+      if (fill) fill.style.width = '0%'
+      if (remaining) remaining.textContent = '∞ restantes'
+      return
+    }
+    if (sub) sub.textContent = plan.limited ? `Plano com limite de ${plan.limit} leads` : 'Plano ilimitado'
+    if (badge) {
+      badge.textContent = plan.limited ? 'COM LIMITE' : 'ILIMITADO'
+      badge.classList.remove('cs-account__badge--off')
+    }
+    if (plan.limited) {
+      const used = plan.used
+      const limit = Math.max(plan.limit, 1)
+      const pct = Math.min(100, (used / limit) * 100)
+      if (quota) quota.innerHTML = `<span>Leads usados</span><strong>${used} / ${limit}</strong>`
+      if (fill) {
+        fill.style.width = `${pct}%`
+        fill.classList.toggle('cs-account__progress-fill--full', pct >= 100)
+      }
+      const r = plan.remaining ?? 0
+      if (remaining) remaining.textContent = `${r} restante${r === 1 ? '' : 's'}`
+    } else {
+      if (quota) quota.innerHTML = `<span>Leads usados</span><strong>${plan.used}</strong>`
+      if (fill) fill.style.width = '0%'
+      if (remaining) remaining.textContent = '∞ restantes'
+    }
   }
 
   /** Busca: navega para a busca do site (cidade/estado) com os valores digitados. */
@@ -601,30 +693,30 @@ export class GlobalScanner {
 
   private buildRow(c: Contact): HTMLElement {
     const row = document.createElement('div')
-    row.className = 'cs-pcard'
+    row.className = 'cs-card'
     row.dataset.key = c.key
 
     const top = document.createElement('div')
-    top.className = 'cs-pcard__top'
+    top.className = 'cs-card__top'
     const nm = document.createElement('div')
-    nm.className = 'cs-pcard__name'
+    nm.className = 'cs-card__name'
     nm.textContent = c.name
     nm.title = c.name
     const badge = document.createElement('div')
-    badge.className = 'cs-pcard__badge cs-band--media'
+    badge.className = 'cs-card__badge cs-band-media'
     badge.textContent = c.whatsapp ? 'WhatsApp' : 'Celular'
     top.append(nm, badge)
 
     const meta = document.createElement('div')
-    meta.className = 'cs-pcard__meta'
+    meta.className = 'cs-card__meta'
     meta.textContent = c.phone
     if (c.context && c.context !== c.name) meta.textContent += ` • ${c.context}`
 
     const actions = document.createElement('div')
-    actions.className = 'cs-pcard__actions'
+    actions.className = 'cs-card__actions'
     const leadBtn = document.createElement('button')
     leadBtn.type = 'button'
-    leadBtn.className = 'cs-pcard__btn cs-pcard__lead'
+    leadBtn.className = 'cs-card__btn cs-card__lead'
     leadBtn.innerHTML = (this.selected.has(c.key) ? checkIcon : plusIcon) + '<span data-role="lead-label">Lead</span>'
     leadBtn.addEventListener('click', () => {
       if (this.imported.has(c.key)) return
@@ -640,7 +732,7 @@ export class GlobalScanner {
   }
 
   private updateRow(row: HTMLElement, c: Contact): void {
-    const leadBtn = row.querySelector('.cs-pcard__lead') as HTMLButtonElement | null
+    const leadBtn = row.querySelector('.cs-card__lead') as HTMLButtonElement | null
     if (!leadBtn) return
     const label = leadBtn.querySelector('[data-role="lead-label"]') as HTMLElement | null
     if (this.imported.has(c.key)) {
