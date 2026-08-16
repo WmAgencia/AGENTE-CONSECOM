@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { UserPlus, Trash2, Check, AlertCircle, Link2, Loader2, Pencil, X, ArrowRight } from 'lucide-react'
+import { Button } from './ui'
 
 const API = import.meta.env.VITE_BACKEND_URL ?? 'https://consecom-backend-production.up.railway.app'
 
@@ -128,7 +129,7 @@ export function ManualProspection() {
     }
   }, [bulkText, sessionUser, busy])
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault()
       void handleBulkAdd()
@@ -266,20 +267,20 @@ export function ManualProspection() {
           <h1 className="text-lg font-semibold">Prospecção</h1>
         </div>
 
-        <div className="flex gap-1 bg-field border border-line rounded-lg p-1 w-fit">
-          <button
+        <div className="flex gap-1">
+          <span
             onClick={() => setTab('manual')}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium ${tab === 'manual' ? 'bg-indigo-600 text-white' : 'text-muted hover:text-fg'}`}
+            className={`px-4 py-1.5 rounded-xl text-sm font-medium cursor-pointer transition ${tab === 'manual' ? 'bg-accent-600 text-white' : 'text-muted hover:text-fg'}`}
           >
             Manual
-          </button>
-          <button
+          </span>
+          <span
             onClick={() => setTab('url')}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 ${tab === 'url' ? 'bg-indigo-600 text-white' : 'text-muted hover:text-fg'}`}
+            className={`px-4 py-1.5 rounded-xl text-sm font-medium cursor-pointer transition flex items-center gap-1.5 ${tab === 'url' ? 'bg-accent-600 text-white' : 'text-muted hover:text-fg'}`}
           >
             <Link2 className="w-4 h-4" />
             Por URL
-          </button>
+          </span>
         </div>
 
         {tab === 'manual' && (
@@ -292,7 +293,7 @@ export function ManualProspection() {
         </p>
 
         <div className="space-y-2">
-          <textarea
+<textarea
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -300,26 +301,18 @@ export function ManualProspection() {
               'Ana Silva, (15) 99999-8888\nJoão Pedro, 11 99888-7766\nMaria Santos, (21) 97777-6655'
             }
             rows={8}
-            className="w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500 resize-y"
+            className="w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500 resize-y"
           />
           <div className="flex items-center gap-3">
-            <button
+            <Button
               onClick={handleBulkAdd}
               disabled={busy || !bulkText.trim()}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-sm font-medium flex items-center gap-2"
+              loading={busy}
+              className="flex items-center gap-2"
             >
-              {busy ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Adicionando...
-                </>
-              ) : (
-                <>
-                  <UserPlus className="w-4 h-4" />
-                  Adicionar leads
-                </>
-              )}
-            </button>
+              <UserPlus className="w-4 h-4" />
+              Adicionar leads
+            </Button>
             <span className="text-xs text-muted">
               Ctrl+Enter para adicionar rapidamente
             </span>
