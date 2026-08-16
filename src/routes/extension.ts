@@ -21,10 +21,11 @@ import { getEnv, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { extractBearerToken } from '../utils/auth.js';
 import { getTenantForUserId } from '../services/saas.auth.js';
+import { getImportQuota } from '../services/saas.js';
 import { z } from 'zod';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
-const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 
 const DEFAULT_BASE_ZIP_URL =
   'https://frontend-seven-sooty-78.vercel.app/downloads/consecom-extension.zip';
@@ -192,6 +193,22 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
     const logPrefix = `extension:import(${ownerUserId.slice(0, 8)})`;
     const tenantId = await getTenantForUserId(ownerUserId);
 
+    // Plano do usuário: a extensão "entende" o plano e dá baixa nos leads
+    // importados. Sem tenant ou sem plano ativo => sem limite (backward compat).
+    let quota: { limited: boolean; used: number; limit: number; remaining: number | null } | null = null;
+    if (tenantId) {
+      quota = await getImportQuota(tenantId);
+      if (quota.limited && (quota.remaining ?? 0) <= 0) {
+        log.info({ tenantId, used: quota.used, limit: quota.limit }, `${logPrefix}: plano esgotado`);
+        return reply.status(402).send({
+          error: 'plan_exhausted',
+          message: 'Você atingiu o limite de leads do seu plano. Assine um novo plano para continuar.',
+          statusCode: 402,
+          quota,
+        });
+      }
+    }
+
     try {
       // Cria (ou reutiliza) a lista = capture_session.
       const listLabel = `importacao:${(listName ?? 'Importação extensão').trim()}`;
@@ -299,6 +316,14 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       });
       const duplicates = candidateRows.length - rows.length;
 
+      // Respeita o limite do plano: importa apenas até o saldo restante.
+      let quotaCut = 0;
+      if (quota?.limited && quota.remaining != null && rows.length > quota.remaining) {
+        quotaCut = rows.length - quota.remaining;
+        rows.length = quota.remaining;
+        log.info({ cut: quotaCut, remaining: quota.remaining }, `${logPrefix}: importação cortada pelo limite do plano`);
+      }
+
       let created = 0;
       let failed = 0;
       let firstError: { status: number; body: string } | null = null;
@@ -324,14 +349,36 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       log.info({ total: leads.length, created, duplicates, failed, listId }, logPrefix);
       return reply.send({
         ok: failed === 0,
-        summary: { total: leads.length, created, duplicates, errors: failed },
+        summary: { total: leads.length, created, duplicates, errors: failed, quotaCut },
         listId,
         firstError,
+        quota,
       });
     } catch (err) {
       const em = err instanceof Error ? err.message : 'unknown';
       log.error({ errMessage: em }, logPrefix);
       return reply.status(502).send({ error: 'import_failed', message: em, statusCode: 502 });
+    }
+  });
+
+  app.post('/api/extension/plan', async (req, reply) => {
+    const s = sup();
+    if (!s) return reply.status(503).send({ error: 'server_misconfigured', statusCode: 503 });
+    if (!extensionKeyOk(req)) return reply.status(403).send({ error: 'forbidden', statusCode: 403 });
+    const body = req.body as { ownerUserId?: unknown } | null;
+    const ownerUserId = typeof body?.ownerUserId === 'string' ? body.ownerUserId : '';
+    if (!ownerUserId) return reply.status(400).send({ error: 'owner_user_id_required', statusCode: 400 });
+    try {
+      const tenantId = await getTenantForUserId(ownerUserId);
+      if (!tenantId) {
+        return reply.send({ plan: null, limited: false, used: 0, limit: 0, remaining: null });
+      }
+      const quota = await getImportQuota(tenantId);
+      return reply.send({ plan: null, ...quota });
+    } catch (err) {
+      const em = err instanceof Error ? err.message : 'unknown';
+      log.error({ errMessage: em }, 'extension: plan failed');
+      return reply.status(502).send({ error: 'plan_failed', message: em, statusCode: 502 });
     }
   });
 

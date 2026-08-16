@@ -159,6 +159,16 @@
 .cs-panel__titles { min-width: 0; }
 .cs-panel__name { font-size: 15px; font-weight: 800; color: var(--vy-text); letter-spacing: -0.01em; }
 .cs-panel__tag { font-size: 11px; color: var(--vy-muted); margin-top: 1px; }
+.cs-panel__plan {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--vy-muted);
+  align-self: flex-start;
+}
 
 .cs-panel__search { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
 .cs-panel__input {

@@ -125,13 +125,40 @@ export async function getLatestSubscription(tenantId: string): Promise<Subscript
 // Uso de leads
 // =============================================================
 
-/** Leads consumidos = leads com pelo menos uma entrada em send_runs (tenant). */
+/**
+ * Leads consumidos = total de leads do tenant (modelo por importação).
+ * Cada lead importado pela extensão dá baixa no plano.
+ */
 export async function countConsumedLeads(tenantId: string): Promise<number> {
-  const rows = await get<Array<{ lead_id: string }>>(
-    `/send_runs?select=lead_id&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+  const rows = await get<Array<{ id: string }>>(
+    `/leads?select=id&tenant_id=eq.${encodeURIComponent(tenantId)}`,
   );
-  if (!rows) return 0;
-  return new Set(rows.map((r) => r.lead_id)).size;
+  return rows?.length ?? 0;
+}
+
+/** Limite de leads do plano ativo (0 = sem limite). */
+export async function getActiveLeadLimit(tenantId: string): Promise<number> {
+  const sub = await getActiveSubscription(tenantId);
+  if (!sub) return 0;
+  const plan = await getPlan(sub.plan_id);
+  return plan?.lead_limit ?? 0;
+}
+
+/**
+ * Cota de importação da extensão.
+ * Retorna { limited, used, limit, remaining }.
+ * - Sem assinatura ativa => sem limite (backward compat com dados atuais).
+ * - Com plano ativo => remaining = limit - used.
+ */
+export async function getImportQuota(
+  tenantId: string,
+): Promise<{ limited: boolean; used: number; limit: number; remaining: number | null }> {
+  const limit = await getActiveLeadLimit(tenantId);
+  if (limit <= 0) {
+    return { limited: false, used: await countConsumedLeads(tenantId), limit: 0, remaining: null };
+  }
+  const used = await countConsumedLeads(tenantId);
+  return { limited: true, used, limit, remaining: Math.max(0, limit - used) };
 }
 
 /** Retorna limite/uso/restante do tenant (com base no plano ativo). */

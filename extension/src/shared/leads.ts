@@ -48,6 +48,18 @@ export interface ImportResult {
   failed: number
   firstError?: string
   errors: Array<{ index: number; name: string; error: string }>
+  /** Leads descartados por atingir o limite do plano. */
+  quotaCut?: number
+  /** Plano do usuário no momento da importação (se houver). */
+  quota?: PlanQuota | null
+}
+
+/** Situação do plano do usuário (consultada no backend). */
+export interface PlanQuota {
+  limited: boolean
+  used: number
+  limit: number
+  remaining: number | null
 }
 
 export interface KnownResult {
@@ -89,6 +101,21 @@ export async function deleteLeads(
   if (!res.ok) return { ok: 0, failed: placeIds.length }
   const data = (res.data ?? {}) as { ok?: number; failed?: number }
   return { ok: Number(data.ok ?? 0), failed: Number(data.failed ?? 0) }
+}
+
+/** Consulta o plano/saldo de leads do usuário (endpoint /api/extension/plan). */
+export async function getPlanQuota(cfg: StoredConfig): Promise<PlanQuota | null> {
+  if (!cfg.extensionKey || !cfg.ownerUserId) return null
+  const res = await backend('/api/extension/plan', { ownerUserId: cfg.ownerUserId })
+  if (!res.ok) return null
+  const data = (res.data ?? {}) as Partial<PlanQuota>
+  if (typeof data.limited !== 'boolean') return null
+  return {
+    limited: data.limited,
+    used: Number(data.used ?? 0),
+    limit: Number(data.limit ?? 0),
+    remaining: data.remaining == null ? null : Number(data.remaining),
+  }
 }
 
 /** Importa os leads direto no backend (grava em `leads` com import_state=imported). */
@@ -138,15 +165,22 @@ export async function importLeads(
   })
 
   if (!res.ok) {
-    const data = (res.data ?? {}) as { message?: string; error?: string }
+    const data = (res.data ?? {}) as { message?: string; error?: string; quota?: PlanQuota | null }
     const message = data.message ?? data.error ?? `HTTP ${res.status}`
     console.error('[IMPORT] Backend import failed:', { status: res.status, message })
-    return { ok: 0, failed: leads.length, firstError: message, errors: [] }
+    return {
+      ok: 0,
+      failed: leads.length,
+      firstError: message,
+      errors: [],
+      quota: data.quota ?? null,
+    }
   }
 
   const data = (res.data ?? {}) as {
-    summary?: { created?: number; errors?: number; duplicates?: number }
+    summary?: { created?: number; errors?: number; duplicates?: number; quotaCut?: number }
     firstError?: { body?: string }
+    quota?: PlanQuota | null
   }
   const ok = Number(data.summary?.created ?? 0)
   const failed = Number(data.summary?.errors ?? 0)
@@ -157,6 +191,8 @@ export async function importLeads(
     failed,
     firstError: typeof data.firstError?.body === 'string' ? data.firstError.body : undefined,
     errors: [],
+    quotaCut: Number(data.summary?.quotaCut ?? 0),
+    quota: data.quota ?? null,
   }
 }
 

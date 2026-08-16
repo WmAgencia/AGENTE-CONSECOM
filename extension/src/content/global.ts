@@ -1,5 +1,5 @@
 import { getStoredConfig, type StoredConfig } from '../shared/config'
-import { importLeads, type ScrapedLead } from '../shared/leads'
+import { getPlanQuota, importLeads, type PlanQuota, type ScrapedLead } from '../shared/leads'
 import { classifyBrazilianPhone } from '../shared/phone'
 import { injectStyles, showToast } from './index'
 import {
@@ -58,6 +58,8 @@ export class GlobalScanner {
   private imported = new Set<string>()
   private importStop = false
   private mode: AdapterMode = 'global'
+  private planQuota: PlanQuota | null = null
+  private planEl: HTMLElement | null = null
   private prospecting = false
   private stopFlag = { cancelled: false }
   private prospectBtn: HTMLButtonElement | null = null
@@ -288,8 +290,10 @@ export class GlobalScanner {
       return
     }
     this.balloon.classList.toggle('open', shouldOpen)
-    if (shouldOpen) this.renderList()
-    else this.ensureLauncher()
+    if (shouldOpen) {
+      this.renderList()
+      void this.refreshQuota()
+    } else this.ensureLauncher()
   }
 
   private ensureBalloon(): void {
@@ -303,6 +307,9 @@ export class GlobalScanner {
     }
     this.balloon = this.buildBalloon()
     const pos = this.readPosition()
+    this.balloon.style.right = `${pos.right}px`
+    this.balloon.style.top = `${pos.top}px`
+    void this.refreshQuota()
     this.balloon.style.right = `${pos.right}px`
     this.balloon.style.top = `${pos.top}px`
     document.body.appendChild(this.balloon)
@@ -352,6 +359,11 @@ export class GlobalScanner {
             ? 'Lê a descrição dos anúncios e importa anfitriões que divulgam WhatsApp. Baixo rendimento: poucos hosts compartilham telefone.'
             : 'Contatos encontrados nesta página. Revise e importe como leads.'
     titles.append(name, tag, tagline)
+    const planEl = document.createElement('div')
+    planEl.className = 'cs-panel__plan'
+    planEl.style.display = 'none'
+    this.planEl = planEl
+    titles.append(planEl)
 
     const controls = document.createElement('div')
     controls.className = 'cs-panel__controls'
@@ -590,11 +602,34 @@ export class GlobalScanner {
     }
   }
 
+  /** Busca o saldo de leads do plano e atualiza o badge do painel. */
+  private async refreshQuota(): Promise<void> {
+    this.cfg = this.cfg ?? (await getStoredConfig())
+    if (!this.cfg) return
+    const quota = await getPlanQuota(this.cfg)
+    this.planQuota = quota
+    if (this.planEl) {
+      if (quota && quota.limited) {
+        const remaining = quota.remaining ?? 0
+        this.planEl.style.display = ''
+        this.planEl.textContent = `Plano: ${quota.used}/${quota.limit} leads usados · ${remaining} restantes`
+        this.planEl.style.color = remaining <= 0 ? '#f87171' : '#6ee7b7'
+      } else {
+        this.planEl.style.display = 'none'
+      }
+    }
+  }
+
   private async doImport(btn: HTMLButtonElement): Promise<void> {
     if (this.importing) return
     this.cfg = this.cfg ?? (await getStoredConfig())
     if (!this.cfg || !this.cfg.extensionKey || !this.cfg.ownerUserId) {
       alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
+      return
+    }
+    await this.refreshQuota()
+    if (this.planQuota?.limited && (this.planQuota.remaining ?? 0) <= 0) {
+      showToast('Seu plano de leads está esgotado. Renove/assine um plano no painel Vyntra.', 'warn')
       return
     }
     const selectedContacts = this.contacts
@@ -623,7 +658,10 @@ export class GlobalScanner {
       )
       for (const c of selectedContacts.slice(0, 50)) this.imported.add(c.key)
       btn.textContent = res.failed === 0 ? '✓' : `${res.ok} ok, ${res.failed} falharam`
-      if (res.failed === 0) {
+      await this.refreshQuota()
+      if (res.quotaCut && res.quotaCut > 0) {
+        showToast(`⚠️ Plano atingiu o limite: ${res.quotaCut} lead(s) não importados. Renove/assine um plano.`, 'warn')
+      } else if (res.failed === 0) {
         showToast(res.ok > 0 ? `✅ ${res.ok} lead(s) importado(s)!` : 'Nenhum lead novo para importar.')
         this.selected.clear()
       } else {
@@ -698,6 +736,11 @@ export class GlobalScanner {
       showToast('Todos os contatos já foram importados.', 'warn')
       return
     }
+    await this.refreshQuota()
+    if (this.planQuota?.limited && (this.planQuota.remaining ?? 0) <= 0) {
+      showToast('Seu plano de leads está esgotado. Renove/assine um plano no painel Vyntra.', 'warn')
+      return
+    }
     this.importing = true
     this.importStop = false
     const prev = btn.textContent
@@ -705,6 +748,7 @@ export class GlobalScanner {
     let totalOk = 0
     let totalFailed = 0
     let batch = 0
+    let planExhausted = false
     const totalBatches = Math.ceil(remaining.length / 50)
     try {
       for (let i = 0; i < remaining.length; i += 50) {
@@ -724,6 +768,12 @@ export class GlobalScanner {
         for (const c of chunk) this.imported.add(c.key)
         this.selected.clear()
         this.renderList()
+        if ((res.quotaCut && res.quotaCut > 0) || (res.failed > 0 && res.firstError && /plano|esgotado|exhausted/i.test(res.firstError))) {
+          planExhausted = true
+          this.importStop = true
+          showToast(`⚠️ Plano atingiu o limite de leads. Importação parada em ${totalOk} lead(s). Renove/assine um plano.`, 'warn')
+          break
+        }
         if (res.failed > 0 && res.firstError) {
           showToast(`⚠️ Lote ${batch}: ${res.failed} falharam: ${res.firstError}`, 'warn')
         }
