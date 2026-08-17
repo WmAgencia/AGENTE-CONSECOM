@@ -1072,3 +1072,82 @@
 .cs-footer__count b { color: var(--vy-ink) !important; }
 
 /* Dark mode do popup: o mesmo produto visual da superfície in-page. */
+
+/* ===== Paleta Vyntra Violet ===== */
+:root {
+  --vy-night: #12101d;
+  --vy-night-2: #1b1729;
+  --vy-night-3: #241e35;
+  --vy-night-line: rgba(221, 214, 254, 0.16);
+  --vy-ink: #f8f7ff;
+  --vy-ink-muted: #aca5c8;
+  --vy-mint: #a78bfa;
+  --vy-mint-strong: #8b5cf6;
+  --vy-mint-dark: #4c1d95;
+}
+.consecom-balloon {
+  background: var(--vy-night) !important;
+  border-color: rgba(167, 139, 250, 0.28) !important;
+  box-shadow: 0 24px 70px rgba(8, 5, 20, 0.52), 0 0 0 1px rgba(167, 139, 250, 0.08) !important;
+}
+.consecom-floatbtn {
+  background: linear-gradient(145deg, #261b45, #171225) !important;
+  border-color: rgba(167, 139, 250, 0.68) !important;
+  color: #c4b5fd !important;
+  box-shadow: 0 12px 30px rgba(8, 5, 20, 0.5), 0 0 0 5px rgba(139, 92, 246, 0.12) !important;
+}
+.cs-panel__header,
+.cs-balloon-header {
+  background: radial-gradient(circle at 100% -20%, rgba(139, 92, 246, 0.22), transparent 48%), linear-gradient(135deg, #211a35, #141120) !important;
+  border-color: var(--vy-night-line) !important;
+}
+.cs-panel__header--slim::before,
+.cs-logo {
+  background: linear-gradient(135deg, #c4b5fd, #8b5cf6) !important;
+  color: #1b1230 !important;
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.35) !important;
+}
+.cs-balloon-header::after { background: linear-gradient(90deg, #6d28d9, #a78bfa, #c4b5fd) !important; }
+.cs-panel__btn:hover,
+.cs-icon-btn:hover { color: #c4b5fd !important; border-color: rgba(167, 139, 250, 0.55) !important; background: rgba(139, 92, 246, 0.16) !important; }
+.cs-panel__body { background: radial-gradient(circle at 100% 0, rgba(139, 92, 246, 0.12), transparent 44%), var(--vy-night) !important; }
+.consecom-balloon .cs-search,
+.consecom-balloon .cs-block,
+.consecom-balloon .cs-filters,
+.consecom-balloon .cs-result__card,
+.consecom-balloon .cs-card,
+.consecom-balloon .cs-pcard { background: var(--vy-night-2) !important; border-color: var(--vy-night-line) !important; }
+.consecom-balloon .cs-search__input { background: var(--vy-night-3) !important; border-color: var(--vy-night-line) !important; color: var(--vy-ink) !important; }
+.consecom-balloon .cs-search__input:focus { border-color: #a78bfa !important; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18) !important; }
+.consecom-balloon .cs-search__btn,
+.consecom-balloon .cs-prospect,
+.cs-result__cta,
+.cs-foot-import { background: linear-gradient(135deg, #7c3aed, #a78bfa) !important; color: #fff !important; }
+.consecom-balloon .cs-search__btn:hover,
+.consecom-balloon .cs-prospect:hover:not(:disabled),
+.cs-foot-import:hover { background: #c4b5fd !important; color: #24133e !important; }
+.consecom-balloon .cs-chip {
+  background: rgba(255, 255, 255, 0.025) !important;
+  border-color: var(--vy-night-line) !important;
+  color: var(--vy-ink-muted) !important;
+}
+.consecom-balloon .cs-chip:hover { color: #c4b5fd !important; border-color: rgba(167, 139, 250, 0.58) !important; }
+.consecom-balloon .cs-chip--on { background: rgba(139, 92, 246, 0.22) !important; border-color: #a78bfa !important; color: #ddd6fe !important; }
+.consecom-balloon .cs-card:hover,
+.consecom-balloon .cs-pcard:hover { border-color: rgba(167, 139, 250, 0.58) !important; background: var(--vy-night-3) !important; }
+.consecom-balloon .cs-card__bfill,
+.consecom-balloon .cs-pcard__barfill { background: linear-gradient(90deg, #7c3aed, #c4b5fd) !important; }
+.consecom-balloon .cs-card__lead,
+.consecom-balloon .cs-pcard__lead { background: #7c3aed !important; color: #fff !important; }
+.consecom-balloon .cs-card__lead.on,
+.consecom-balloon .cs-pcard__lead.on { background: #5b21b6 !important; }
+.consecom-balloon .cs-account__avatar { background: rgba(139, 92, 246, 0.22) !important; color: #c4b5fd !important; }
+.consecom-balloon .cs-account__badge { background: rgba(139, 92, 246, 0.2) !important; color: #c4b5fd !important; }
+.cs-panel__footer { background: #0d0a16 !important; border-color: var(--vy-night-line) !important; }
+
+/* Os três filtros pedidos ficam sempre na mesma linha. */
+.consecom-balloon .cs-filters { padding: 9px !important; }
+.consecom-balloon .cs-filters__title { margin-bottom: 7px !important; color: #c4b5fd !important; }
+.consecom-balloon .cs-filters .cs-chips { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 5px !important; flex-wrap: nowrap !important; }
+.consecom-balloon .cs-filters .cs-chip { min-width: 0 !important; width: 100% !important; padding: 7px 2px !important; font-size: 8px !important; letter-spacing: 0 !important; text-align: center !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
+.consecom-balloon .cs-filters .cs-chip--on { box-shadow: 0 0 0 1px rgba(196, 181, 253, 0.22), 0 5px 14px rgba(124, 58, 237, 0.16) !important; }

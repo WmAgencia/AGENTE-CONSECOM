@@ -476,6 +476,10 @@ export class MapsScanner {
     grip.className = 'cs-panel__grip'
     grip.title = 'Arrastar painel'
     grip.innerHTML = '&#8942;&#8942;'
+    const title = document.createElement('div')
+    title.className = 'cs-title'
+    title.textContent = 'GOOGLE MAPS'
+    title.setAttribute('aria-label', 'Site atual: Google Maps')
     const controls = document.createElement('div')
     controls.className = 'cs-panel__controls'
     const minimizeBtn = document.createElement('button')
@@ -499,29 +503,11 @@ export class MapsScanner {
       this.toggleBalloon(false)
     })
     controls.append(minimizeBtn, closeBtn)
-    header.append(grip, controls)
+    header.append(grip, title, controls)
     this.enableDrag(header, balloon)
 
     const body = document.createElement('div')
     body.className = 'cs-panel__body'
-
-    // Faixa de sites (Google Maps ativo; demais cinza/neutros).
-    const sites = document.createElement('div')
-    sites.className = 'cs-sites'
-    const siteDefs = [
-      { key: 'maps', label: 'GOOGLE MAPS', active: true },
-      { key: 'webmotors', label: 'WEBMOTORS', active: false },
-      { key: 'wepsy', label: 'WEPSY', active: false },
-    ]
-    for (const s of siteDefs) {
-      const b = document.createElement('button')
-      b.type = 'button'
-      b.className = 'cs-site'
-      b.dataset.site = s.key
-      b.textContent = s.label
-      if (s.active) b.classList.add('cs-site--active')
-      sites.appendChild(b)
-    }
 
     // Busca por palavra-chave + PESQUISAR
     const search = document.createElement('div')
@@ -581,7 +567,7 @@ export class MapsScanner {
     this.listEl = list
     leads.append(leadsTitle, resultPanel, list)
 
-    body.append(sites, search, filtersPanel, prospectBtn, leads)
+    body.append(search, filtersPanel, prospectBtn, leads)
 
     // Rodapé: EXCLUIR / LIMPAR + IMPORTAR LEADS
     const footer = document.createElement('div')

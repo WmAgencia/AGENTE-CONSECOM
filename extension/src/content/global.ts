@@ -366,7 +366,8 @@ export class GlobalScanner {
     logo.textContent = 'V'
     const title = document.createElement('div')
     title.className = 'cs-title'
-    title.textContent = 'VYNTRA'
+    title.textContent = this.mode === 'wepsy' ? 'WEPSY' : this.mode === 'webmotors' ? 'WEBMOTORS' : 'PÁGINA ATUAL'
+    title.setAttribute('aria-label', `Site atual: ${title.textContent}`)
     const headActions = document.createElement('div')
     headActions.className = 'cs-head-actions'
     const closeBtn = document.createElement('button')
