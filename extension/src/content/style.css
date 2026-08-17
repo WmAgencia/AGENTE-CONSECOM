@@ -834,3 +834,241 @@
   font-family: var(--vy-font);
 }
 .cs-footer__count b { color: var(--vy-fg); font-weight: 700; }
+
+/* ===== Vyntra Command Surface v2 =====
+ * O painel Maps usa uma família de classes própria. Este bloco fecha todos os
+ * contratos visuais dessa superfície sem depender do CSS do site hospedeiro. */
+:root {
+  --vy-ink: #f4faf7;
+  --vy-ink-muted: #9db5aa;
+  --vy-night: #101a17;
+  --vy-night-2: #17231f;
+  --vy-night-3: #1e2d28;
+  --vy-night-line: rgba(185, 226, 207, 0.14);
+  --vy-mint: #5ee6af;
+  --vy-mint-strong: #20c98a;
+  --vy-mint-dark: #0c6b4c;
+}
+
+/* O painel e o launcher agora têm uma superfície própria, independente do
+ * reset, fontes e cores do documento aberto. */
+.consecom-balloon,
+.consecom-floatbtn,
+.consecom-balloon *,
+.consecom-floatbtn * {
+  box-sizing: border-box;
+}
+.consecom-balloon {
+  background: var(--vy-night) !important;
+  border: 1px solid var(--vy-night-line) !important;
+  color: var(--vy-ink) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34), 0 3px 12px rgba(0, 0, 0, 0.18) !important;
+}
+.consecom-floatbtn {
+  background: var(--vy-night) !important;
+  border: 1px solid rgba(94, 230, 175, 0.55) !important;
+  color: var(--vy-mint) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), 0 0 0 5px rgba(94, 230, 175, 0.08) !important;
+}
+
+/* Maps header */
+.cs-panel__header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  min-height: 48px !important;
+  padding: 10px 12px !important;
+  background: linear-gradient(135deg, #15251f, #0f1916) !important;
+  border-bottom: 1px solid var(--vy-night-line) !important;
+  color: var(--vy-ink) !important;
+  flex-shrink: 0 !important;
+  cursor: grab !important;
+  user-select: none !important;
+  touch-action: none !important;
+}
+.cs-panel__header--slim::before {
+  content: 'V';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 8px;
+  color: #062319;
+  background: linear-gradient(135deg, var(--vy-mint), #a5f3d0);
+  font: 800 13px/1 var(--vy-font);
+  font-style: italic;
+  box-shadow: 0 0 18px rgba(94, 230, 175, 0.24);
+  margin-right: auto;
+}
+.cs-panel__grip {
+  order: -1;
+  color: var(--vy-ink-muted) !important;
+  font-size: 15px !important;
+  letter-spacing: -2px !important;
+  line-height: 1 !important;
+  cursor: grab !important;
+}
+.cs-panel__controls { display: flex !important; gap: 5px !important; }
+.cs-panel__btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  border: 1px solid var(--vy-night-line) !important;
+  border-radius: 8px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: var(--vy-ink-muted) !important;
+  cursor: pointer !important;
+}
+.cs-panel__btn:hover { color: var(--vy-mint) !important; border-color: rgba(94, 230, 175, 0.45) !important; background: rgba(94, 230, 175, 0.1) !important; }
+
+.cs-panel__body {
+  min-height: 0 !important;
+  flex: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 9px !important;
+  padding: 10px !important;
+  background: radial-gradient(circle at 100% 0, rgba(94, 230, 175, 0.08), transparent 42%), var(--vy-night) !important;
+}
+.cs-panel__body::-webkit-scrollbar { width: 5px !important; }
+.cs-panel__body::-webkit-scrollbar-thumb { background: rgba(157, 181, 170, 0.34) !important; border-radius: 999px !important; }
+
+/* Navegação de fonte: uma barra compacta em vez de botões soltos. */
+.cs-sites {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 4px !important;
+  padding: 4px !important;
+  background: var(--vy-night-2) !important;
+  border: 1px solid var(--vy-night-line) !important;
+  border-radius: 12px !important;
+}
+.cs-site {
+  min-width: 0 !important;
+  padding: 7px 3px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: var(--vy-ink-muted) !important;
+  font: 700 8px/1.1 var(--vy-font) !important;
+  letter-spacing: .04em !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.cs-site:hover { color: var(--vy-ink) !important; background: rgba(255, 255, 255, 0.06) !important; }
+.cs-site--active { color: #07251a !important; background: var(--vy-mint) !important; box-shadow: 0 4px 12px rgba(94, 230, 175, 0.18) !important; }
+
+.cs-panel__loc {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  min-height: 18px !important;
+  color: var(--vy-ink-muted) !important;
+  font: 500 10px/1.3 var(--vy-font) !important;
+  text-align: center !important;
+}
+.cs-panel__loc svg { width: 12px !important; height: 12px !important; fill: var(--vy-mint) !important; }
+
+/* Reestiliza os blocos shared para o tema Command Surface. */
+.consecom-balloon .cs-block,
+.consecom-balloon .cs-search,
+.consecom-balloon .cs-filters,
+.consecom-balloon .cs-result__card {
+  background: var(--vy-night-2) !important;
+  border: 1px solid var(--vy-night-line) !important;
+  border-radius: 13px !important;
+  box-shadow: none !important;
+}
+.consecom-balloon .cs-search { padding: 9px !important; gap: 7px !important; }
+.consecom-balloon .cs-search__input {
+  background: var(--vy-night-3) !important;
+  border-color: var(--vy-night-line) !important;
+  color: var(--vy-ink) !important;
+  border-radius: 9px !important;
+}
+.consecom-balloon .cs-search__input::placeholder { color: #789289 !important; }
+.consecom-balloon .cs-search__input:focus { border-color: var(--vy-mint) !important; box-shadow: 0 0 0 3px rgba(94, 230, 175, 0.12) !important; }
+.consecom-balloon .cs-search__btn,
+.consecom-balloon .cs-prospect {
+  border: 0 !important;
+  border-radius: 9px !important;
+  background: var(--vy-mint) !important;
+  color: #062319 !important;
+  box-shadow: none !important;
+  font-weight: 800 !important;
+}
+.consecom-balloon .cs-search__btn:hover,
+.consecom-balloon .cs-prospect:hover:not(:disabled) { background: #86efc1 !important; color: #062319 !important; filter: none !important; }
+.consecom-balloon .cs-block__title,
+.consecom-balloon .cs-filters__title,
+.consecom-balloon .cs-leads__title { color: var(--vy-ink-muted) !important; font: 800 9px/1.2 var(--vy-font) !important; letter-spacing: .12em !important; }
+.consecom-balloon .cs-chip { background: transparent !important; border-color: var(--vy-night-line) !important; color: var(--vy-ink-muted) !important; }
+.consecom-balloon .cs-chip:hover { color: var(--vy-mint) !important; border-color: rgba(94, 230, 175, 0.45) !important; }
+.consecom-balloon .cs-chip--on { background: rgba(94, 230, 175, 0.16) !important; border-color: var(--vy-mint) !important; color: var(--vy-mint) !important; }
+.consecom-balloon .cs-card,
+.consecom-balloon .cs-pcard { background: var(--vy-night-2) !important; border-color: var(--vy-night-line) !important; border-radius: 11px !important; }
+.consecom-balloon .cs-card:hover,
+.consecom-balloon .cs-pcard:hover { border-color: rgba(94, 230, 175, 0.48) !important; background: var(--vy-night-3) !important; }
+.consecom-balloon .cs-card__name,
+.consecom-balloon .cs-pcard__name,
+.consecom-balloon .cs-card__score,
+.consecom-balloon .cs-pcard__score { color: var(--vy-ink) !important; }
+.consecom-balloon .cs-card__meta,
+.consecom-balloon .cs-pcard__meta { color: var(--vy-ink-muted) !important; }
+.consecom-balloon .cs-card__btrack,
+.consecom-balloon .cs-pcard__bar { background: #2b4037 !important; }
+.consecom-balloon .cs-card__bfill,
+.consecom-balloon .cs-pcard__barfill { background: var(--vy-mint) !important; }
+
+/* Resultados, Alex e área de leads do Maps. */
+.cs-leads { min-height: 150px !important; }
+.cs-leads__title { padding: 2px 2px 0 !important; }
+.cs-result { color: var(--vy-ink) !important; }
+.cs-result__big { color: var(--vy-mint) !important; font-weight: 800 !important; }
+.cs-result__sub, .cs-result__empty, .cs-alex__msg { color: var(--vy-ink-muted) !important; }
+.cs-result__cta { background: var(--vy-mint) !important; color: #062319 !important; border-radius: 9px !important; }
+.cs-alex { background: rgba(94, 230, 175, 0.08) !important; border: 1px solid rgba(94, 230, 175, 0.18) !important; border-radius: 11px !important; color: var(--vy-ink) !important; }
+.cs-alex__avatar { background: var(--vy-mint) !important; color: #062319 !important; }
+
+/* Rodapé fixo e legível. */
+.cs-panel__footer {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  padding: 8px !important;
+  background: #0c1512 !important;
+  border-top: 1px solid var(--vy-night-line) !important;
+  flex-shrink: 0 !important;
+}
+.cs-footer__row { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 6px !important; }
+.cs-footer__btn {
+  min-height: 30px !important;
+  padding: 6px 5px !important;
+  border: 1px solid var(--vy-night-line) !important;
+  border-radius: 8px !important;
+  background: var(--vy-night-2) !important;
+  color: var(--vy-ink-muted) !important;
+  font: 800 9px/1 var(--vy-font) !important;
+  letter-spacing: .04em !important;
+  cursor: pointer !important;
+}
+.cs-footer__btn:hover { color: var(--vy-ink) !important; border-color: rgba(94, 230, 175, 0.45) !important; }
+.cs-foot-import { background: var(--vy-mint) !important; border-color: var(--vy-mint) !important; color: #062319 !important; }
+.cs-foot-import:hover { background: #86efc1 !important; color: #062319 !important; }
+.cs-foot-delete:hover { color: #ff9d9d !important; border-color: rgba(248, 113, 113, 0.5) !important; }
+.cs-footer__count { color: var(--vy-ink-muted) !important; }
+.cs-footer__count b { color: var(--vy-ink) !important; }
+
+/* Dark mode do popup: o mesmo produto visual da superfície in-page. */

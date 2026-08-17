@@ -134,6 +134,37 @@
       @media (prefers-reduced-motion: reduce) {
         .site, button, .site .arrow { transition: none; transform: none !important; }
       }
+
+      /* Command Center: popup novo, alinhado ao painel in-page. */
+      body { background: #101a17; color: #f4faf7; }
+      .wrap { padding: 12px; }
+      .head {
+        margin: -12px -12px 12px;
+        padding: 16px 14px 15px;
+        background: radial-gradient(circle at 100% 0, rgba(94,230,175,.18), transparent 45%), #15251f;
+        border-bottom: 1px solid rgba(185,226,207,.14);
+        border-radius: 0 0 18px 18px;
+      }
+      .head::after { height: 2px; background: linear-gradient(90deg, #20c98a, #5ee6af); }
+      .logo { background: linear-gradient(135deg, #5ee6af, #20c98a); color: #062319; box-shadow: 0 8px 20px rgba(94,230,175,.2); }
+      h1 { color: #f4faf7; }
+      .sub { color: #9db5aa; }
+      .pill { color: #5ee6af; background: rgba(94,230,175,.1); border-color: rgba(94,230,175,.22); }
+      .pill .dot { background: #5ee6af; box-shadow: 0 0 0 3px rgba(94,230,175,.14); }
+      .grid { gap: 7px; }
+      .site { background: #17231f; border-color: rgba(185,226,207,.14); color: #f4faf7; border-radius: 12px; padding: 12px 10px 11px; }
+      .site:hover { border-color: rgba(94,230,175,.55); box-shadow: 0 8px 20px rgba(0,0,0,.2); }
+      .site .name { color: #f4faf7; }
+      .site .desc { color: #9db5aa; }
+      .site .icon { background: rgba(94,230,175,.08); border-color: rgba(94,230,175,.18); }
+      .site .arrow { background: rgba(94,230,175,.1); color: #5ee6af; }
+      .site[data-brand="wepsy"] .icon, .site[data-brand="wepsy"] .arrow { background: rgba(196,181,253,.12); border-color: rgba(196,181,253,.22); }
+      .site[data-brand="webmotors"] .icon, .site[data-brand="webmotors"] .arrow { background: rgba(251,146,60,.12); border-color: rgba(251,146,60,.22); }
+      .site[data-brand="airbnb"] .icon, .site[data-brand="airbnb"] .arrow { background: rgba(251,113,133,.12); border-color: rgba(251,113,133,.22); }
+      .site[data-brand="google"] .icon, .site[data-brand="google"] .arrow { background: rgba(56,189,248,.12); border-color: rgba(56,189,248,.22); }
+      button.secondary { background: #17231f; border-color: rgba(185,226,207,.16); color: #d9eee4; box-shadow: none; }
+      button.secondary:hover { border-color: #5ee6af; color: #5ee6af; box-shadow: 0 8px 18px rgba(0,0,0,.18); }
+      .status { border-color: rgba(185,226,207,.14); color: #5ee6af; }
     </style>
   </head>
   <body>
