@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { Menu, Download, ShieldCheck, ChevronRight } from 'lucide-react'
 import { supabase, type Lead, type Campaign } from './lib/supabase'
 import { LoginScreen } from './components/LoginScreen'
+import { LandingPage } from './components/LandingPage'
 import { Button } from './components/ui'
 import { KanbanBoard } from './components/KanbanBoard'
 import { CampaignsView } from './components/CampaignsView'
@@ -217,6 +218,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
 
 export default function App() {
   const [session, setSession] = useState<boolean | null>(null)
+  const [booted, setBooted] = useState(false)
   const [leads, setLeads] = useState<Lead[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
 
@@ -234,8 +236,8 @@ export default function App() {
 
   useEffect(() => {
     if (session) {
-      loadLeads()
-      loadCampaigns()
+      setBooted(false)
+      Promise.all([loadLeads(), loadCampaigns()]).finally(() => setBooted(true))
     }
   }, [session])
 
@@ -336,7 +338,26 @@ export default function App() {
   }
 
   if (!session) {
-    return <LoginScreen />
+    return (
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginScreen />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    )
+  }
+
+  if (!booted) {
+    return (
+      <div className="h-full flex items-center justify-center bg-app">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center text-xl font-extrabold text-white shadow-2 animate-pulse-soft">
+            V
+          </div>
+          <div className="text-sm text-muted">Carregando painel…</div>
+        </div>
+      </div>
+    )
   }
 
   return <Shell leads={leads} activeLeads={permanentLeads} importedLeads={importedLeads} campaigns={campaigns} onMeeting={markMeeting} onCloseLead={closeLead} onLeadsChanged={loadLeads} />

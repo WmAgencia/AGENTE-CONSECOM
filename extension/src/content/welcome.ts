@@ -54,7 +54,7 @@ const WELCOME_CSS = `
 .vy-welcome {
   position: fixed; inset: 0; z-index: 2147483647;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(16,7,29,0.82);
+  background: rgba(2,26,18,0.82);
   backdrop-filter: blur(18px) saturate(1.4);
   animation: vy-fade-in 0.45s ease-out;
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -65,14 +65,14 @@ const WELCOME_CSS = `
 
 .vy-welcome__card {
   position: relative;
-  background: linear-gradient(135deg, rgba(139,92,246,0.16), rgba(168,85,247,0.08));
-  border: 1px solid rgba(139,92,246,0.35);
+  background: linear-gradient(135deg, rgba(5,150,105,0.18), rgba(16,185,129,0.08));
+  border: 1px solid rgba(5,150,105,0.35);
   border-radius: 24px;
   padding: 38px 42px 30px;
   max-width: 460px;
   width: calc(100% - 40px);
   text-align: center;
-  color: #f5f3ff;
+  color: #ecfdf5;
   box-shadow: 0 30px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
   animation: vy-card-in 0.65s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
@@ -92,8 +92,8 @@ const WELCOME_CSS = `
   border-radius: 22px;
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 38px; font-style: italic; color: #fff;
-  background: linear-gradient(135deg, #8b5cf6, #a855f7, #d946ef);
-  box-shadow: 0 16px 40px rgba(139,92,246,0.5);
+  background: linear-gradient(135deg, #047857, #059669, #10b981);
+  box-shadow: 0 16px 40px rgba(4,120,87,0.5);
   animation: vy-logo-pop 0.85s 0.15s cubic-bezier(0.16, 1, 0.3, 1) backwards, vy-logo-glow 2.6s 1.2s ease-in-out infinite;
 }
 @keyframes vy-logo-pop {
@@ -102,13 +102,13 @@ const WELCOME_CSS = `
   100% { transform: scale(1) rotate(0); }
 }
 @keyframes vy-logo-glow {
-  0%, 100% { box-shadow: 0 16px 40px rgba(139,92,246,0.5); }
-  50% { box-shadow: 0 16px 62px rgba(168,85,247,0.9), 0 0 34px rgba(217,70,239,0.45); }
+  0%, 100% { box-shadow: 0 16px 40px rgba(4,120,87,0.5); }
+  50% { box-shadow: 0 16px 62px rgba(5,150,105,0.9), 0 0 34px rgba(16,185,129,0.45); }
 }
 
 .vy-welcome__title {
   font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 14px;
-  background: linear-gradient(135deg, #fff, #c4b5fd);
+  background: linear-gradient(135deg, #fff, #a7f3d0);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
   animation: vy-text-up 0.5s 0.4s backwards;
@@ -116,13 +116,13 @@ const WELCOME_CSS = `
 .vy-welcome__site {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 16px; background: rgba(255,255,255,0.08); border-radius: 999px;
-  font-size: 13px; font-weight: 600; color: #c4b5fd; margin-bottom: 18px;
+  font-size: 13px; font-weight: 600; color: #6ee7b7; margin-bottom: 18px;
   animation: vy-text-up 0.5s 0.55s backwards;
 }
 .vy-welcome__site b { color: #fff; font-weight: 700; }
 .vy-welcome__emoji { font-size: 16px; }
 .vy-welcome__tagline {
-  font-size: 14px; color: #b9b1d6; line-height: 1.6; margin-bottom: 24px; font-style: italic;
+  font-size: 14px; color: #b7d6c8; line-height: 1.6; margin-bottom: 24px; font-style: italic;
   animation: vy-text-up 0.5s 0.7s backwards;
 }
 @keyframes vy-text-up {
@@ -131,20 +131,20 @@ const WELCOME_CSS = `
 }
 
 .vy-welcome__cta {
-  background: linear-gradient(135deg, #8b5cf6, #a855f7);
+  background: linear-gradient(135deg, #047857, #059669);
   border: none; color: #fff; font-weight: 700;
   padding: 12px 30px; border-radius: 999px; font-size: 14px; cursor: pointer;
-  letter-spacing: 0.02em; box-shadow: 0 12px 28px rgba(139,92,246,0.5);
+  letter-spacing: 0.02em; box-shadow: 0 12px 28px rgba(4,120,87,0.5);
   transition: transform 0.15s, box-shadow 0.2s, filter 0.15s;
   animation: vy-text-up 0.5s 0.85s backwards;
 }
-.vy-welcome__cta:hover { transform: translateY(-2px); box-shadow: 0 16px 38px rgba(139,92,246,0.75); filter: brightness(1.08); }
+.vy-welcome__cta:hover { transform: translateY(-2px); box-shadow: 0 16px 38px rgba(4,120,87,0.75); filter: brightness(1.08); }
 .vy-welcome__cta:active { transform: translateY(0); }
 
 .vy-welcome__particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .vy-welcome__particles span {
   position: absolute; width: 6px; height: 6px;
-  background: rgba(168,85,247,0.65); border-radius: 50%;
+  background: rgba(16,185,129,0.65); border-radius: 50%;
   bottom: -10px;
   animation: vy-particle var(--t) var(--d) linear infinite;
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { authLogin } from '../lib/api'
 import { ThemeToggle } from './ThemeToggle'
@@ -38,9 +39,15 @@ export function LoginScreen() {
       <div className="pointer-events-none absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-40"
         style={{ background: 'radial-gradient(circle, var(--c-accent-200), transparent 70%)', filter: 'blur(80px)' }} />
       <div className="pointer-events-none absolute -bottom-40 -right-40 w-[28rem] h-[28rem] rounded-full opacity-30"
-        style={{ background: 'radial-gradient(circle, var(--c-indigo-300), transparent 70%)', filter: 'blur(100px)' }} />
+        style={{ background: 'radial-gradient(circle, var(--c-accent-300), transparent 70%)', filter: 'blur(100px)' }} />
 
-      <div className="fixed top-4 right-4 z-50">
+      <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
+        <Link
+          to="/"
+          className="text-xs font-medium text-muted hover:text-fg transition-colors px-2 py-1.5 rounded-lg hover:bg-subtle"
+        >
+          ← Voltar ao site
+        </Link>
         <ThemeToggle />
       </div>
 

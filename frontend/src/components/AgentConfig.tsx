@@ -31,6 +31,8 @@ const DEFAULTS: AgentCfg = {
 export function AgentConfig() {
   const [cfg, setCfg] = useState<AgentCfg>({ ...DEFAULTS, project: '' })
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     load()
@@ -38,7 +40,11 @@ export function AgentConfig() {
 
   async function load() {
     const { data, error } = await supabase.from('agent_settings').select('*')
-    if (error) return
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setError(null)
     if (data?.length) {
       const map: Record<string, unknown> = {}
       data.forEach((r) => { map[r.key] = r.value })
@@ -59,9 +65,15 @@ export function AgentConfig() {
 
   async function save() {
     setSaved(false)
+    setError(null)
+    setBusy(true)
     const rows = Object.entries(cfg).map(([k, v]) => ({ key: k, value: v, updated_at: new Date().toISOString() }))
     const { error } = await supabase.from('agent_settings').upsert(rows, { onConflict: 'key' })
-    if (error) return
+    setBusy(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
     setSaved(true)
   }
 
@@ -146,11 +158,16 @@ export function AgentConfig() {
       </div>
 
       <div className="mt-6 flex items-center gap-3">
-        <Button onClick={() => void save()}>
+        <Button onClick={() => void save()} loading={busy}>
           Salvar configuração
         </Button>
         {saved && <span className="text-xs text-emerald-300">Salvo ✓</span>}
       </div>
+      {error && (
+        <div className="mt-3 rounded-xl border border-rose-500/20 bg-rose-500/5 p-3 text-sm text-rose-500">
+          {error}
+        </div>
+      )}
     </div>
   )
 }

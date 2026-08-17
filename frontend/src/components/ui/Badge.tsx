@@ -1,7 +1,7 @@
 const palette: Record<string, string> = {
   emerald: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20',
   green: 'bg-green-500/15 text-green-300 border-green-500/20',
-  indigo: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/20',
+  accent: 'bg-accent-500/15 text-accent-300 border-accent-500/20',
   violet: 'bg-violet-500/15 text-violet-300 border-violet-500/20',
   sky: 'bg-sky-500/15 text-sky-300 border-sky-500/20',
   cyan: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/20',

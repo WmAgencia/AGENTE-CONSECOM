@@ -87,6 +87,7 @@ export function ConnectionsPage() {
 
   const [sessionUser, setSessionUser] = useState<string>('')
   const [displayNameDrafts, setDisplayNameDrafts] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -96,6 +97,7 @@ export function ConnectionsPage() {
 
   const loadConn = useCallback(async () => {
     if (!sessionUser) return
+    setLoading(true)
     const r = await fetch(`${API}/api/connections/whatsapp`, { headers: { 'x-user-id': sessionUser } })
     if (r.ok) {
 const data = await r.json()
@@ -112,6 +114,7 @@ const data = await r.json()
       }
       setQrByConn(qrMap)
     }
+    setLoading(false)
   }, [sessionUser])
 
   const loadNotifGroup = useCallback(async () => {
@@ -358,11 +361,16 @@ const data = await r.json()
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-secondary">WhatsApp</h2>
             <span className="text-sm font-medium text-muted">
-              {conns.length} conexão{conns.length !== 1 ? 'ões' : ''}
+              {loading ? '…' : `${conns.length} conexão${conns.length !== 1 ? 'ões' : ''}`}
             </span>
           </div>
 
-          {conns.length === 0 && (
+          {loading ? (
+            <div className="flex items-center gap-3 text-sm text-faint animate-pulse-soft">
+              <span className="w-5 h-5 rounded-full border-2 border-line-2 border-t-accent-500 animate-spin" />
+              Carregando conexões…
+            </div>
+          ) : conns.length === 0 && (
             <button onClick={() => addConnection(false)} className={btnPrimary} disabled={busy()}>
               Conectar WhatsApp
             </button>

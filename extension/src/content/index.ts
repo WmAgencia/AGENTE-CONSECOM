@@ -766,7 +766,7 @@ export class MapsScanner {
       btn.dataset.id = chip.id
       btn.dataset.cat = chip.cat
       btn.dataset.value = chip.value
-      btn.dataset.accent = chip.accent ?? '#8b5cf6'
+      btn.dataset.accent = chip.accent ?? '#059669'
       btn.textContent = chip.label
       btn.addEventListener('click', () => {
         if (this.filters.activeChips.has(chip.id)) this.filters.activeChips.delete(chip.id)
@@ -821,8 +821,8 @@ export class MapsScanner {
   private syncChipsFromState(btn: HTMLButtonElement, accent?: string): void {
     const on = btn.classList.contains('cs-chip--on')
     if (on) {
-      btn.style.borderColor = accent ?? '#8b5cf6'
-      btn.style.background = `${accent ?? '#8b5cf6'}22`
+      btn.style.borderColor = accent ?? '#059669'
+      btn.style.background = `${accent ?? '#059669'}22`
       btn.style.color = '#fff'
     } else {
       btn.style.borderColor = ''

@@ -119,7 +119,7 @@ export function ContaPage() {
 
   if (loading) return <div className="h-full flex items-center justify-center text-muted">Carregando…</div>
   if (error) return <div className="p-8 text-red-400">{error}</div>
-  if (!me) return null
+  if (!me) return <div className="h-full flex items-center justify-center text-muted">Sua conta não pôde ser carregada.</div>
 
   const plan = me.plan
   const usedPct = me.usage.lead_limit > 0 ? Math.min(100, Math.round((me.usage.leads_used / me.usage.lead_limit) * 100)) : 0

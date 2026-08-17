@@ -51,6 +51,8 @@ export function CampaignsView() {
   const [calItems, setCalItems] = useState<CampaignCalendarItem[]>([])
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     campaignSchedule.getConfig().then((r) => setScheduleConfig(r.config)).catch(() => {})
@@ -125,8 +127,13 @@ export function CampaignsView() {
   }, [])
 
   async function load() {
+    setLoadError(null)
     const { data, error } = await supabase.from('campaigns').select('*').order('position').order('created_at')
-    if (error || !data) return
+    if (error || !data) {
+      setLoading(false)
+      if (error) setLoadError(error.message)
+      return
+    }
     setCampaigns(data)
     const grouped: Record<string, QueueMessage[]> = {}
     for (const c of data) {
@@ -139,6 +146,7 @@ export function CampaignsView() {
     }
     setMessagesByCampaign(grouped)
     await loadRuns()
+    setLoading(false)
   }
 
   async function loadConnections() {
@@ -359,7 +367,23 @@ async function fireCampaign(c: Campaign) {
                 </div>
               )
             })}
-            {campaigns.length === 0 && (
+            {loading ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-2xl border border-line bg-panel p-5 space-y-3 animate-pulse-soft">
+                    <div className="h-4 w-1/3 rounded bg-subtle-2" />
+                    <div className="h-3 w-2/3 rounded bg-subtle-2" />
+                    <div className="h-3 w-1/2 rounded bg-subtle-2" />
+                    <div className="h-8 w-full rounded-xl bg-subtle-2" />
+                  </div>
+                ))}
+              </div>
+            ) : loadError ? (
+              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-4 text-sm text-rose-500 flex items-center justify-between gap-3">
+                <span>Não foi possível carregar as campanhas.</span>
+                <Button variant="outline" size="sm" onClick={() => void load()}>Tentar de novo</Button>
+              </div>
+            ) : campaigns.length === 0 && (
               <p className="text-sm text-faint">
                 Nenhuma campanha criada ainda.
               </p>
