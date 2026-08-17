@@ -200,9 +200,13 @@ export function CampaignsView() {
     }
   }
 
-  async function setCampaignAi(c: Campaign, enabled: boolean) {
+async function setCampaignAi(c: Campaign, enabled: boolean) {
+    setCampaigns((items) => items.map((item) => item.id === c.id ? { ...item, ai_enabled: enabled } : item))
     const { error } = await supabase.from('campaigns').update({ ai_enabled: enabled }).eq('id', c.id)
-    if (!error) setCampaigns((items) => items.map((item) => item.id === c.id ? { ...item, ai_enabled: enabled } : item))
+    if (error) {
+      window.alert(`Não foi possível alterar a IA desta campanha: ${error.message}`)
+      setCampaigns((items) => items.map((item) => item.id === c.id ? { ...item, ai_enabled: c.ai_enabled } : item))
+    }
   }
 
 async function loadRuns() {
