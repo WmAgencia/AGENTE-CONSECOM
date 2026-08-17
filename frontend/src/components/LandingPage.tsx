@@ -627,7 +627,7 @@ export function LandingPage() {
                 return (
                   <div
                     key={p.id}
-                    className={`relative rounded-3xl border p-8 shadow-2 transition-all duration-300 hover:-translate-y-1 reveal ${
+                    className={`relative rounded-3xl border p-8 shadow-2 transition-all duration-300 hover:-translate-y-1 ${
                       featured ? 'border-accent-500/40 bg-gradient-to-br from-accent-500/10 to-accent-300/5' : 'border-line bg-panel'
                     }`}
                   >
