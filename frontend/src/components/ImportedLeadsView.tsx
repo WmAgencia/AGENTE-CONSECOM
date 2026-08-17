@@ -94,7 +94,7 @@ export function ImportedLeadsView({
             {campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
           </select>
           <input value={newCampaign} onChange={(e) => { setNewCampaign(e.target.value); setCampaignId('') }} placeholder="ou criar nova campanha" className="bg-field border border-line-2 rounded-lg px-3 py-2 text-sm" />
-          <button onClick={() => void distribute()} disabled={busy || selected.size === 0} className="px-4 py-2 rounded-lg bg-accent-600 hover:bg-accent-500 disabled:opacity-40 text-sm font-medium">
+          <button onClick={() => void distribute()} disabled={busy || selected.size === 0} className="px-4 py-2 rounded-lg bg-accent-600 text-white hover:bg-accent-500 disabled:opacity-40 text-sm font-medium">
             {busy ? 'Distribuindo...' : `Adicionar à campanha (${selected.size})`}
           </button>
         </div>

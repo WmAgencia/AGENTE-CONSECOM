@@ -123,8 +123,8 @@
   --c-chat-in: #ffffff;
   --c-chat-input: #ffffff;
   /* Accent verde */
-  --c-accent-200: #a7f3d0;
-  --c-accent-300: #34d399;
+  --c-accent-200: #059669;
+  --c-accent-300: #047857;
   --c-accent-400: #10b981;
   --c-accent-500: #059669;
   --c-accent-600: #047857;
@@ -172,6 +172,41 @@ html[data-theme="dark"] {
   --c-indigo-500: #6366f1;
   --c-indigo-600: #4f46e5;
   --c-indigo-700: #4338ca;
+}
+
+/* Contraste no tema claro: os tons pastel 200/300 foram calibrados para o
+ * tema escuro (fundo escuro). No tema claro (padrão) ficam ilegíveis sobre
+ * fundo branco — remapeamos para tons escuros legíveis. O tema escuro
+ * mantém os valores pastel originais do Tailwind. */
+:root:not([data-theme="dark"]) {
+  --color-emerald-200: #059669;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-green-200: #16a34a;
+  --color-green-300: #15803d;
+  --color-amber-200: #b45309;
+  --color-amber-300: #b45309;
+  --color-amber-400: #d97706;
+  --color-orange-200: #c2410c;
+  --color-orange-300: #c2410c;
+  --color-rose-200: #be123c;
+  --color-rose-300: #be123c;
+  --color-rose-400: #e11d48;
+  --color-red-300: #dc2626;
+  --color-red-400: #dc2626;
+  --color-cyan-200: #0e7490;
+  --color-cyan-300: #0e7490;
+  --color-sky-200: #0369a1;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0284c7;
+  --color-violet-200: #6d28d9;
+  --color-violet-300: #6d28d9;
+  --color-violet-400: #7c3aed;
+  --color-pink-200: #be185d;
+  --color-pink-300: #be185d;
+  --color-teal-200: #0f766e;
+  --color-teal-300: #0f766e;
+  --color-zinc-300: #52525b;
 }
 
 /* manter alias antigo para não quebrar views existentes */

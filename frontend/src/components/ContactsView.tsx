@@ -360,7 +360,7 @@ function ErrorBlock({ onRetry, message }: { onRetry: () => void; message: string
       <div className="text-xs text-faint">{message}</div>
       <button
         onClick={onRetry}
-        className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 rounded-xl font-medium inline-flex items-center gap-2 transition"
+        className="px-4 py-2 text-sm bg-accent-600 text-white hover:bg-accent-500 rounded-xl font-medium inline-flex items-center gap-2 transition"
       >
         <RefreshCcw className="w-3.5 h-3.5" /> Tentar novamente
       </button>

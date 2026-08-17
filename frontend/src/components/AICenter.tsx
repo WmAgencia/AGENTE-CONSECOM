@@ -199,7 +199,7 @@ function TrainingChat() {
           placeholder="Fale como vendedor para o cliente (ex: Olá, como posso ajudar seu negócio?)..."
           className="flex-1 bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-teal-500"
         />
-        <button type="submit" disabled={busy || !input.trim()} className="px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 disabled:opacity-40 transition">
+        <button type="submit" disabled={busy || !input.trim()} className="px-3.5 py-2 rounded-xl bg-teal-700 text-white hover:bg-teal-600 disabled:opacity-40 transition">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>
       </form>

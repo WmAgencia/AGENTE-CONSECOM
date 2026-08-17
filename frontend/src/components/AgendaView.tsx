@@ -288,7 +288,7 @@ const panel = 'rounded-xl border border-line-2 bg-subtle p-4'
 const input =
   'bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500'
 const btnPrimary =
-  'px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium'
+  'px-4 py-2 text-sm bg-accent-600 text-white hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium'
 
   return (
     <div className="h-full overflow-y-auto">

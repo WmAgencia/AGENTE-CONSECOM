@@ -596,7 +596,7 @@ function MeetingModal({ lead, onClose, onSave }: {
       footer={
         <>
           <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Cancelar</button>
-          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium">
+          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-accent-600 text-white hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium">
             {busy ? 'Salvando...' : 'Salvar'}
           </button>
         </>
@@ -661,7 +661,7 @@ function CloseModal({ lead, onClose, onSave }: {
       footer={
         <>
           <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Cancelar</button>
-          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium">
+          <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-accent-600 text-white hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium">
             {busy ? 'Salvando...' : 'Concluir'}
           </button>
         </>

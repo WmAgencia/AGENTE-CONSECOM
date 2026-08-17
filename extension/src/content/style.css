@@ -22,7 +22,8 @@
   --vy-danger: #dc2626;
   --vy-danger-soft: rgba(220, 38, 38, 0.08);
   --vy-warn: #d97706;
-  --vy-shadow: 0 8px 28px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
+  --vy-shadow: 0 8px 28px rgba(15, 23, 42, 0.1), 0 2px 6px rgba(15, 23, 42, 0.05);
+  --vy-shadow-strong: 0 16px 44px rgba(15, 23, 42, 0.16), 0 4px 10px rgba(15, 23, 42, 0.07);
 }
 
 /* ===== Botão flutuante Vyntra (quando painel minimizado) ===== */
@@ -31,26 +32,27 @@
   z-index: 2147483647;
   width: 48px;
   height: 48px;
-  border-radius: 14px;
-  background: var(--vy-accent);
+  border-radius: 15px;
+  background: linear-gradient(135deg, var(--vy-accent-600), var(--vy-accent) 60%, #10b981);
   color: #fff;
   cursor: grab;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12px 32px rgba(4, 120, 87, 0.35);
+  box-shadow: 0 12px 32px rgba(4, 120, 87, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.22);
   user-select: none;
   touch-action: none;
   font-family: var(--vy-font);
   font-size: 22px;
   font-weight: 800;
+  font-style: italic;
   line-height: 1;
   border: none;
   transition: transform 0.12s, filter 0.15s;
   padding: 0;
 }
 .consecom-floatbtn:active { cursor: grabbing; }
-.consecom-floatbtn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.consecom-floatbtn:hover { filter: brightness(1.08); transform: translateY(-1px) scale(1.03); }
 .consecom-floatbtn {
   opacity: 0;
   transform: scale(0.85);
@@ -76,8 +78,8 @@
   min-height: 60px;
   background: var(--vy-panel);
   border: 1px solid var(--vy-line);
-  border-radius: 16px;
-  box-shadow: var(--vy-shadow);
+  border-radius: 18px;
+  box-shadow: var(--vy-shadow-strong);
   display: flex;
   flex-direction: column;
   opacity: 0;
@@ -99,14 +101,24 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 10px;
+  padding: 10px 11px;
   border-bottom: 1px solid var(--vy-line);
   cursor: grab;
   flex-shrink: 0;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
-  background: var(--vy-panel);
+  background:
+    radial-gradient(120% 160% at 100% -20%, rgba(16, 185, 129, 0.16), transparent 55%),
+    linear-gradient(135deg, #ffffff, #eef7f2);
+  position: relative;
+}
+.cs-balloon-header::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--vy-accent-600), var(--vy-accent) 60%, #10b981);
 }
 .cs-balloon-header:active { cursor: grabbing; }
 .cs-grip {
@@ -122,10 +134,10 @@
 }
 .cs-grip:active { cursor: grabbing; }
 .cs-logo {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  background: var(--vy-accent);
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--vy-accent-600), var(--vy-accent) 60%, #10b981);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -133,11 +145,12 @@
   font-weight: 800;
   font-size: 13px;
   font-style: italic;
+  box-shadow: 0 4px 12px rgba(4, 120, 87, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 .cs-title {
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 800;
+  letter-spacing: 0.02em;
   color: var(--vy-fg);
   flex: 1;
   min-width: 0;
@@ -179,7 +192,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: var(--vy-app);
+  background: linear-gradient(180deg, #f4f9f6, var(--vy-app));
 }
 .cs-balloon-body::-webkit-scrollbar { width: 6px; }
 .cs-balloon-body::-webkit-scrollbar-thumb { background: var(--vy-line-strong); border-radius: 999px; }
@@ -188,11 +201,12 @@
 .cs-block {
   background: var(--vy-panel);
   border: 1px solid var(--vy-line);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 .cs-block__title {
   font-size: 10px;
@@ -220,7 +234,7 @@
 .cs-search__input {
   width: 100%;
   box-sizing: border-box;
-  padding: 7px 10px;
+  padding: 8px 10px;
   background: var(--vy-panel);
   border: 1px solid var(--vy-line-2);
   border-radius: 10px;
@@ -247,12 +261,13 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.15s;
 }
 .cs-search__btn:hover {
   background: var(--vy-accent-soft);
   border-color: var(--vy-accent);
   color: var(--vy-accent);
+  box-shadow: 0 4px 12px rgba(4, 120, 87, 0.12);
 }
 
 /* Status de localização (linha auxiliar na busca) */
@@ -302,7 +317,7 @@
   padding: 13px 0;
   border: none;
   border-radius: 12px;
-  background: var(--vy-accent);
+  background: linear-gradient(135deg, var(--vy-accent-600), var(--vy-accent) 60%, #10b981);
   color: #fff;
   font-family: var(--vy-font);
   font-size: 14px;
@@ -311,12 +326,12 @@
   text-transform: uppercase;
   cursor: pointer;
   transition: filter 0.15s, transform 0.12s, box-shadow 0.15s;
-  box-shadow: 0 6px 18px rgba(4, 120, 87, 0.25);
+  box-shadow: 0 6px 18px rgba(4, 120, 87, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 .cs-prospect:hover:not(:disabled) {
   filter: brightness(1.06);
   transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(4, 120, 87, 0.3);
+  box-shadow: 0 10px 24px rgba(4, 120, 87, 0.34);
 }
 .cs-prospect:disabled { opacity: 0.6; cursor: default; transform: none; box-shadow: none; }
 
@@ -606,15 +621,15 @@
 }
 .cs-btn:disabled { opacity: 0.5; cursor: default; }
 .cs-btn--primary {
-  background: var(--vy-accent);
+  background: linear-gradient(135deg, var(--vy-accent-600), var(--vy-accent) 60%, #10b981);
   color: #fff;
-  border-color: var(--vy-accent);
+  border-color: transparent;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   padding: 11px 12px;
   font-size: 12px;
-  box-shadow: 0 6px 18px rgba(4, 120, 87, 0.25);
+  box-shadow: 0 6px 18px rgba(4, 120, 87, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 .cs-btn--primary:hover:not(:disabled) {
   background: var(--vy-accent-600);

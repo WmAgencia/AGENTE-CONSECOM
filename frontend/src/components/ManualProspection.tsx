@@ -409,7 +409,7 @@ export function ManualProspection() {
             <button
               onClick={handleProspect}
               disabled={urlBusy || !url.trim()}
-              className="px-4 py-2 bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-lg text-sm font-medium flex items-center gap-2"
+              className="px-4 py-2 bg-accent-600 text-white hover:bg-accent-500 disabled:opacity-50 rounded-lg text-sm font-medium flex items-center gap-2"
             >
               {urlBusy ? (
                 <>
@@ -567,7 +567,7 @@ export function ManualProspection() {
             <button
               onClick={importSelected}
               disabled={importing || previewSelectedCount === 0}
-              className="px-4 py-2 rounded-lg bg-accent-600 hover:bg-accent-500 disabled:opacity-40 text-sm font-medium"
+              className="px-4 py-2 rounded-lg bg-accent-600 text-white hover:bg-accent-500 disabled:opacity-40 text-sm font-medium"
             >
               {importing ? (
                 <>

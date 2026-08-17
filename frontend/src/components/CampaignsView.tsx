@@ -932,7 +932,7 @@ function QueueModal({
           <button onClick={() => void onChanged()} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">
             Atualizar
           </button>
-          <button onClick={onClose} className="px-3 py-2 text-sm bg-accent-600 hover:bg-accent-500 rounded-xl font-medium">
+          <button onClick={onClose} className="px-3 py-2 text-sm bg-accent-600 text-white hover:bg-accent-500 rounded-xl font-medium">
             Fechar
           </button>
         </div>
@@ -1120,7 +1120,7 @@ function ScheduleModal({
             <button
               onClick={() => void submit()}
               disabled={saving || !campaignId}
-              className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium"
+              className="px-4 py-2 text-sm bg-accent-600 text-white hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium"
             >
               {saving ? 'Agendando...' : 'Agendar'}
             </button>

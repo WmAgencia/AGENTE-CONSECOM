@@ -7,80 +7,132 @@
       * { box-sizing: border-box; margin: 0; font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
       body {
         width: 340px;
-        background: #f4f8f6;
+        background: #f2f7f4;
         color: #10231c;
         font-size: 13px;
+        -webkit-font-smoothing: antialiased;
       }
-      .wrap { padding: 16px 16px 14px; }
-      .head { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+      .wrap { padding: 14px 14px 12px; }
+      /* Cabeçalho premium */
+      .head {
+        position: relative;
+        display: flex; align-items: center; gap: 12px;
+        padding: 14px 14px 13px;
+        margin: -14px -14px 14px;
+        background:
+          radial-gradient(120% 140% at 100% -10%, rgba(16,185,129,.18), transparent 55%),
+          linear-gradient(135deg, #ffffff, #eef7f2);
+        border-bottom: 1px solid #e0eae5;
+        border-radius: 0 0 18px 18px;
+        overflow: hidden;
+      }
+      .head::after {
+        content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+        background: linear-gradient(90deg, #047857, #059669 55%, #10b981);
+      }
       .logo {
-        width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto;
+        width: 42px; height: 42px; border-radius: 13px; flex: 0 0 auto;
         display: flex; align-items: center; justify-content: center;
-        font-weight: 800; font-size: 20px; font-style: italic; color: #fff;
-        background: linear-gradient(135deg,#047857,#059669);
-        box-shadow: 0 8px 20px rgba(4,120,87,.35);
+        font-weight: 800; font-size: 21px; font-style: italic; color: #fff;
+        background: linear-gradient(135deg,#047857,#059669,#10b981);
+        box-shadow: 0 10px 24px rgba(4,120,87,.4), inset 0 1px 0 rgba(255,255,255,.25);
+        position: relative; z-index: 1;
       }
-      h1 { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; }
-      .sub { font-size: 11px; color: #5b6b64; margin-top: 1px; }
+      .head-titles { position: relative; z-index: 1; min-width: 0; }
+      h1 { font-size: 15px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; }
+      .sub { font-size: 11px; color: #4d5f57; margin-top: 2px; }
+      .pill {
+        display: inline-flex; align-items: center; gap: 5px;
+        margin-top: 6px; padding: 3px 8px; border-radius: 999px;
+        font-size: 9.5px; font-weight: 700; letter-spacing: .03em;
+        color: #047857; background: rgba(5,150,105,.12);
+        border: 1px solid rgba(5,150,105,.2);
+      }
+      .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.2); }
       .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
       .site {
         position: relative;
         background: #ffffff;
         border: 1px solid #e3e8e6;
         border-radius: 14px;
-        padding: 14px 12px 12px;
+        padding: 13px 11px 12px;
         text-align: left;
         color: #10231c;
         cursor: pointer;
-        transition: transform .12s, box-shadow .15s, border-color .15s;
+        transition: transform .14s, box-shadow .18s, border-color .18s;
         overflow: hidden;
       }
+      .site::before {
+        content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+        background: var(--brand, #059669); opacity: 0;
+        transition: opacity .18s;
+      }
+      .site:hover::before { opacity: 1; }
       .site:hover {
-        border-color: rgba(5,150,105,.5);
-        box-shadow: 0 8px 20px rgba(15,23,42,.08);
+        border-color: var(--brand, #059669);
+        box-shadow: 0 10px 24px rgba(15,23,42,.1);
         transform: translateY(-2px);
       }
-      .site:active { transform: translateY(0); }
+      .site:active { transform: translateY(0); box-shadow: none; }
+      .site .icon {
+        width: 30px; height: 30px; border-radius: 9px;
+        background: var(--brand-soft, rgba(5,150,105,.1));
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 9px; border: 1px solid var(--brand-line, rgba(5,150,105,.22));
+      }
       .site img {
-        width: 28px; height: 28px; border-radius: 8px;
-        background: #fff;
-        border: 1px solid #e3e8e6;
-        padding: 4px;
-        margin-bottom: 8px;
+        width: 18px; height: 18px;
         display: block;
       }
-      .site .name { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
-      .site .desc { font-size: 10.5px; color: #5b6b64; margin-top: 2px; line-height: 1.4; }
+      .site .name { font-size: 12.5px; font-weight: 700; letter-spacing: -0.01em; color: #0f201a; }
+      .site .desc { font-size: 10px; color: #61726a; margin-top: 2px; line-height: 1.45; }
       .site .arrow {
         position: absolute; right: 10px; top: 10px;
-        width: 18px; height: 18px;
-        border-radius: 6px;
-        background: rgba(5,150,105,.08);
+        width: 19px; height: 19px;
+        border-radius: 7px;
+        background: var(--brand-soft, rgba(5,150,105,.1));
         display: flex; align-items: center; justify-content: center;
-        font-size: 11px; color: #047857;
+        font-size: 11px; color: var(--brand, #047857);
+        transition: transform .15s;
       }
+      .site:hover .arrow { transform: translate(2px,-2px); }
+      .site[data-brand="wepsy"] { --brand: #7c3aed; --brand-soft: rgba(124,58,237,.1); --brand-line: rgba(124,58,237,.2); }
+      .site[data-brand="webmotors"] { --brand: #ea580c; --brand-soft: rgba(234,88,12,.1); --brand-line: rgba(234,88,12,.22); }
+      .site[data-brand="airbnb"] { --brand: #e11d48; --brand-soft: rgba(225,29,72,.1); --brand-line: rgba(225,29,72,.2); }
+      .site[data-brand="google"] { --brand: #0284c7; --brand-soft: rgba(2,132,199,.1); --brand-line: rgba(2,132,199,.2); }
       button.primary, button.secondary {
-        width: 100%; margin-top: 12px; padding: 11px; border: none; border-radius: 10px;
+        width: 100%; margin-top: 12px; padding: 11px; border: none; border-radius: 11px;
         font-weight: 700; font-size: 12.5px; letter-spacing: .03em; color: #fff;
         cursor: pointer;
-        transition: transform .12s, filter .15s;
+        transition: transform .14s, filter .18s, box-shadow .18s;
       }
       button.primary {
-        background: linear-gradient(135deg,#047857,#059669);
-        box-shadow: 0 10px 24px rgba(4,120,87,.3);
+        background: linear-gradient(135deg,#047857,#059669,#10b981);
+        box-shadow: 0 10px 24px rgba(4,120,87,.32);
       }
       button.secondary {
         background: #ffffff;
         color: #1f2b26;
         border: 1px solid #d5ddd9;
         margin-top: 10px;
+        box-shadow: 0 2px 6px rgba(15,23,42,.04);
       }
-      button:hover { filter: brightness(1.05); transform: translateY(-1px); }
-      button:active { transform: translateY(0); }
+      button.secondary:hover {
+        border-color: #059669;
+        color: #047857;
+        box-shadow: 0 8px 20px rgba(15,23,42,.08);
+      }
+      button:hover { filter: brightness(1.04); transform: translateY(-1px); }
+      button:active { transform: translateY(0); filter: brightness(.98); }
       button:focus-visible { outline: 2px solid #059669; outline-offset: 2px; }
-      .status { margin-top: 10px; font-size: 11px; color: #047857; text-align: center; min-height: 14px; }
+      .status {
+        margin-top: 10px; padding-top: 9px;
+        border-top: 1px dashed #dfe8e3;
+        font-size: 10.5px; color: #047857; text-align: center; min-height: 16px;
+        font-weight: 600; letter-spacing: .01em;
+      }
       @media (prefers-reduced-motion: reduce) {
-        .site, button { transition: none; transform: none !important; }
+        .site, button, .site .arrow { transition: none; transform: none !important; }
       }
     </style>
   </head>
@@ -88,34 +140,35 @@
     <div class="wrap">
       <div class="head">
         <div class="logo">V</div>
-        <div>
+        <div class="head-titles">
           <h1>Vyntra Prospector</h1>
           <div class="sub">Escolha onde prospectar</div>
+          <div class="pill"><span class="dot"></span>Extensão vinculada</div>
         </div>
       </div>
 
       <div class="grid">
-        <button class="site" data-url="https://wepsy.com.br/catalogo">
+        <button class="site" data-brand="wepsy" data-url="https://wepsy.com.br/catalogo">
           <span class="arrow">↗</span>
-          <img src="https://www.google.com/s2/favicons?domain=wepsy.com.br&amp;sz=64" alt="" />
+          <div class="icon"><img src="https://www.google.com/s2/favicons?domain=wepsy.com.br&amp;sz=64" alt="" /></div>
           <div class="name">Wepsy</div>
           <div class="desc">Psicólogos com WhatsApp público</div>
         </button>
-        <button class="site" data-url="https://www.webmotors.com.br/carros">
+        <button class="site" data-brand="webmotors" data-url="https://www.webmotors.com.br/carros">
           <span class="arrow">↗</span>
-          <img src="https://www.google.com/s2/favicons?domain=webmotors.com.br&amp;sz=64" alt="" />
+          <div class="icon"><img src="https://www.google.com/s2/favicons?domain=webmotors.com.br&amp;sz=64" alt="" /></div>
           <div class="name">WebMotors</div>
           <div class="desc">Lojas e concessionárias</div>
         </button>
-        <button class="site" data-url="https://www.airbnb.com.br/">
+        <button class="site" data-brand="airbnb" data-url="https://www.airbnb.com.br/">
           <span class="arrow">↗</span>
-          <img src="https://www.google.com/s2/favicons?domain=airbnb.com.br&amp;sz=64" alt="" />
+          <div class="icon"><img src="https://www.google.com/s2/favicons?domain=airbnb.com.br&amp;sz=64" alt="" /></div>
           <div class="name">Airbnb</div>
           <div class="desc">Anfitriões (tel. na descrição)</div>
         </button>
-        <button class="site" data-url="https://www.google.com.br/maps">
+        <button class="site" data-brand="google" data-url="https://www.google.com.br/maps">
           <span class="arrow">↗</span>
-          <img src="https://www.google.com/s2/favicons?domain=google.com.br&amp;sz=64" alt="" />
+          <div class="icon"><img src="https://www.google.com/s2/favicons?domain=google.com.br&amp;sz=64" alt="" /></div>
           <div class="name">Google Maps</div>
           <div class="desc">Empresas locais</div>
         </button>
