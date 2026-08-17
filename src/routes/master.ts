@@ -245,7 +245,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   // ---- Planos ----
   scoped.get('/api/master/plans', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>('/plans', '*');
-    return reply.send({ plans: rows ?? [] });
+    return reply.send({ plans: (rows ?? []).map((plan) => /indiv|inicial|�/i.test(String(plan.name ?? '')) || /indiv|inicial|�/i.test(String(plan.slug ?? '')) ? { ...plan, name: 'INICIAL', slug: 'inicial' } : plan) });
   });
 
   scoped.post('/api/master/plans', async (req, reply) => {

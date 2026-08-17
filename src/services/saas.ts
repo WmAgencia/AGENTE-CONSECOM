@@ -126,11 +126,17 @@ async function first<T>(path: string): Promise<T | null> {
 
 export async function listPlans(activeOnly = true): Promise<Plan[]> {
   const suffix = activeOnly ? '&active=eq.true' : '';
+  const normalize = (plan: Plan): Plan => {
+    if (/indiv|inicial|�/i.test(plan.name) || /indiv|inicial|�/i.test(plan.slug)) {
+      return { ...plan, name: 'INICIAL', slug: 'inicial' };
+    }
+    return plan;
+  };
   const unique = (plans: Plan[]): Plan[] => {
     if (!activeOnly) return plans;
     const seen = new Set<string>();
-    return plans.filter((plan) => {
-      const key = (plan.name || plan.slug).trim().toLowerCase();
+    return plans.map(normalize).filter((plan) => {
+      const key = plan.name.trim().toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
