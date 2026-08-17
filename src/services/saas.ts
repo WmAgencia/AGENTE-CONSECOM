@@ -12,6 +12,7 @@ import {
   buildGateway,
   type PaymentGateway,
 } from './payment.gateway.js';
+import { getEnv } from '../config/env.js';
 
 export interface Plan {
   id: string;
@@ -316,6 +317,13 @@ export async function getActiveGateway(): Promise<PaymentGateway | null> {
   });
 }
 
+export async function getActiveGatewayPublicKey(): Promise<string> {
+  const row = await first<{ config: Record<string, unknown> }>(`/payment_gateways?select=config&enabled=eq.true&order=created_at.asc&limit=1`);
+  const configured = row?.config?.publicKey ?? row?.config?.public_key;
+  if (typeof configured === 'string' && configured.trim()) return configured.trim();
+  try { return getEnv().MERCADOPAGO_PUBLIC_KEY; } catch { return ''; }
+}
+
 // =============================================================
 // Cupons
 // =============================================================
@@ -426,6 +434,10 @@ export async function findPaymentByGatewayPaymentId(gatewayPaymentId: string): P
   return first<Payment>(
     `/payments?select=*&gateway_payment_id=eq.${encodeURIComponent(gatewayPaymentId)}&limit=1`,
   );
+}
+
+export async function findPaymentById(paymentId: string): Promise<Payment | null> {
+  return first<Payment>(`/payments?select=*&id=eq.${encodeURIComponent(paymentId)}&limit=1`);
 }
 
 export async function findPaymentByIdempotencyKey(key: string): Promise<Payment | null> {

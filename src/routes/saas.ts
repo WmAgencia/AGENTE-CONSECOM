@@ -12,7 +12,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { getLogger } from '../utils/logger.js';
-import { getSupabaseProspeccaoConfig } from '../config/env.js';
+import { getEnv, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { extractBearerToken } from '../utils/auth.js';
 import {
   authOf,
@@ -30,10 +30,12 @@ import {
   getLeadsBalance,
   listCreditLedger,
   getActiveGateway,
+  getActiveGatewayPublicKey,
   validateCoupon,
   createPayment,
   setPaymentGatewayIds,
   findPaymentByGatewayPaymentId,
+  findPaymentById,
   findPaymentByIdempotencyKey,
   processApprovedPayment,
   updatePaymentStatus,
@@ -152,6 +154,53 @@ export function registerSaaSRoutes(app: FastifyInstance): void {
     return reply.send({ plans });
   });
 
+  app.get('/api/saas/payment/public-key', async (_req, reply) => {
+    return reply.send({ provider: 'mercadopago', publicKey: await getActiveGatewayPublicKey() });
+  });
+
+  app.post('/api/saas/transparent-payment', async (req, reply) => {
+    const auth = authOf(req);
+    const guard = requireAuth(auth);
+    if (!guard.ok) return reply.status(guard.statusCode).send({ error: guard.error, statusCode: guard.statusCode });
+    const body = (req.body ?? {}) as { planId?: unknown; couponCode?: unknown; method?: unknown; cpf?: unknown; phone?: unknown; email?: unknown; paymentMethodId?: unknown; cardToken?: unknown; installments?: unknown; issuerId?: unknown };
+    const planId = typeof body.planId === 'string' ? body.planId : '';
+    const method = body.method === 'pix' ? 'pix' : 'card';
+    const cpf = typeof body.cpf === 'string' ? body.cpf.replace(/\D/g, '') : '';
+    const payerEmail = typeof body.email === 'string' && /@/.test(body.email) ? body.email.trim() : auth!.email;
+    if (!planId || cpf.length !== 11) return reply.status(400).send({ error: 'plan_and_cpf_required', statusCode: 400 });
+    const plan = await getPlan(planId);
+    if (!plan || !plan.active) return reply.status(400).send({ error: 'plan_not_found', statusCode: 400 });
+    let discountAmount = 0;
+    const couponCode = typeof body.couponCode === 'string' ? body.couponCode.trim() : '';
+    if (couponCode) {
+      const coupon = await validateCoupon(couponCode, plan);
+      if (!coupon.ok) return reply.status(400).send({ error: coupon.error, statusCode: 400 });
+      discountAmount = coupon.discountAmount;
+    }
+    const gateway = (await getActiveGateway()) ?? new SandboxGateway();
+    if (!gateway.createTransparentPayment) return reply.status(503).send({ error: 'transparent_checkout_unavailable', statusCode: 503 });
+    const payment = await createPayment({ tenantId: auth!.tenantId, planId, amount: plan.price, discountAmount, couponCode: couponCode || null, gateway: gateway.provider, idempotencyKey: randomKey() });
+    if (!payment) return reply.status(502).send({ error: 'payment_create_failed', statusCode: 502 });
+    const result = await gateway.createTransparentPayment({
+      externalId: payment.id,
+      amount: Math.max(0, Math.round((plan.price - discountAmount) * 100) / 100),
+      planName: plan.name,
+      payerEmail,
+      cpf,
+      phone: typeof body.phone === 'string' ? body.phone : undefined,
+      paymentMethodId: typeof body.paymentMethodId === 'string' ? body.paymentMethodId : method === 'pix' ? 'pix' : '',
+      cardToken: typeof body.cardToken === 'string' ? body.cardToken : undefined,
+      installments: typeof body.installments === 'number' ? body.installments : 1,
+      issuerId: typeof body.issuerId === 'string' ? body.issuerId : undefined,
+      notificationUrl: `${getEnv().PUBLIC_BACKEND_URL}/api/saas/webhook/payments`,
+      idempotencyKey: randomKey(),
+    });
+    if (!result.ok) { await updatePaymentStatus(payment.id, 'rejected'); return reply.status(502).send({ error: 'payment_failed', message: result.error, statusCode: 502 }); }
+    if (result.gatewayPaymentId) await setPaymentGatewayIds(payment.id, { gatewayPaymentId: result.gatewayPaymentId });
+    if (result.status === 'approved') await processApprovedPayment(payment.id);
+    return reply.send({ ok: true, paymentId: payment.id, status: result.status, qrCode: result.qrCode ?? null, qrCodeBase64: result.qrCodeBase64 ?? null, ticketUrl: result.ticketUrl ?? null, provider: gateway.provider });
+  });
+
   app.post('/api/saas/coupons/validate', async (req, reply) => {
     const auth = authOf(req);
     const guard = requireAuth(auth);
@@ -263,7 +312,7 @@ export function registerSaaSRoutes(app: FastifyInstance): void {
     const gateway = (await getActiveGateway()) ?? new SandboxGateway();
     const parsed = await gateway.parseWebhook(req.body ?? {});
     const payment =
-      (parsed.externalReference ? await findPaymentByIdempotencyKey(parsed.externalReference) : null) ??
+      (parsed.externalReference ? await findPaymentById(parsed.externalReference) : null) ??
       (await findPaymentByIdempotencyKey(parsed.gatewayPaymentId ?? '')) ??
       (parsed.gatewayPaymentId ? await findPaymentByGatewayPaymentId(parsed.gatewayPaymentId) : null);
     if (!payment) {

@@ -388,6 +388,7 @@ scoped.get('/api/master/payments', async (_req, reply) => {
     const provider = typeof body.provider === 'string' ? body.provider : 'mercadopago';
     const cfg = (typeof body.config === 'object' && body.config ? body.config : {}) as Record<string, unknown>;
     const accessToken = typeof cfg.accessToken === 'string' ? cfg.accessToken : typeof cfg.access_token === 'string' ? (cfg.access_token as string) : '';
+    const publicKey = typeof cfg.publicKey === 'string' ? cfg.publicKey.trim() : '';
     const sandbox = body.sandbox === true;
     if (!accessToken) return reply.status(400).send({ error: 'access_token_required', statusCode: 400 });
 
@@ -406,7 +407,7 @@ scoped.get('/api/master/payments', async (_req, reply) => {
           provider,
           sandbox,
           active: body.active === true,
-          config: { accessToken },
+           config: { accessToken, publicKey },
           updated_at: new Date().toISOString(),
         }),
       });
@@ -419,7 +420,7 @@ scoped.get('/api/master/payments', async (_req, reply) => {
           sandbox,
           enabled: true,
           active: body.active === true,
-          config: { accessToken },
+           config: { accessToken, publicKey },
         }),
       });
     }

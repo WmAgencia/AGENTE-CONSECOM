@@ -1,8 +1,30 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Sparkles, ShoppingCart, Loader2, ArrowLeft, CreditCard, Zap, ShieldCheck } from 'lucide-react'
+import { Check, Sparkles, ShoppingCart, Loader2, ArrowLeft, CreditCard, Zap, ShieldCheck, QrCode, Copy } from 'lucide-react'
 import { saasApi, formatBRL, type SaasPlan, type SaasMe } from '../lib/api'
 import { LeadsWidget } from './LeadsWidget'
 import { Button } from './ui'
+
+type MercadoClient = {
+  createCardToken(input: Record<string, string>): Promise<{ id?: string }>
+  getPaymentMethods(input: { bin: string }): Promise<Array<{ id?: string; issuer?: { id?: string } }>>
+}
+
+async function loadMercadoClient(): Promise<MercadoClient> {
+  const key = await saasApi.paymentPublicKey()
+  if (!key) throw new Error('O gateway ainda não está configurado para cartão.')
+  const current = (window as unknown as { MercadoPago?: (publicKey: string, options: { locale: string }) => MercadoClient }).MercadoPago
+  if (current) return current(key, { locale: 'pt-BR' })
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://sdk.mercadopago.com/js/v2'
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('Não foi possível carregar o checkout seguro.'))
+    document.head.appendChild(script)
+  })
+  const factory = (window as unknown as { MercadoPago?: (publicKey: string, options: { locale: string }) => MercadoClient }).MercadoPago
+  if (!factory) throw new Error('SDK do Mercado Pago indisponível.')
+  return factory(key, { locale: 'pt-BR' })
+}
 
 interface Props {
   onBack?: () => void
@@ -18,6 +40,12 @@ export function PlansPage({ onBack }: Props) {
   const [couponInfo, setCouponInfo] = useState<{ ok: boolean; discountAmount?: number; total?: number; error?: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [method, setMethod] = useState<'pix' | 'card'>('pix')
+  const [cpf, setCpf] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [card, setCard] = useState({ number: '', holder: '', month: '', year: '', cvv: '' })
+  const [pix, setPix] = useState<{ code: string; image?: string } | null>(null)
 
   const sorted = useMemo(() => [...plans].sort((a, b) => a.display_order - b.display_order), [plans])
   const featured = sorted.find((p) => p.featured)
@@ -29,6 +57,7 @@ export function PlansPage({ onBack }: Props) {
         const [p, m] = await Promise.all([saasApi.plans(), saasApi.me()])
         setPlans(p)
         setMe(m)
+        setEmail(m.user.email)
       } catch {
         /* err handled below */
       } finally {
@@ -55,14 +84,28 @@ export function PlansPage({ onBack }: Props) {
     setMsg(null)
     setBusy(true)
     try {
-      const r = await saasApi.checkout(selected.id, coupon.trim() || undefined, window.location.href)
-      if (r.checkoutUrl) {
-        window.location.href = r.checkoutUrl
-        return
+      let cardToken: string | undefined
+      let paymentMethodId: string | undefined
+      let issuerId: string | undefined
+      if (method === 'card') {
+        const mp = await loadMercadoClient()
+        const token = await mp.createCardToken({ cardNumber: card.number.replace(/\s/g, ''), cardholderName: card.holder, cardExpirationMonth: card.month, cardExpirationYear: card.year, securityCode: card.cvv, identificationType: 'CPF', identificationNumber: cpf.replace(/\D/g, '') })
+        if (!token.id) throw new Error('Não foi possível validar o cartão.')
+        cardToken = token.id
+        const methods = await mp.getPaymentMethods({ bin: card.number.replace(/\D/g, '').slice(0, 6) })
+        paymentMethodId = methods[0]?.id
+        issuerId = methods[0]?.issuer?.id
+        if (!paymentMethodId) throw new Error('Bandeira do cartão não identificada.')
       }
-      const m = await saasApi.me()
-      setMe(m)
-      setMsg({ ok: true, text: 'Pagamento processado. Seu saldo de leads foi liberado!' })
+      const r = await saasApi.transparentPayment({ planId: selected.id, couponCode: coupon.trim() || undefined, method, cpf, phone, email, paymentMethodId, cardToken, installments: 1, issuerId })
+      if (method === 'pix' && r.qrCode) {
+        setPix({ code: r.qrCode, image: r.qrCodeBase64 ?? undefined })
+        setMsg({ ok: true, text: 'Pix criado. Pague pelo QR Code ou copie o código abaixo.' })
+      } else {
+        const m = await saasApi.me()
+        setMe(m)
+        setMsg({ ok: true, text: r.status === 'approved' ? 'Pagamento aprovado. Seu saldo de leads foi liberado!' : 'Pagamento recebido e aguardando confirmação.' })
+      }
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha no checkout.' })
     } finally {
@@ -148,6 +191,31 @@ export function PlansPage({ onBack }: Props) {
                   ? `Desconto de ${formatBRL(couponInfo.discountAmount ?? 0)} — total ${formatBRL(couponInfo.total ?? selected.price)}`
                   : couponInfo.error}
               </p>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setMethod('pix')} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${method === 'pix' ? 'border-accent-500 bg-accent-600/15 text-accent-300' : 'border-line bg-subtle text-muted'}`}><QrCode className="inline w-4 h-4 mr-1" /> Pix</button>
+              <button type="button" onClick={() => setMethod('card')} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${method === 'card' ? 'border-accent-500 bg-accent-600/15 text-accent-300' : 'border-line bg-subtle text-muted'}`}><CreditCard className="inline w-4 h-4 mr-1" /> Cartão</button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="CPF" inputMode="numeric" className="input" />
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Celular" inputMode="tel" className="input" />
+              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" type="email" className="input sm:col-span-1" />
+            </div>
+            {method === 'card' && (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input value={card.number} onChange={(e) => setCard({ ...card, number: e.target.value })} placeholder="Número do cartão" inputMode="numeric" className="input sm:col-span-2" />
+                <input value={card.holder} onChange={(e) => setCard({ ...card, holder: e.target.value })} placeholder="Nome no cartão" className="input sm:col-span-2" />
+                <input value={card.month} onChange={(e) => setCard({ ...card, month: e.target.value })} placeholder="Mês" inputMode="numeric" className="input" />
+                <input value={card.year} onChange={(e) => setCard({ ...card, year: e.target.value })} placeholder="Ano" inputMode="numeric" className="input" />
+                <input value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value })} placeholder="CVV" inputMode="numeric" className="input" />
+              </div>
+            )}
+            {pix && (
+              <div className="rounded-xl border border-accent-500/25 bg-accent-500/5 p-4 space-y-3 text-center">
+                {pix.image && <img src={`data:image/png;base64,${pix.image}`} alt="QR Code Pix" className="mx-auto w-44 h-44" />}
+                <button type="button" onClick={() => void navigator.clipboard.writeText(pix.code)} className="inline-flex items-center gap-2 text-xs text-accent-300 hover:text-accent-200"><Copy size={14} /> Copiar código Pix</button>
+              </div>
             )}
 
             <div className="rounded-xl border border-line bg-fg/5 px-4 py-3 flex items-center gap-3 text-sm">

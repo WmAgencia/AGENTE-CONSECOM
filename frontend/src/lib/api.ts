@@ -200,6 +200,16 @@ export const saasApi = {
   async checkout(planId: string, couponCode?: string, backUrl?: string): Promise<CheckoutResult> {
     return api.post<CheckoutResult>('/api/saas/checkout', { planId, couponCode, backUrl })
   },
+  async transparentPayment(input: {
+    planId: string; couponCode?: string; method: 'pix' | 'card'; cpf: string; phone: string; email: string;
+    paymentMethodId?: string; cardToken?: string; installments?: number; issuerId?: string
+  }): Promise<{ ok: boolean; status?: string; paymentId: string; qrCode?: string | null; qrCodeBase64?: string | null; ticketUrl?: string | null }> {
+    return api.post('/api/saas/transparent-payment', input)
+  },
+  async paymentPublicKey(): Promise<string> {
+    const r = await api.get<{ publicKey?: string }>('/api/saas/payment/public-key')
+    return r.publicKey ?? ''
+  },
   async changePassword(currentPassword: string, newPassword: string, confirmPassword: string): Promise<void> {
     await api.post<{ ok: boolean }>('/api/account/password', { currentPassword, newPassword, confirmPassword })
   },
@@ -327,7 +337,7 @@ export const masterApi = {
     const r = await api.get<{ gateways: MasterGateway[] }>('/api/master/gateways')
     return r.gateways ?? []
   },
-  async saveGateway(input: { provider: string; accessToken: string; sandbox: boolean; active: boolean }): Promise<void> {
+  async saveGateway(input: { provider: string; accessToken: string; publicKey?: string; sandbox: boolean; active: boolean }): Promise<void> {
     await api.post('/api/master/gateways', input)
   },
   async testGateway(id: string): Promise<{ ok: boolean; error: string | null }> {

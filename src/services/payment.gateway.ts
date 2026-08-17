@@ -34,9 +34,35 @@ export interface CheckoutResult {
   error?: string;
 }
 
+export interface TransparentPaymentInput {
+  externalId: string;
+  amount: number;
+  planName: string;
+  payerEmail: string;
+  cpf: string;
+  phone?: string;
+  paymentMethodId: string;
+  cardToken?: string;
+  installments?: number;
+  issuerId?: string;
+  notificationUrl?: string;
+  idempotencyKey: string;
+}
+
+export interface TransparentPaymentResult {
+  ok: boolean;
+  status?: PaymentStatus;
+  gatewayPaymentId?: string;
+  qrCode?: string;
+  qrCodeBase64?: string;
+  ticketUrl?: string;
+  error?: string;
+}
+
 export interface PaymentGateway {
   readonly provider: string;
   createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult>;
+  createTransparentPayment?(input: TransparentPaymentInput): Promise<TransparentPaymentResult>;
   /** Valida as credenciais (botão "testar conexão" do Master). */
   testConnection(): Promise<{ ok: boolean; error?: string }>;
   /** Interpreta um webhook e devolve o status canônico. */
@@ -85,6 +111,10 @@ export class SandboxGateway implements PaymentGateway {
 
   async testConnection(): Promise<{ ok: boolean; error?: string }> {
     return { ok: true };
+  }
+
+  async createTransparentPayment(input: TransparentPaymentInput): Promise<TransparentPaymentResult> {
+    return { ok: true, status: 'approved', gatewayPaymentId: `sandbox-${input.externalId}` };
   }
 
   async parseWebhook(payload: unknown): Promise<{
@@ -182,6 +212,47 @@ export class MercadoPagoGateway implements PaymentGateway {
       checkoutUrl: d.init_point,
       gatewayPaymentId: d.id,
       gatewayPreferenceId: d.id,
+    };
+  }
+
+  async createTransparentPayment(input: TransparentPaymentInput): Promise<TransparentPaymentResult> {
+    const digits = input.cpf.replace(/\D/g, '');
+    const body: Record<string, unknown> = {
+      transaction_amount: Math.round(input.amount * 100) / 100,
+      description: `Plano ${input.planName} — Vyntra`,
+      payment_method_id: input.paymentMethodId,
+      external_reference: input.externalId,
+      payer: {
+        email: input.payerEmail,
+        identification: { type: 'CPF', number: digits },
+      },
+    };
+    if (input.phone) {
+      const phone = input.phone.replace(/\D/g, '');
+      body.payer = { ...(body.payer as Record<string, unknown>), phone: { area_code: phone.slice(0, 2), number: phone.slice(2) } };
+    }
+    if (input.cardToken) body.token = input.cardToken;
+    if (input.installments) body.installments = input.installments;
+    if (input.issuerId) body.issuer_id = input.issuerId;
+    if (input.notificationUrl) body.notification_url = input.notificationUrl;
+    const r = await this.api('/v1/payments', {
+      method: 'POST',
+      headers: { 'X-Idempotency-Key': input.idempotencyKey },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const d = r.data as { message?: string; cause?: Array<{ description?: string }> };
+      return { ok: false, error: d?.cause?.[0]?.description ?? d?.message ?? `Mercado Pago HTTP ${r.status}` };
+    }
+    const d = r.data as { id?: number; status?: string; point_of_interaction?: { transaction_data?: { qr_code?: string; qr_code_base64?: string; ticket_url?: string } } };
+    const tx = d.point_of_interaction?.transaction_data;
+    return {
+      ok: true,
+      status: mapStatus(d.status),
+      gatewayPaymentId: d.id ? String(d.id) : undefined,
+      qrCode: tx?.qr_code,
+      qrCodeBase64: tx?.qr_code_base64,
+      ticketUrl: tx?.ticket_url,
     };
   }
 

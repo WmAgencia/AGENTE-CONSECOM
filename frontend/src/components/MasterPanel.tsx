@@ -618,7 +618,7 @@ function CouponsTab() {
 
 function GatewaysTab() {
   const [gateways, setGateways] = useState<MasterGateway[]>([])
-  const [form, setForm] = useState({ accessToken: '', sandbox: true })
+  const [form, setForm] = useState({ accessToken: '', publicKey: '', sandbox: true })
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [testing, setTesting] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
@@ -628,9 +628,9 @@ function GatewaysTab() {
   async function save() {
     if (!form.accessToken) { setMsg({ ok: false, text: 'Access token é obrigatório.' }); return }
     try {
-      await masterApi.saveGateway({ provider: 'mercadopago', accessToken: form.accessToken, sandbox: form.sandbox, active: true })
+      await masterApi.saveGateway({ provider: 'mercadopago', accessToken: form.accessToken, publicKey: form.publicKey, sandbox: form.sandbox, active: true })
       setMsg({ ok: true, text: 'Gateway configurado e testado com sucesso.' })
-      setForm({ accessToken: '', sandbox: true })
+      setForm({ accessToken: '', publicKey: '', sandbox: true })
       setOpen(false)
       reload()
     } catch (e) {
@@ -651,6 +651,7 @@ function GatewaysTab() {
       <Modal open={open} onClose={() => setOpen(false)} title="Configurar gateway" subtitle="As credenciais ficam somente no backend." size="sm" footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={() => void save()}>Salvar e testar</Button></>}>
         <div className="space-y-3">
           <input placeholder="Access token (Mercado Pago)" value={form.accessToken} onChange={(e) => setForm({ ...form, accessToken: e.target.value })} className={inputCls} type="password" />
+          <input placeholder="Public key (para cartão transparente)" value={form.publicKey} onChange={(e) => setForm({ ...form, publicKey: e.target.value })} className={inputCls} />
           <select value={form.sandbox ? '1' : '0'} onChange={(e) => setForm({ ...form, sandbox: e.target.value === '1' })} className={inputCls}>
             <option value="1">Sandbox (teste)</option>
             <option value="0">Produção</option>
