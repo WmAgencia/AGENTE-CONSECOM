@@ -12,7 +12,6 @@ import {
   type DigitalFilter,
   type QualifyFilter,
   type ScoreBand,
-  type ServiceInterest,
 } from '../shared/filters'
 import css from './style.css?raw'
 
@@ -780,41 +779,6 @@ export class MapsScanner {
     }
     panel.appendChild(chipsWrap)
 
-    // Advanced: nota/avaliações mínimas (compacto)
-    const adv = document.createElement('div')
-    adv.className = 'cs-adv'
-    const ratingWrap = document.createElement('label')
-    ratingWrap.className = 'cs-adv__item'
-    const rLab = document.createElement('span')
-    rLab.textContent = 'Nota mín.'
-    const rSel = document.createElement('select')
-    rSel.dataset.cat = 'minRating'
-    for (const v of [0, 4.0, 4.5, 4.8]) {
-      const o = document.createElement('option')
-      o.value = String(v)
-      o.textContent = v === 0 ? 'Qualquer' : `${v.toFixed(1)}+`
-      rSel.appendChild(o)
-    }
-    ratingWrap.append(rLab, rSel)
-    const revWrap = document.createElement('label')
-    revWrap.className = 'cs-adv__item'
-    const vLab = document.createElement('span')
-    vLab.textContent = 'Avaliações mín.'
-    const vSel = document.createElement('select')
-    vSel.dataset.cat = 'minReviews'
-    for (const v of [0, 10, 50, 100, 500]) {
-      const o = document.createElement('option')
-      o.value = String(v)
-      o.textContent = v === 0 ? 'Qualquer' : `${v}+`
-      vSel.appendChild(o)
-    }
-    revWrap.append(vLab, vSel)
-    adv.append(ratingWrap, revWrap)
-    panel.appendChild(adv)
-
-    // Serviço (radio compacto)
-    panel.appendChild(this.buildServiceGroup())
-
     return panel
   }
 
@@ -831,42 +795,7 @@ export class MapsScanner {
     }
   }
 
-  private buildServiceGroup(): HTMLElement {
-    const group = document.createElement('div')
-    group.className = 'cs-fgroup cs-fgroup--svc'
-    const h = document.createElement('div')
-    h.className = 'cs-fgroup__h'
-    h.textContent = 'SERVIÇO / NECESSIDADE'
-    group.appendChild(h)
-    const wrap = document.createElement('div')
-    wrap.className = 'cs-radio'
-    const services: Array<{ id: ServiceInterest; label: string }> = [
-      { id: 'todos', label: 'Todos' },
-      { id: 'site', label: 'Site' },
-      { id: 'sistema', label: 'Sistema' },
-      { id: 'trafego', label: 'Tráfego pago' },
-      { id: 'automacao', label: 'Automação' },
-      { id: 'presenca', label: 'Presença digital' },
-    ]
-    for (const s of services) {
-      const row = document.createElement('label')
-      row.className = 'cs-radio__item'
-      const r = document.createElement('input')
-      r.type = 'radio'
-      r.name = 'cs-service'
-      r.value = s.id
-      r.dataset.cat = 'service'
-      if (s.id === 'todos') r.checked = true
-      const span = document.createElement('span')
-      span.textContent = s.label
-      row.append(r, span)
-      wrap.appendChild(row)
-    }
-    group.appendChild(wrap)
-    return group
-  }
-
-  /** Reconstrói this.filters a partir dos chips ativos + selects. */
+  /** Reconstrói os três filtros ativos a partir dos chips selecionados. */
   private readFiltersFromPanel(): void {
     if (!this.filtersPanel) return
     const site: SiteFilter[] = []
@@ -884,25 +813,14 @@ export class MapsScanner {
       else if (cat === 'qualify') qualify.push(value as QualifyFilter)
     })
 
-    let minRating: number | null = null
-    let minReviews: number | null = null
-    const rSel = this.filtersPanel.querySelector<HTMLSelectElement>('select[data-cat=minRating]')
-    if (rSel) minRating = parseFloat(rSel.value) || null
-    const revSel = this.filtersPanel.querySelector<HTMLSelectElement>('select[data-cat=minReviews]')
-    if (revSel) minReviews = parseInt(revSel.value, 10) || null
-
-    let service: ServiceInterest = 'todos'
-    const svcRadio = this.filtersPanel.querySelector<HTMLInputElement>('input[name=cs-service]:checked')
-    if (svcRadio) service = svcRadio.value as ServiceInterest
-
     this.filters = {
       site,
       digital,
       qualify,
-      minRating,
-      minReviews,
+      minRating: null,
+      minReviews: null,
       scoreBands,
-      service,
+      service: 'todos',
       activeChips: this.filters.activeChips,
     }
   }
@@ -1031,8 +949,7 @@ export class MapsScanner {
       // agregadas + score médio no snapshot (filtros), e mantemos has_website
       // por linha (já gravado em importLeads).
       const baseTags = ['Google Maps']
-      const serviceTag = this.filters.service !== 'todos' ? `Interesse: ${this.serviceLabel(this.filters.service)}` : null
-      const allTags = serviceTag ? [...baseTags, serviceTag] : baseTags
+      const allTags = baseTags
       const opts: ImportOptions = {
         source: 'google_maps',
         sourceDetail: 'vyntra_prospector',
@@ -1088,18 +1005,6 @@ export class MapsScanner {
 
   private countAlreadyExists(matched: ParsedCard[]): number {
     return matched.filter((pc) => this.used.has(pc.key)).length
-  }
-
-  private serviceLabel(s: ServiceInterest): string {
-    const map: Record<ServiceInterest, string> = {
-      todos: 'Todos',
-      site: 'Site',
-      sistema: 'Sistema',
-      trafego: 'Tráfego pago',
-      automacao: 'Automação',
-      presenca: 'Presença digital',
-    }
-    return map[s]
   }
 
   private filtersToSnapshot(): Record<string, unknown> {

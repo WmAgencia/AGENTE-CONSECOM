@@ -637,22 +637,37 @@ export class GlobalScanner {
     }
   }
 
-  /** Busca: navega para a busca do site (cidade/estado) com os valores digitados. */
+  /** Preenche a barra de pesquisa nativa do site atual e dispara a busca. */
   private doSearch(): void {
     const city = (this.searchCity?.value ?? '').trim()
     const state = (this.searchState?.value ?? '').trim().toUpperCase()
+    if (!city) return showToast('Digite uma cidade ou termo para pesquisar.', 'warn')
+    const query = state ? `${city}, ${state}` : city
+    const nativeInput = Array.from(document.querySelectorAll<HTMLInputElement>('input')).find((input) => {
+      if (input === this.searchCity || input === this.searchState || input.type === 'hidden') return false
+      const hint = `${input.placeholder} ${input.getAttribute('aria-label') ?? ''} ${input.name}`.toLowerCase()
+      return input.type === 'search' || /pesquis|buscar|cidade|local|search|location/.test(hint)
+    })
+    if (nativeInput) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(nativeInput, query)
+      nativeInput.dispatchEvent(new Event('input', { bubbles: true }))
+      nativeInput.dispatchEvent(new Event('change', { bubbles: true }))
+      nativeInput.focus()
+      nativeInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }))
+      nativeInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }))
+      return
+    }
     if (this.mode === 'webmotors') {
-      if (!city) return showToast('Digite a cidade para pesquisar no WebMotors.', 'warn')
       const url = state
         ? `https://www.webmotors.com.br/carros/${state.toLowerCase()}/${city.toLowerCase().replace(/\s+/g, '-')}`
         : `https://www.webmotors.com.br/carros/${city.toLowerCase().replace(/\s+/g, '-')}`
       window.location.href = url
     } else if (this.mode === 'wepsy') {
-      if (!city) return showToast('Digite a cidade para pesquisar na Wepsy.', 'warn')
       window.location.href = `https://www.wepsy.com.br/catalogo`
-      showToast('Pesquise a cidade na página da Wepsy e toque em PROSPECTAR.')
+      showToast('A página não expôs uma barra de busca nativa. Use o filtro de cidade do catálogo.')
     } else {
-      showToast('Selecione um site para pesquisar.', 'warn')
+      showToast('Não encontrei a barra de pesquisa desta página.', 'warn')
     }
   }
 

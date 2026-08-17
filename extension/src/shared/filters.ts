@@ -79,19 +79,8 @@ export interface FilterChip {
 /** Catálogo de chips visíveis no painel (ordem da imagem de referência). */
 export const FILTER_CHIPS: FilterChip[] = [
   { id: 'sem_site', label: 'Sem site', cat: 'site', value: 'sem_site', accent: '#f87171' },
-  { id: 'alta', label: 'Alta oportunidade', cat: 'score', value: 'alta', accent: '#10b981' },
-  { id: 'site_ruim', label: 'Site ruim', cat: 'site', value: 'site_ruim', accent: '#f59e0b' },
-  { id: 'poucas_avaliacoes', label: 'Poucas avaliações', cat: 'qualify', value: 'poucas_avaliacoes', accent: '#a855f7' },
+  { id: 'com_whatsapp', label: 'Com WhatsApp', cat: 'digital', value: 'tem_whatsapp', accent: '#22c55e' },
   { id: 'nota_baixa', label: 'Nota baixa', cat: 'qualify', value: 'nota_baixa', accent: '#f87171' },
-  { id: 'sem_presenca_digital', label: 'Sem presença digital', cat: 'digital', value: 'sem_presenca_digital', accent: '#64748b' },
-  { id: 'tem_telefone', label: 'Tem telefone', cat: 'qualify', value: 'tem_telefone', accent: '#22c55e' },
-  { id: 'sem_instagram', label: 'Sem Instagram', cat: 'digital', value: 'sem_instagram', accent: '#ec4899' },
-  { id: 'sem_whatsapp', label: 'Sem WhatsApp', cat: 'digital', value: 'sem_whatsapp', accent: '#f87171' },
-  { id: 'tem_whatsapp', label: 'Tem WhatsApp', cat: 'digital', value: 'tem_whatsapp', accent: '#22c55e' },
-  { id: 'tem_site', label: 'Tem site', cat: 'site', value: 'site_bom', accent: '#22c55e' },
-  { id: 'boa', label: 'Boa oportunidade', cat: 'score', value: 'boa', accent: '#84cc16' },
-  { id: 'media', label: 'Média oportunidade', cat: 'score', value: 'media', accent: '#f59e0b' },
-  { id: 'baixa', label: 'Baixa oportunidade', cat: 'score', value: 'baixa', accent: '#f87171' },
 ]
 
 export interface ProspectFilters {
