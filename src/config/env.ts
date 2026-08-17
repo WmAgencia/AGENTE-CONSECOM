@@ -44,6 +44,8 @@ const envSchema = z.object({
 
   MERCADOPAGO_PUBLIC_KEY: z.string().optional().default(''),
   MERCADOPAGO_WEBHOOK_SECRET: z.string().optional().default(''),
+  MERCADOPAGO_ACCESS_TOKEN: z.string().optional().default(''),
+  MERCADOPAGO_SANDBOX: z.string().optional().default('false').transform((v) => v === 'true' || v === '1'),
 
   PUBLIC_BACKEND_URL: z.string().optional().default('https://consecom-backend-production.up.railway.app'),
 

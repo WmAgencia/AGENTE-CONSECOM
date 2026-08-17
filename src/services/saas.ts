@@ -306,7 +306,13 @@ export async function getActiveGateway(): Promise<PaymentGateway | null> {
     sandbox: boolean;
     config: Record<string, unknown>;
   }>(`/payment_gateways?select=provider,enabled,sandbox,config&enabled=eq.true&order=created_at.asc&limit=1`);
-  if (!row || !row.enabled) return null;
+  if (!row || !row.enabled) {
+    try {
+      const env = getEnv();
+      if (env.MERCADOPAGO_ACCESS_TOKEN) return buildGateway({ provider: 'mercadopago', accessToken: env.MERCADOPAGO_ACCESS_TOKEN, sandbox: env.MERCADOPAGO_SANDBOX });
+    } catch { /* configuração ausente */ }
+    return null;
+  }
   const cfg = row.config ?? {};
   const accessToken =
     typeof cfg.accessToken === 'string' ? cfg.accessToken : typeof cfg.access_token === 'string' ? (cfg.access_token as string) : '';
