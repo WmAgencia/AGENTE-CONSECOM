@@ -21,6 +21,7 @@ import { getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { extractBearerToken } from '../utils/auth.js';
 import { z } from 'zod';
+import { shortenLeadName } from '../services/lead-name.service.js';
 
 /** Normaliza telefone (BR) → dígitos E.164-ish para deduplicação. */
 export function normalizePhone(input: string): string | null {
@@ -246,7 +247,7 @@ export function registerContactsRoutes(app: FastifyInstance): void {
         invalid.push(c);
         continue;
       }
-      if (!normalized.has(ph)) normalized.set(ph, { ...c, name: c.name.trim() || 'Sem nome', phone: ph });
+      if (!normalized.has(ph)) normalized.set(ph, { ...c, name: shortenLeadName(c.name, 80) || 'Sem nome', phone: ph });
     }
 
     try {

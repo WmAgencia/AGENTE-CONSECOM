@@ -53,6 +53,8 @@ import { validateVideoSize } from './media.limits.js';
 import { SpamProtection } from './spam-protection.js';
 import { classifyBrazilianPhone, normalizeBrazilianPhone } from '../lib/phone.js';
 import { renderTemplate } from './template.service.js';
+import { resolveCampaignLeadName } from './campaign.personalization.js';
+import { shortenLeadName } from './lead-name.service.js';
 import { getConversationStore } from './conversation.store.js';
 import { processDueScheduledCampaigns } from './campaign.schedule.service.js';
 import { claimDueFollowUp, getDueFollowUps, updateFollowUp, type FollowUpRow } from './followup.service.js';
@@ -518,6 +520,16 @@ export class SendWorker {
     return `${prefix}\n${text}`;
   }
 
+  private async renderCampaignMessage(text: string, lead: LeadRow): Promise<string> {
+    if (!/\{(?:nome|nome_empresa)\}/i.test(text)) return renderTemplate(text, lead);
+    const rawName = String(lead.name ?? '').trim();
+    if (rawName && rawName.length <= 60 && /^[\p{L}\s.'-]+$/u.test(rawName) && rawName.split(/\s+/).length <= 3) {
+      return renderTemplate(text, { ...lead, name: shortenLeadName(rawName) });
+    }
+    const name = await resolveCampaignLeadName(lead);
+    return renderTemplate(text, { ...lead, name: name || lead.name });
+  }
+
   /** Encerra de verdade a campanha (status finalizada + finished_at). */
   private async finalizeCampaign(campaignId: string): Promise<void> {
     await fetch(`${this.url}/rest/v1/campaigns?id=eq.${campaignId}`, {
@@ -811,7 +823,7 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
     let mediaValidationError: string | null = null;
     let sendConnClosed = false;
     try {      if (strategyKind === 'text' && strategyText) {
-        sentText = this.formatConnectionMessage(renderTemplate(strategyText, lead), connectionDisplayName);
+        sentText = this.formatConnectionMessage(await this.renderCampaignMessage(strategyText, lead), connectionDisplayName);
         const textRes = await sendText({ to: sendPhone, text: sentText, instance: sendInstance });
         ok = textRes.ok;
         if (textRes.connectionClosed) sendConnClosed = true;
@@ -822,16 +834,14 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
         mediaValidationError = await this.validateRemoteVideoSize(mediaUrl, strategyKind);
         if (!mediaValidationError) {
           const captionText = strategyCaption
-            ? this.formatConnectionMessage(renderTemplate(strategyCaption, lead), connectionDisplayName)
+            ? this.formatConnectionMessage(await this.renderCampaignMessage(strategyCaption, lead), connectionDisplayName)
             : `[${strategyKind}]`;
           sentText = captionText;
           const mediaRes = await sendMedia({
             to: sendPhone,
             kind: strategyKind as MediaKind,
             media: mediaUrl,
-            caption: strategyCaption
-              ? this.formatConnectionMessage(renderTemplate(strategyCaption, lead), connectionDisplayName)
-              : undefined,
+            caption: strategyCaption ? captionText : undefined,
             mimetype: guessMimetype(mediaUrl, strategyKind),
             filename: basename(mediaUrl),
             instance: sendInstance,

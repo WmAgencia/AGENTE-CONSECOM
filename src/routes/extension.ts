@@ -23,6 +23,7 @@ import { extractBearerToken } from '../utils/auth.js';
 import { getTenantForUserId } from '../services/saas.auth.js';
 import { getImportQuota, recordCredit } from '../services/saas.js';
 import { z } from 'zod';
+import { shortenLeadName } from '../services/lead-name.service.js';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
 const VERSION = '1.21.0';
@@ -264,7 +265,7 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
           seenPhones.add(ph);
         }
         candidateRows.push({
-          name: lead.name.trim() || 'Sem nome',
+          name: shortenLeadName(lead.name, 80) || 'Sem nome',
           phone: lead.phone ?? '',
           phone_normalized: ph,
           category: lead.category ?? null,

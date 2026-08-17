@@ -35,7 +35,8 @@ import {
 import { buildGateway } from '../services/payment.gateway.js';
 
 async function getJson<T>(path: string, select: string): Promise<T[] | null> {
-  const res = await fetch(`${serviceBaseUrl()}/rest/v1${path}?select=${select}`, { headers: serviceHeaders() });
+  const separator = path.includes('?') ? '&' : '?';
+  const res = await fetch(`${serviceBaseUrl()}/rest/v1${path}${separator}select=${select}`, { headers: serviceHeaders() });
   if (!res.ok) return null;
   return (await res.json()) as T[];
 }
@@ -150,7 +151,13 @@ export function registerMasterRoutes(app: FastifyInstance): void {
       '/app_users',
       'id,user_id,tenant_id,email,role,status,plan,last_login_at,created_at',
     );
-    return reply.send({ users: rows ?? [] });
+    const [subs, plans] = await Promise.all([
+      getJson<{ tenant_id: string; plan_id: string; status: string }>('/subscriptions?status=in.(active,pending)', 'tenant_id,plan_id,status'),
+      getJson<{ id: string; name: string }>('/plans', 'id,name'),
+    ]);
+    const planNames = new Map((plans ?? []).map((p) => [p.id, p.name]));
+    const currentPlan = new Map((subs ?? []).map((s) => [s.tenant_id, planNames.get(s.plan_id) ?? 'Sem plano']));
+    return reply.send({ users: (rows ?? []).map((u) => ({ ...u, plan_name: currentPlan.get(String(u.tenant_id)) ?? 'Sem plano' })) });
   });
 
   scoped.patch('/api/master/users/:id', async (req, reply) => {
@@ -168,6 +175,70 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     if (!res.ok) return reply.status(502).send({ error: 'user_update_failed', statusCode: 502 });
     const auth = authOf(req);
     await writeAudit({ actor: auth!.userId, action: 'USER_UPDATED', tenantId: auth!.tenantId, targetType: 'app_user', targetIds: [id], details: patch });
+    return reply.send({ ok: true });
+  });
+
+  scoped.post('/api/master/users', async (req, reply) => {
+    const body = (req.body ?? {}) as { email?: unknown; password?: unknown; full_name?: unknown };
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : '';
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) return reply.status(400).send({ error: 'valid_email_required', statusCode: 400 });
+    if (password.length < 8) return reply.status(400).send({ error: 'password_min_8', statusCode: 400 });
+    const res = await fetch(`${serviceBaseUrl()}/auth/v1/admin/users`, {
+      method: 'POST',
+      headers: serviceHeaders(true),
+      body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: fullName } }),
+    });
+    if (!res.ok) {
+      const detail = (await res.text()).slice(0, 300);
+      return reply.status(502).send({ error: 'user_create_failed', detail, statusCode: 502 });
+    }
+    const created = (await res.json()) as { id?: string };
+    const auth = authOf(req);
+    await writeAudit({ actor: auth!.userId, action: 'USER_CREATED', tenantId: auth!.tenantId, targetType: 'app_user', targetIds: created.id ? [created.id] : [], details: { email } });
+    return reply.send({ ok: true, id: created.id });
+  });
+
+  scoped.delete('/api/master/users/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const auth = authOf(req);
+    if (auth?.userId === id) return reply.status(400).send({ error: 'cannot_delete_self', statusCode: 400 });
+    const res = await fetch(`${serviceBaseUrl()}/auth/v1/admin/users/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: serviceHeaders(),
+    });
+    if (!res.ok) return reply.status(502).send({ error: 'user_delete_failed', statusCode: 502 });
+    await writeAudit({ actor: auth!.userId, action: 'USER_DELETED', tenantId: auth!.tenantId, targetType: 'app_user', targetIds: [id] });
+    return reply.send({ ok: true });
+  });
+
+  scoped.post('/api/master/users/:id/plan', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { plan_id?: unknown };
+    const planId = typeof body.plan_id === 'string' ? body.plan_id : '';
+    if (!planId) return reply.status(400).send({ error: 'plan_required', statusCode: 400 });
+    const users = await getJson<{ tenant_id: string }>(`/app_users?id=eq.${encodeURIComponent(id)}`, 'tenant_id');
+    const user = users?.[0];
+    if (!user?.tenant_id) return reply.status(404).send({ error: 'user_not_found', statusCode: 404 });
+    const plans = await getJson<{ id: string; duration_days: number | null }>(`/plans?id=eq.${encodeURIComponent(planId)}`, 'id,duration_days');
+    const plan = plans?.[0];
+    if (!plan) return reply.status(404).send({ error: 'plan_not_found', statusCode: 404 });
+    await fetch(`${serviceBaseUrl()}/rest/v1/subscriptions?tenant_id=eq.${encodeURIComponent(user.tenant_id)}&status=in.(active,pending)`, {
+      method: 'PATCH',
+      headers: serviceHeaders(true),
+      body: JSON.stringify({ status: 'cancelled', updated_at: new Date().toISOString() }),
+    });
+    const start = new Date();
+    const end = plan.duration_days ? new Date(start.getTime() + plan.duration_days * 86_400_000) : null;
+    const created = await fetch(`${serviceBaseUrl()}/rest/v1/subscriptions`, {
+      method: 'POST',
+      headers: { ...serviceHeaders(true), Prefer: 'return=representation' },
+      body: JSON.stringify({ tenant_id: user.tenant_id, plan_id: planId, status: 'active', current_period_start: start.toISOString(), current_period_end: end?.toISOString() ?? null }),
+    });
+    if (!created.ok) return reply.status(502).send({ error: 'plan_assign_failed', statusCode: 502 });
+    const auth = authOf(req);
+    await writeAudit({ actor: auth!.userId, action: 'USER_PLAN_ASSIGNED', tenantId: auth!.tenantId, targetType: 'app_user', targetIds: [id], details: { planId } });
     return reply.send({ ok: true });
   });
 
@@ -240,6 +311,17 @@ if (body.active === true || body.active === false) patch.active = body.active;
 
   scoped.delete('/api/master/plans/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
+    const hard = (req.query as { hard?: string }).hard === 'true';
+    if (hard) {
+      const removed = await fetch(`${serviceBaseUrl()}/rest/v1/plans?id=eq.${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: serviceHeaders(),
+      });
+      if (!removed.ok) return reply.status(409).send({ error: 'plan_has_dependencies', statusCode: 409 });
+      const auth = authOf(req);
+      await writeAudit({ actor: auth!.userId, action: 'PLAN_DELETED', tenantId: auth!.tenantId, targetType: 'plan', targetIds: [id] });
+      return reply.send({ ok: true, deleted: true });
+    }
     const res = await fetch(`${serviceBaseUrl()}/rest/v1/plans?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: serviceHeaders(true),

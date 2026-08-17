@@ -42,6 +42,11 @@ const envSchema = z.object({
     .optional()
     .default('meta/llama-3.1-8b-instruct'),
 
+  CAMPAIGN_AI_MODEL: z
+    .string()
+    .optional()
+    .default('openai/gpt-oss-20b'),
+
   AGENT_MAX_TOKENS: z
     .string()
     .optional()

@@ -293,6 +293,15 @@ export const masterApi = {
   async updateUser(id: string, patch: { role?: string; status?: string }): Promise<void> {
     await api.patch(`/api/master/users/${encodeURIComponent(id)}`, patch)
   },
+  async createUser(input: { email: string; password: string; full_name?: string }): Promise<void> {
+    await api.post('/api/master/users', input)
+  },
+  async deleteUser(id: string): Promise<void> {
+    await api.del(`/api/master/users/${encodeURIComponent(id)}`)
+  },
+  async assignUserPlan(id: string, planId: string): Promise<void> {
+    await api.post(`/api/master/users/${encodeURIComponent(id)}/plan`, { plan_id: planId })
+  },
   async plans(): Promise<MasterPlan[]> {
     const r = await api.get<{ plans: MasterPlan[] }>('/api/master/plans')
     return r.plans ?? []
@@ -303,8 +312,8 @@ export const masterApi = {
   async updatePlan(id: string, patch: Record<string, unknown>): Promise<void> {
     await api.patch(`/api/master/plans/${encodeURIComponent(id)}`, patch)
   },
-  async deletePlan(id: string): Promise<void> {
-    await api.del(`/api/master/plans/${encodeURIComponent(id)}`)
+  async deletePlan(id: string, hard = false): Promise<void> {
+    await api.del(`/api/master/plans/${encodeURIComponent(id)}${hard ? '?hard=true' : ''}`)
   },
   async subscriptions(): Promise<Array<Record<string, unknown>>> {
     const r = await api.get<{ subscriptions: Array<Record<string, unknown>> }>('/api/master/subscriptions')
@@ -495,7 +504,8 @@ export function formatBRL(value: number | null | undefined): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value)
 }
 

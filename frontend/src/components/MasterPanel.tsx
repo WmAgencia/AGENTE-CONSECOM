@@ -303,31 +303,61 @@ function DashboardTab() {
 
 function UsersTab() {
   const [users, setUsers] = useState<Array<Record<string, unknown>>>([])
-  const [msg, setMsg] = useState('')
-  useEffect(() => { masterApi.users().then(setUsers).catch(() => setUsers([])) }, [])
+  const [plans, setPlans] = useState<MasterPlan[]>([])
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [form, setForm] = useState({ email: '', full_name: '', password: '' })
+  const reload = () => masterApi.users().then(setUsers).catch(() => setUsers([]))
+  useEffect(() => { reload(); masterApi.plans().then(setPlans).catch(() => setPlans([])) }, [])
 
   async function setRole(id: string, role: string) {
-    await masterApi.updateUser(id, { role })
-    setMsg('Usuário atualizado')
-    masterApi.users().then(setUsers)
+    try { await masterApi.updateUser(id, { role }); setMsg({ ok: true, text: 'Perfil atualizado.' }); reload() }
+    catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao atualizar usuário.' }) }
   }
   async function setStatus(id: string, status: string) {
-    await masterApi.updateUser(id, { status })
-    setMsg('Status atualizado')
-    masterApi.users().then(setUsers)
+    try { await masterApi.updateUser(id, { status }); setMsg({ ok: true, text: status === 'blocked' ? 'Usuário desativado.' : 'Usuário reativado.' }); reload() }
+    catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao atualizar usuário.' }) }
+  }
+
+  async function createUser(e: React.FormEvent) {
+    e.preventDefault()
+    if (form.password.length < 8) { setMsg({ ok: false, text: 'A senha precisa ter pelo menos 8 caracteres.' }); return }
+    setBusy(true)
+    try { await masterApi.createUser(form); setForm({ email: '', full_name: '', password: '' }); setMsg({ ok: true, text: 'Usuário criado e pronto para acessar.' }); reload() }
+    catch (err) { setMsg({ ok: false, text: err instanceof Error ? err.message : 'Falha ao criar usuário.' }) }
+    finally { setBusy(false) }
+  }
+
+  async function removeUser(id: string) {
+    if (!window.confirm('Excluir este usuário permanentemente? Esta ação não pode ser desfeita.')) return
+    try { await masterApi.deleteUser(id); setMsg({ ok: true, text: 'Usuário excluído.' }); reload() }
+    catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Não foi possível excluir o usuário.' }) }
+  }
+
+  async function assignPlan(id: string, planId: string) {
+    if (!planId) return
+    try { await masterApi.assignUserPlan(id, planId); setMsg({ ok: true, text: 'Plano atribuído com sucesso.' }) }
+    catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao atribuir plano.' }) }
   }
 
   return (
     <Section title="Usuários e tenants">
-      {msg && <p className="text-xs text-emerald-400 mb-2">{msg}</p>}
-      <div className="space-y-2">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
+        <div className="space-y-2">
         {users.map((u) => (
-          <div key={String(u.id)} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-fg/5 px-3 py-2 text-sm">
-            <div className="min-w-0">
-              <div className="truncate">{String(u.email ?? 'sem e-mail')}</div>
-              <div className="text-xs text-muted font-mono break-all">{String(u.tenant_id ?? '')}</div>
+          <div key={String(u.id)} className="rounded-2xl border border-line bg-subtle-2 px-4 py-3 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-semibold truncate">{String(u.full_name || u.email || 'Sem nome')}</div>
+                <div className="text-xs text-muted truncate">{String(u.email ?? 'sem e-mail')}</div>
+                <div className="text-[11px] text-accent-300 mt-1">Plano: {String(u.plan_name ?? 'Sem plano')}</div>
+                <div className="text-[10px] text-faint mt-1">Criado em {u.created_at ? new Date(String(u.created_at)).toLocaleDateString('pt-BR') : '—'}</div>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${u.status === 'active' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}>
+                {u.status === 'active' ? 'Ativo' : 'Desativado'}
+              </span>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <select value={String(u.role ?? 'USER')} onChange={(e) => setRole(String(u.id), e.target.value)} className="input !w-auto !py-1">
                 <option value="USER">Usuário</option>
                 <option value="MASTER">Master</option>
@@ -336,11 +366,28 @@ function UsersTab() {
                 <option value="active">Ativo</option>
                 <option value="blocked">Bloqueado</option>
               </select>
+              <select defaultValue="" onChange={(e) => void assignPlan(String(u.id), e.target.value)} className="input !w-auto !py-1">
+                <option value="">Atribuir plano...</option>
+                {plans.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name} · {formatBRL(p.price)}</option>)}
+              </select>
+              <button onClick={() => void removeUser(String(u.id))} className="ml-auto text-xs font-semibold text-rose-300 hover:text-rose-200">Excluir</button>
             </div>
           </div>
         ))}
         {users.length === 0 && <div className="text-sm text-muted">Nenhum usuário.</div>}
+        </div>
+        <form onSubmit={(e) => void createUser(e)} className="rounded-2xl border border-accent-500/20 bg-accent-500/5 p-4 space-y-3">
+          <div>
+            <div className="font-semibold">Criar novo usuário</div>
+            <div className="text-xs text-muted mt-0.5">A conta é criada confirmada e pode acessar imediatamente.</div>
+          </div>
+          <input required type="text" placeholder="Nome completo" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className={inputCls} />
+          <input required type="email" placeholder="E-mail" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputCls} />
+          <input required type="password" minLength={8} placeholder="Senha inicial (mínimo 8)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inputCls} />
+          <button disabled={busy} className="w-full rounded-xl bg-accent-600 px-3 py-2 text-sm font-semibold text-white hover:bg-accent-500 disabled:opacity-50">{busy ? 'Criando...' : 'Criar usuário'}</button>
+        </form>
       </div>
+      {msg && <p className={`mt-3 text-xs font-semibold ${msg.ok ? 'text-emerald-400' : 'text-rose-300'}`}>{msg.text}</p>}
     </Section>
   )
 }
@@ -355,12 +402,13 @@ function PlansTab() {
   const [editing, setEditing] = useState<string | null>(null)
   const reload = () => masterApi.plans().then(setPlans).catch(() => setPlans([]))
   useEffect(() => { reload() }, [])
+  const parseMoney = (value: string) => Number(value.replace(',', '.')) || 0
 
   async function create() {
     if (!form.name) { setMsg({ ok: false, text: 'Nome é obrigatório.' }); return }
-    await masterApi.createPlan({
+    try { await masterApi.createPlan({
       name: form.name,
-      price: Number(form.price) || 0,
+      price: parseMoney(form.price),
       lead_limit: Number(form.lead_limit) || 0,
       duration_days: form.duration_days === '' ? null : Number(form.duration_days),
       active: form.active,
@@ -368,10 +416,8 @@ function PlansTab() {
       display_order: Number(form.display_order) || 0,
       campaign_equivalence: Number(form.campaign_equivalence) || 0,
       badge_label: form.badge_label || null,
-    })
-    setMsg({ ok: true, text: 'Plano criado.' })
-    setForm({ name: '', price: '', lead_limit: '', duration_days: '', active: true, featured: false, display_order: '', campaign_equivalence: '', badge_label: '' })
-    reload()
+    }); setMsg({ ok: true, text: 'Plano criado.' }); setForm({ name: '', price: '', lead_limit: '', duration_days: '', active: true, featured: false, display_order: '', campaign_equivalence: '', badge_label: '' }); reload()
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao criar plano.' }) }
   }
 
   function startEdit(p: MasterPlan) {
@@ -387,9 +433,9 @@ function PlansTab() {
   }
 
   async function saveEdit(id: string) {
-    await masterApi.updatePlan(id, {
+    try { await masterApi.updatePlan(id, {
       name: form.name || undefined,
-      price: form.price === '' ? undefined : Number(form.price),
+      price: form.price === '' ? undefined : parseMoney(form.price),
       lead_limit: form.lead_limit === '' ? undefined : Number(form.lead_limit),
       duration_days: form.duration_days === '' ? null : Number(form.duration_days),
       active: form.active,
@@ -397,10 +443,8 @@ function PlansTab() {
       display_order: Number(form.display_order) || 0,
       campaign_equivalence: Number(form.campaign_equivalence) || 0,
       badge_label: form.badge_label || null,
-    })
-    setMsg({ ok: true, text: 'Plano atualizado.' })
-    setEditing(null)
-    reload()
+    }); setMsg({ ok: true, text: 'Plano atualizado.' }); setEditing(null); reload()
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao atualizar plano.' }) }
   }
 
   const isEditing = editing !== null
@@ -409,7 +453,7 @@ function PlansTab() {
     <Section title="Planos">
       <div className="grid sm:grid-cols-4 gap-2 mb-2">
         <input placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
-        <input placeholder="Preço (R$)" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} />
+        <input placeholder="Preço (R$)" type="text" inputMode="decimal" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} />
         <input placeholder="Limite de leads" type="number" value={form.lead_limit} onChange={(e) => setForm({ ...form, lead_limit: e.target.value })} className={inputCls} />
         <input placeholder="Duração (dias)" type="number" value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: e.target.value })} className={inputCls} />
       </div>
@@ -448,8 +492,8 @@ function PlansTab() {
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => startEdit(p)} className="text-xs text-accent-300 hover:text-accent-200 transition">Editar</button>
-              <button onClick={() => masterApi.deletePlan(p.id).then(reload)}
-                className="text-xs text-red-400 hover:text-red-300 transition">Desativar</button>
+              {p.active && <button onClick={() => masterApi.deletePlan(p.id).then(reload)} className="text-xs text-amber-300 hover:text-amber-200 transition">Desativar</button>}
+              <button onClick={async () => { if (!window.confirm(`Excluir o plano ${p.name} permanentemente?`)) return; try { await masterApi.deletePlan(p.id, true); reload() } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'O plano possui vínculos e não pode ser excluído.' }) } }} className="text-xs text-red-400 hover:text-red-300 transition">Excluir</button>
             </div>
           </div>
         ))}

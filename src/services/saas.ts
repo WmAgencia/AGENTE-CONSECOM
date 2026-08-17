@@ -125,12 +125,24 @@ async function first<T>(path: string): Promise<T | null> {
 
 export async function listPlans(activeOnly = true): Promise<Plan[]> {
   const suffix = activeOnly ? '&active=eq.true' : '';
+  const unique = (plans: Plan[]): Plan[] => {
+    if (!activeOnly) return plans;
+    const seen = new Set<string>();
+    return plans.filter((plan) => {
+      const key = (plan.name || plan.slug).trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
   // Ordena por display_order quando a migration v31 já foi aplicada; cai para
   // price.asc quando a coluna ainda não existe (schema antigo).
   const ordered = await get<Plan[]>(`/plans?select=*&order=display_order.asc,price.asc${suffix}`);
-  if (ordered) return ordered;
+  if (ordered) {
+    return unique(ordered);
+  }
   const plain = await get<Plan[]>(`/plans?select=*&order=price.asc${suffix}`);
-  return plain ?? [];
+  return unique(plain ?? []);
 }
 
 export async function getPlan(planId: string): Promise<Plan | null> {

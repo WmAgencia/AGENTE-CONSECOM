@@ -41,7 +41,7 @@ const VARIABLE_ALIASES: Record<string, Field[]> = {
 
 export const SUPPORTED_VARIABLES: Array<{ token: string; label: string; description: string }> = [
   { token: 'empresa', label: 'Empresa', description: 'Nome da empresa/negócio' },
-  { token: 'nome', label: 'Nome', description: 'Nome do responsável, quando disponível' },
+  { token: 'nome', label: 'Nome inteligente', description: 'Agente IA identifica o primeiro nome ou nome comercial correto por lead' },
   { token: 'cidade', label: 'Cidade', description: 'Cidade do lead' },
   { token: 'estado', label: 'Estado', description: 'Estado do lead' },
   { token: 'categoria', label: 'Categoria', description: 'Categoria/segmento do negócio' },
