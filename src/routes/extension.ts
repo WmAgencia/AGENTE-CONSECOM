@@ -25,10 +25,10 @@ import { getImportQuota, recordCredit } from '../services/saas.js';
 import { z } from 'zod';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
-const VERSION = '1.15.0';
+const VERSION = '1.16.0';
 
 const DEFAULT_BASE_ZIP_URL =
-  'https://frontend-seven-sooty-78.vercel.app/downloads/consecom-extension.zip';
+  'https://frontend-seven-sooty-78.vercel.app/downloads/consecom-extension.zip?v=1.16.0';
 
 /** Se EXTENSION_API_KEY não estiver setada, usa este valor (dev/autoconfig). */
 const DEFAULT_EXTENSION_KEY = 'consecom-extension-v1';

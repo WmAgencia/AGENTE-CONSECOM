@@ -249,11 +249,12 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
   }
 
   return (
-    <div className="h-full overflow-auto px-6 py-5">
+    <div className="dashboard-shell h-full overflow-auto px-6 py-5">
       <div className="flex items-start justify-between gap-3 flex-wrap mb-6">
         <div>
-          <h1 className="text-lg font-semibold">Metas e Inteligência Comercial</h1>
-          <p className="text-sm text-muted">Projeção vs resultados reais — tudo com dados reais, sem estimativas fictícias</p>
+          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-accent-700">Centro de controle <span className="h-1 w-1 rounded-full bg-accent-500" /> Operação</div>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight">Visão comercial</h1>
+          <p className="text-sm text-muted">Indicadores essenciais para decidir o próximo movimento da equipe.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => void load()} icon={<RefreshCw size={14}/>}>Atualizar</Button>

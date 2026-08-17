@@ -8,7 +8,7 @@ export function Card({ title, subtitle, children, className, actions }: {
   actions?: ReactNode
 }) {
   return (
-    <div className={`rounded-2xl border border-line bg-panel p-5 shadow-1 transition-shadow duration-200 hover:shadow-2 ${className ?? ''}`}>
+    <div className={`bi-card rounded-2xl border border-line bg-panel p-5 shadow-1 transition-shadow duration-200 hover:shadow-2 ${className ?? ''}`}>
       {(title || actions) && (
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>

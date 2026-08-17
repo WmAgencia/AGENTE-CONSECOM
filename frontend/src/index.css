@@ -300,6 +300,35 @@ body {
   animation: shimmer 1.8s linear infinite;
 }
 
+/* Camada visual comum aos dashboards: hierarquia, densidade e leitura de BI. */
+.dashboard-shell {
+  background:
+    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--c-accent-500) 8%, transparent), transparent 28rem),
+    var(--c-app);
+}
+.dashboard-shell .bi-card,
+.dashboard-shell .bi-kpi,
+.dashboard-shell .bi-section {
+  border-color: color-mix(in srgb, var(--c-line-strong) 58%, transparent);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.035);
+}
+.dashboard-shell .bi-kpi {
+  position: relative;
+  overflow: hidden;
+}
+.dashboard-shell .bi-kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--c-accent-700), var(--c-accent-400));
+}
+.dashboard-shell .bi-card:hover,
+.dashboard-shell .bi-kpi:hover,
+.dashboard-shell .bi-section:hover {
+  border-color: color-mix(in srgb, var(--c-accent-500) 30%, var(--c-line));
+}
+
 /* ── Botões premium: gradiente, glow e light-sweep ────────── */
 @keyframes lightSweep {
   0% { transform: translateX(-130%) skewX(-18deg); }

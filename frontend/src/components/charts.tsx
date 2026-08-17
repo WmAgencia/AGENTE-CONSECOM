@@ -241,7 +241,7 @@ export function KpiCard({ label, value, hint, icon, trend, spark, accent }: {
 }) {
   const acc = accent ?? 'var(--c-accent-500)'
   return (
-    <div className="rounded-2xl border border-line bg-panel p-4 shadow-1 transition-shadow duration-200 hover:shadow-2">
+    <div className="bi-kpi rounded-2xl border border-line bg-panel p-4 shadow-1 transition-shadow duration-200 hover:shadow-2">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] text-muted uppercase tracking-wide font-medium">{label}</div>
         {icon && (

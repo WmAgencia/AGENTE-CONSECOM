@@ -22,7 +22,7 @@ const TABS: { key: TabKey; label: string }[] = [
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-line bg-subtle p-5">
+    <section className="bi-section rounded-2xl border border-line bg-panel p-5 shadow-1">
       <h2 className="text-sm font-semibold mb-3">{title}</h2>
       {children}
     </section>
@@ -125,7 +125,7 @@ export function MasterPanel({ onBack }: { onBack?: () => void }) {
   const [tab, setTab] = useState<TabKey>('dashboard')
 
   return (
-    <div className="h-full overflow-auto">
+    <div className="dashboard-shell h-full overflow-auto">
       <div className="max-w-6xl mx-auto p-6 space-y-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
@@ -138,8 +138,9 @@ export function MasterPanel({ onBack }: { onBack?: () => void }) {
               </button>
             )}
             <div>
-              <h1 className="text-xl font-semibold">Painel Master</h1>
-              <p className="text-xs text-muted">Gestão de usuários, planos, pagamentos e configurações</p>
+               <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-accent-700">Centro de controle <span className="text-muted">/ Administração</span></div>
+               <h1 className="mt-1 text-2xl font-bold tracking-tight">Painel Master</h1>
+               <p className="text-sm text-muted">Saúde da plataforma, receita e riscos em uma única visão operacional.</p>
             </div>
           </div>
           <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-300">Administração</span>
