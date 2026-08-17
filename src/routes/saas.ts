@@ -172,9 +172,13 @@ export function registerSaaSRoutes(app: FastifyInstance): void {
     const created = await fetch(`${sup.url.replace(/\/$/, '')}/auth/v1/admin/users`, { method: 'POST', headers: serviceHeaders(true), body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name, cpf } }) });
     if (!created.ok) return reply.status(400).send({ error: 'account_create_failed', message: 'Não foi possível criar a conta. Verifique se o e-mail já está cadastrado.', statusCode: 400 });
     const authUser = (await created.json()) as { id?: string };
-    const appUserRes = await fetch(`${sup.url.replace(/\/$/, '')}/rest/v1/app_users?select=tenant_id&id=eq.${encodeURIComponent(authUser.id ?? '')}&limit=1`, { headers: serviceHeaders() });
-    const appUsers = (await appUserRes.json()) as Array<{ tenant_id: string }>;
-    const tenantId = appUsers[0]?.tenant_id;
+    let tenantId: string | undefined;
+    for (let attempt = 0; attempt < 5 && !tenantId; attempt++) {
+      const appUserRes = await fetch(`${sup.url.replace(/\/$/, '')}/rest/v1/app_users?select=tenant_id&id=eq.${encodeURIComponent(authUser.id ?? '')}&limit=1`, { headers: serviceHeaders() });
+      const appUsers = (await appUserRes.json()) as Array<{ tenant_id: string }>;
+      tenantId = appUsers[0]?.tenant_id;
+      if (!tenantId) await new Promise((resolve) => setTimeout(resolve, 200));
+    }
     if (!tenantId) return reply.status(502).send({ error: 'account_profile_failed', statusCode: 502 });
     let discountAmount = 0;
     const couponCode = typeof body.couponCode === 'string' ? body.couponCode.trim() : '';
