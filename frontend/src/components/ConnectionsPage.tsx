@@ -226,12 +226,14 @@ const data = await r.json()
   async function saveDisplayName(c: Conn) {
     const value = displayNameDrafts[c.id] ?? c.display_name ?? ''
     const displayName = value.trim() || null
-    const { error } = await supabase
-      .from('whatsapp_connections')
-      .update({ display_name: displayName })
-      .eq('id', c.id)
-    if (error) {
-      window.alert('Não foi possível salvar o nome desta conexão.')
+    const r = await fetch(`${API}/api/connections/whatsapp`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': sessionUser },
+      body: JSON.stringify({ id: c.id, display_name: displayName }),
+    })
+    if (!r.ok) {
+      const detail = await r.json().catch(() => ({})) as { error?: string }
+      window.alert(detail.error ?? 'Não foi possível salvar o nome desta conexão.')
       return
     }
     setConns((items) => items.map((item) => item.id === c.id ? { ...item, display_name: displayName } : item))

@@ -24,6 +24,7 @@ import {
   fetchUserGroups,
   sendTestMessage,
   getWorkspaceAndUser,
+  updateConnectionDisplayName,
   type ConnectionTarget,
 } from '../services/evolution.connections.js';
 
@@ -110,6 +111,17 @@ export function registerConnectionsRoutes(app: FastifyInstance): void {
       return reply.status(502).send({ error: result.error ?? 'disconnect_failed' });
     }
     return reply.send({ ok: true, connection: result.connection });
+  });
+
+  app.patch('/api/connections/whatsapp', async (req, reply) => {
+    const { identifier } = auth(req);
+    if (!identifier) return reply.status(401).send({ error: 'unauthorized' });
+    const body = (req.body ?? {}) as { id?: unknown; display_name?: unknown };
+    if (typeof body.id !== 'string' || !body.id) return reply.status(400).send({ error: 'connection_id_required' });
+    const name = typeof body.display_name === 'string' ? body.display_name.trim().slice(0, 80) : '';
+    const connection = await updateConnectionDisplayName(identifier, body.id, name || null);
+    if (!connection) return reply.status(404).send({ error: 'connection_not_found_or_update_failed' });
+    return reply.send({ ok: true, connection });
   });
 
   app.get('/api/connections/whatsapp/groups', async (req, reply) => {

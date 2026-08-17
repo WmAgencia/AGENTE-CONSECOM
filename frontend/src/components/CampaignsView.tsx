@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Badge } from './ui'
 import { supabase, type Campaign, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
 import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDateTime } from '../lib/month'
 import { subscribeConnectionAlerts } from '../lib/connectionAlerts'
+
+const CONNECTIONS_API = (import.meta.env.VITE_BACKEND_URL as string | undefined) ?? 'https://consecom-backend-production.up.railway.app'
 
 /** Seções de campanhas: em andamento no topo, agendadas no meio, finalizadas embaixo. */
 const SECTIONS: Array<{ key: string; title: string; statuses: Campaign['status'][] }> = [
@@ -53,6 +55,7 @@ export function CampaignsView() {
   const [dragOver, setDragOver] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [sessionUser, setSessionUser] = useState('')
 
   useEffect(() => {
     campaignSchedule.getConfig().then((r) => setScheduleConfig(r.config)).catch(() => {})
@@ -149,18 +152,21 @@ export function CampaignsView() {
     setLoading(false)
   }
 
-  async function loadConnections() {
-    const { data, error } = await supabase
-      .from('whatsapp_connections')
-      .select('*')
-      .order('created_at')
-    if (error || !data) return
-    setConnections(data as WhatsAppConnection[])
-  }
+  const loadConnections = useCallback(async () => {
+    const { data } = await supabase.auth.getUser()
+    const userId = data.user?.id ?? sessionUser
+    if (!userId) return
+    setSessionUser(userId)
+    const r = await fetch(`${CONNECTIONS_API}/api/connections/whatsapp`, { headers: { 'x-user-id': userId } })
+    if (!r.ok) return
+    const payload = await r.json() as { connections?: WhatsAppConnection[]; connection?: WhatsAppConnection }
+    const rows = payload.connections?.length ? payload.connections : payload.connection ? [payload.connection] : []
+    setConnections(rows)
+  }, [sessionUser])
 
   useEffect(() => {
     void loadConnections()
-  }, [])
+  }, [loadConnections])
 
   // Alerta sonoro quando uma conexão cai (config centralizada em lib/connectionAlerts).
   useEffect(() => {

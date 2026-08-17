@@ -455,6 +455,19 @@ export async function fetchConnectionById(id: string): Promise<WhatsAppConnectio
   }
 }
 
+export async function updateConnectionDisplayName(identifier: string, id: string, displayName: string | null): Promise<WhatsAppConnection | null> {
+  const current = await fetchConnectionById(id);
+  if (!current || (current.user_id !== identifier && current.workspace_id !== identifier)) return null;
+  const res = await fetch(`${supUrl()}/rest/v1/whatsapp_connections?id=eq.${encodeURIComponent(id)}&select=*`, {
+    method: 'PATCH',
+    headers: { ...supHeaders(), Prefer: 'return=representation', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ display_name: displayName, updated_at: new Date().toISOString() }),
+  });
+  if (!res.ok) return null;
+  const rows = (await res.json()) as WhatsAppConnection[];
+  return rows[0] ?? { ...current, display_name: displayName };
+}
+
 /** Apaga DEFINITIVAMENTE uma instância da Evolution API (rotas usadas para
  *  rotação: ao trocar a instância, a antiga é removida para não acumular
  *  instâncias "mortas" no servidor). Best-effort: falha não é fatal. */
