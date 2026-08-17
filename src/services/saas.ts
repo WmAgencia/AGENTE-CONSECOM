@@ -252,8 +252,13 @@ export async function getAcquiredLeads(tenantId: string): Promise<number> {
 
 /** Saldo real do tenant: adquiridos - consumidos. */
 export async function getLeadsBalance(tenantId: string): Promise<LeadsBalance> {
-  const acquired = await getAcquiredLeads(tenantId);
+  const activeSub = await getActiveSubscription(tenantId);
+  const activePlan = activeSub ? await getPlan(activeSub.plan_id) : null;
   const used = await countConsumedLeads(tenantId);
+  if (activePlan && activePlan.lead_limit === 0) {
+    return { acquired: 0, used, available: 0, limited: false };
+  }
+  const acquired = await getAcquiredLeads(tenantId);
   return {
     acquired,
     used,

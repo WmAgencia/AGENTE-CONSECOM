@@ -310,6 +310,9 @@ function UsersTab() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [customUser, setCustomUser] = useState<Record<string, unknown> | null>(null)
+  const [customBusy, setCustomBusy] = useState(false)
+  const [customForm, setCustomForm] = useState({ name: 'Plano personalizado', lead_limit: '10000', unlimited: false })
   const [form, setForm] = useState({ email: '', full_name: '', password: '' })
   const reload = () => masterApi.users().then(setUsers).catch(() => setUsers([]))
   useEffect(() => { reload(); masterApi.plans().then(setPlans).catch(() => setPlans([])) }, [])
@@ -344,6 +347,18 @@ function UsersTab() {
     catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao atribuir plano.' }) }
   }
 
+  async function saveCustomPlan() {
+    if (!customUser) return
+    setCustomBusy(true)
+    try {
+      await masterApi.createCustomUserPlan(String(customUser.id), { name: customForm.name, lead_limit: Number(customForm.lead_limit) || 0, unlimited: customForm.unlimited })
+      setMsg({ ok: true, text: 'Plano personalizado atribuído. A extensão já pode atualizar a cota.' })
+      setCustomUser(null)
+      reload()
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao salvar plano personalizado.' }) }
+    finally { setCustomBusy(false) }
+  }
+
   return (
     <Section title="Usuários e tenants" actions={<Button size="sm" onClick={() => setCreateOpen(true)}>+ Adicionar usuário</Button>}>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
@@ -374,6 +389,7 @@ function UsersTab() {
                 <option value="">Atribuir plano...</option>
                 {plans.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name} · {formatBRL(p.price)}</option>)}
               </select>
+              <button onClick={() => setCustomUser(u)} className="text-xs font-semibold text-accent-300 hover:text-accent-200">Personalizar</button>
               <button onClick={() => void removeUser(String(u.id))} className="ml-auto text-xs font-semibold text-rose-300 hover:text-rose-200">Excluir</button>
             </div>
           </div>
@@ -387,6 +403,14 @@ function UsersTab() {
           <input required type="text" placeholder="Nome completo" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className={inputCls} />
           <input required type="email" placeholder="E-mail" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputCls} />
           <input required type="password" minLength={8} placeholder="Senha inicial (mínimo 8)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inputCls} />
+        </div>
+      </Modal>
+      <Modal open={!!customUser} onClose={() => { if (!customBusy) setCustomUser(null) }} title="Plano personalizado" subtitle={customUser ? `Configuração exclusiva para ${String(customUser.email ?? 'este usuário')}.` : ''} size="sm" footer={<><Button variant="secondary" onClick={() => setCustomUser(null)}>Cancelar</Button><Button onClick={() => void saveCustomPlan()} loading={customBusy}>Salvar plano</Button></>}>
+        <div className="space-y-3">
+          <input value={customForm.name} onChange={(e) => setCustomForm({ ...customForm, name: e.target.value })} placeholder="Nome do plano" className={inputCls} />
+          <label className="block text-xs text-muted">Limite de leads<input disabled={customForm.unlimited} value={customForm.lead_limit} onChange={(e) => setCustomForm({ ...customForm, lead_limit: e.target.value })} type="number" min={1} className={`${inputCls} mt-1`} /></label>
+          <label className="flex items-center gap-2 text-sm text-secondary"><input type="checkbox" checked={customForm.unlimited} onChange={(e) => setCustomForm({ ...customForm, unlimited: e.target.checked })} /> Leads ilimitados</label>
+          <p className="text-xs text-muted">Ilimitado ignora o saldo de créditos e não bloqueia a extensão por quantidade de leads.</p>
         </div>
       </Modal>
     </Section>

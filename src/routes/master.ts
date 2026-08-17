@@ -33,6 +33,7 @@ import {
   writeAudit,
 } from '../services/saas.auth.js';
 import { buildGateway } from '../services/payment.gateway.js';
+import { getAcquiredLeads, recordCredit } from '../services/saas.js';
 
 async function getJson<T>(path: string, select: string): Promise<T[] | null> {
   const separator = path.includes('?') ? '&' : '?';
@@ -240,6 +241,41 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     const auth = authOf(req);
     await writeAudit({ actor: auth!.userId, action: 'USER_PLAN_ASSIGNED', tenantId: auth!.tenantId, targetType: 'app_user', targetIds: [id], details: { planId } });
     return reply.send({ ok: true });
+  });
+
+  scoped.post('/api/master/users/:id/custom-plan', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { name?: unknown; lead_limit?: unknown; unlimited?: unknown };
+    const users = await getJson<{ tenant_id: string; email: string }>(`/app_users?id=eq.${encodeURIComponent(id)}`, 'tenant_id,email');
+    const user = users?.[0];
+    if (!user?.tenant_id) return reply.status(404).send({ error: 'user_not_found', statusCode: 404 });
+    const unlimited = body.unlimited === true;
+    const limit = unlimited ? 0 : Number(body.lead_limit);
+    if (!unlimited && (!Number.isInteger(limit) || limit < 1)) return reply.status(400).send({ error: 'valid_lead_limit_required', statusCode: 400 });
+    const baseName = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 80) : `Personalizado - ${user.email}`;
+    const slug = `personalizado-${id}`;
+    const existing = await getJson<{ id: string }>(`/plans?slug=eq.${encodeURIComponent(slug)}`, 'id');
+    let planId = existing?.[0]?.id;
+    const planPayload = { name: baseName, slug, description: unlimited ? 'Plano personalizado ilimitado.' : `Plano personalizado com ${limit} leads.`, price: 0, currency: 'BRL', lead_limit: unlimited ? 0 : limit, duration_days: null, billing_type: 'one_time', active: true, features: [unlimited ? 'Leads ilimitados' : `${limit} leads`, 'Plano personalizado'], featured: false, display_order: 9999, campaign_equivalence: 999, badge_label: 'PERSONALIZADO' };
+    if (planId) {
+      await fetch(`${serviceBaseUrl()}/rest/v1/plans?id=eq.${encodeURIComponent(planId)}`, { method: 'PATCH', headers: serviceHeaders(true), body: JSON.stringify({ ...planPayload, updated_at: new Date().toISOString() }) });
+    } else {
+      const created = await fetch(`${serviceBaseUrl()}/rest/v1/plans?select=id`, { method: 'POST', headers: { ...serviceHeaders(true), Prefer: 'return=representation' }, body: JSON.stringify(planPayload) });
+      if (!created.ok) return reply.status(502).send({ error: 'custom_plan_create_failed', statusCode: 502 });
+      planId = ((await created.json()) as Array<{ id: string }>)[0]?.id;
+    }
+    if (!planId) return reply.status(502).send({ error: 'custom_plan_id_missing', statusCode: 502 });
+    await fetch(`${serviceBaseUrl()}/rest/v1/subscriptions?tenant_id=eq.${encodeURIComponent(user.tenant_id)}&status=in.(active,pending,past_due)`, { method: 'PATCH', headers: serviceHeaders(true), body: JSON.stringify({ status: 'cancelled', updated_at: new Date().toISOString() }) });
+    const sub = await fetch(`${serviceBaseUrl()}/rest/v1/subscriptions`, { method: 'POST', headers: { ...serviceHeaders(true), Prefer: 'return=representation' }, body: JSON.stringify({ tenant_id: user.tenant_id, plan_id: planId, status: 'active', current_period_start: new Date().toISOString(), current_period_end: null }) });
+    if (!sub.ok) return reply.status(502).send({ error: 'custom_plan_assign_failed', statusCode: 502 });
+    if (!unlimited) {
+      const acquired = await getAcquiredLeads(user.tenant_id);
+      const delta = limit - acquired;
+      if (delta !== 0) await recordCredit({ tenantId: user.tenant_id, kind: 'adjustment', delta, planId, note: `Ajuste de plano personalizado (${limit} leads)` });
+    }
+    const auth = authOf(req);
+    await writeAudit({ actor: auth!.userId, action: 'USER_CUSTOM_PLAN_ASSIGNED', tenantId: auth!.tenantId, targetType: 'app_user', targetIds: [id], details: { planId, unlimited, limit } });
+    return reply.send({ ok: true, planId, unlimited, limit });
   });
 
   // ---- Planos ----

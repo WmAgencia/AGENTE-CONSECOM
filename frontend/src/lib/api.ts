@@ -318,6 +318,9 @@ export const masterApi = {
   async assignUserPlan(id: string, planId: string): Promise<void> {
     await api.post(`/api/master/users/${encodeURIComponent(id)}/plan`, { plan_id: planId })
   },
+  async createCustomUserPlan(id: string, input: { name: string; lead_limit?: number; unlimited: boolean }): Promise<void> {
+    await api.post(`/api/master/users/${encodeURIComponent(id)}/custom-plan`, input)
+  },
   async plans(): Promise<MasterPlan[]> {
     const r = await api.get<{ plans: MasterPlan[] }>('/api/master/plans')
     return r.plans ?? []
