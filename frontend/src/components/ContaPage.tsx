@@ -1,12 +1,27 @@
 import { useEffect, useState } from 'react'
-import { LogOut } from 'lucide-react'
+import { LogOut, Zap, ShoppingCart, ArrowDownToLine, History, ShieldCheck, Sparkles } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { saasApi, authUpdateUsername, formatBRL, type SaasMe, type SaasPlan } from '../lib/api'
-import { Button, Input } from './ui'
+import {
+  saasApi,
+  authUpdateUsername,
+  type SaasMe,
+  type CreditTransaction,
+} from '../lib/api'
+import { Button } from './ui'
+import { LeadsWidget } from './LeadsWidget'
+import { useNavigate } from 'react-router-dom'
+
+const KIND_META: Record<CreditTransaction['kind'], { label: string; cls: string }> = {
+  purchase: { label: 'Compra', cls: 'text-emerald-400' },
+  trial: { label: 'Plano TESTE', cls: 'text-accent-300' },
+  consumption: { label: 'Consumo', cls: 'text-amber-400' },
+  refund: { label: 'Reembolso', cls: 'text-sky-400' },
+  adjustment: { label: 'Ajuste', cls: 'text-faint' },
+}
 
 export function ContaPage() {
+  const navigate = useNavigate()
   const [me, setMe] = useState<SaasMe | null>(null)
-  const [plans, setPlans] = useState<SaasPlan[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -22,18 +37,15 @@ export function ContaPage() {
   const [pwdMsg, setPwdMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [pwdBusy, setPwdBusy] = useState(false)
 
-  // Checkout
-  const [coupon, setCoupon] = useState('')
-  const [buyBusy, setBuyBusy] = useState(false)
-  const [buyMsg, setBuyMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const [couponInfo, setCouponInfo] = useState<{ total?: number; discountAmount?: number } | null>(null)
+  // Plano TESTE
+  const [trialBusy, setTrialBusy] = useState(false)
+  const [trialMsg, setTrialMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
     ;(async () => {
       try {
-        const [m, p] = await Promise.all([saasApi.me(), saasApi.plans()])
+        const m = await saasApi.me()
         setMe(m)
-        setPlans(p)
         setUsername(m.user.username ?? '')
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Falha ao carregar a conta')
@@ -87,33 +99,19 @@ export function ContaPage() {
     }
   }
 
-  async function validateCouponFor(plan: SaasPlan) {
-    if (!coupon.trim()) { setCouponInfo(null); return }
+  async function activateTrial() {
+    setTrialMsg(null)
+    setTrialBusy(true)
     try {
-      const r = await saasApi.validateCoupon(coupon, plan.id)
-      if (r.ok) setCouponInfo({ total: r.total, discountAmount: r.discountAmount })
-      else setCouponInfo(null)
-    } catch {
-      setCouponInfo(null)
-    }
-  }
-
-  async function buy(plan: SaasPlan) {
-    setBuyMsg(null)
-    setBuyBusy(true)
-    try {
-      const r = await saasApi.checkout(plan.id, coupon.trim() || undefined, window.location.href)
-      if (r.checkoutUrl) {
-        window.location.href = r.checkoutUrl
-        return
-      }
-      setBuyMsg({ ok: true, text: 'Pagamento processado (modo teste). Assinatura ativada!' })
+      const deviceId = localStorage.getItem('vyntra-device-id')
+      await saasApi.redeemTrial(deviceId ?? undefined)
       const m = await saasApi.me()
       setMe(m)
+      setTrialMsg({ ok: true, text: 'Plano TESTE ativado! Seus 250 leads de teste já estão disponíveis.' })
     } catch (e) {
-      setBuyMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha no checkout.' })
+      setTrialMsg({ ok: false, text: e instanceof Error ? e.message : 'Não foi possível ativar o TESTE.' })
     } finally {
-      setBuyBusy(false)
+      setTrialBusy(false)
     }
   }
 
@@ -122,7 +120,7 @@ export function ContaPage() {
   if (!me) return <div className="h-full flex items-center justify-center text-muted">Sua conta não pôde ser carregada.</div>
 
   const plan = me.plan
-  const usedPct = me.usage.lead_limit > 0 ? Math.min(100, Math.round((me.usage.leads_used / me.usage.lead_limit) * 100)) : 0
+  const isTrial = plan?.slug === 'teste'
 
   return (
     <div className="h-full overflow-auto">
@@ -139,7 +137,88 @@ export function ContaPage() {
           </button>
         </div>
 
-        {/* Perfil + plano */}
+        {/* Plano + saldo em tempo real */}
+        <section className="rounded-xl border border-line bg-subtle p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Plano atual</h2>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-accent-600/20 text-accent-300">
+              {plan ? plan.name : 'Sem plano'}
+            </span>
+          </div>
+
+          <LeadsWidget onBuy={() => navigate('/planos')} />
+
+          {plan ? (
+            <div className="text-sm text-muted flex items-center gap-2">
+              <Zap className="w-4 h-4 text-accent-400" />
+              {plan.description ?? plan.name}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted">Você ainda não tem um plano ativo.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => navigate('/planos')} icon={<ShoppingCart className="w-4 h-4" />}>
+                  Ver planos
+                </Button>
+                {!me.trialUsed && !isTrial && (
+                  <Button variant="outline" onClick={activateTrial} loading={trialBusy} icon={<Sparkles className="w-4 h-4" />}>
+                    {trialBusy ? 'Ativando…' : 'Ativar plano TESTE grátis'}
+                  </Button>
+                )}
+              </div>
+              {trialMsg && <p className={`text-xs ${trialMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{trialMsg.text}</p>}
+              {me.trialUsed && !isTrial && (
+                <p className="text-xs text-faint flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Você já utilizou o plano TESTE desta conta.
+                </p>
+              )}
+            </div>
+          )}
+
+          {plan && plan.slug !== 'teste' && !me.trialUsed && (
+            <Button variant="outline" size="sm" onClick={activateTrial} loading={trialBusy}>
+              {trialBusy ? 'Ativando…' : 'Ativar plano TESTE'}
+            </Button>
+          )}
+        </section>
+
+        {/* Histórico de compras e consumo */}
+        <section className="rounded-xl border border-line bg-subtle p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-faint" />
+            <h2 className="text-sm font-semibold">Movimentações de leads</h2>
+          </div>
+          {me.ledger && me.ledger.length > 0 ? (
+            <div className="divide-y divide-line">
+              {me.ledger.map((t) => {
+                const meta = KIND_META[t.kind]
+                const d = t.delta > 0 ? `+${t.delta}` : String(t.delta)
+                return (
+                  <div key={t.id} className="flex items-center justify-between py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <span className={`font-semibold ${meta.cls}`}>{meta.label}</span>
+                      <span className="text-xs text-faint ml-2">{t.note ?? ''}</span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`font-mono font-bold ${t.delta > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>{d} leads</span>
+                      <span className="text-[11px] text-faint w-20 text-right">
+                        {new Date(t.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-sm text-muted flex items-center gap-2">
+              <ArrowDownToLine className="w-4 h-4 text-faint" />
+              Nenhuma movimentação ainda. {plan ? 'Importe leads pela extensão para ver o consumo aqui.' : 'Escolha um plano para começar.'}
+            </div>
+          )}
+        </section>
+
+        {/* Perfil */}
         <section className="rounded-xl border border-line bg-subtle p-5">
           <h2 className="text-sm font-semibold mb-3">Perfil</h2>
           <div className="grid sm:grid-cols-2 gap-3 text-sm">
@@ -168,33 +247,6 @@ export function ContaPage() {
           </div>
         </section>
 
-        {/* Plano atual + uso */}
-        <section className="rounded-xl border border-line bg-subtle p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Plano atual</h2>
-<span className="text-xs px-2 py-0.5 rounded-full bg-accent-600/20 text-accent-300">
-            {plan ? plan.name : 'Sem plano'}
-          </span>
-          </div>
-          {plan ? (
-            <>
-              <p className="text-sm text-muted mb-3">{plan.description ?? plan.name}</p>
-              <div className="flex justify-between text-xs text-muted mb-1">
-                <span>{me.usage.leads_used} de {me.usage.lead_limit} leads usados</span>
-                <span>{usedPct}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-subtle-2 overflow-hidden">
-                <div className="h-full bg-accent-500 transition-all" style={{ width: `${usedPct}%` }} />
-              </div>
-              {me.usage.leads_remaining <= 0 && me.usage.lead_limit > 0 && (
-                <p className="text-xs text-red-400 mt-2">Você atingiu o limite de leads do plano. Assine um novo plano para continuar.</p>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-muted">Você ainda não tem um plano ativo.</p>
-          )}
-        </section>
-
         {/* Segurança */}
         <section className="rounded-xl border border-line bg-subtle p-5 space-y-3">
           <h2 className="text-sm font-semibold">Segurança</h2>
@@ -210,47 +262,6 @@ export function ContaPage() {
           <Button onClick={changePassword} loading={pwdBusy}>
             {pwdBusy ? 'Alterando…' : 'Alterar senha'}
           </Button>
-        </section>
-
-        {/* Planos */}
-        <section className="rounded-xl border border-line bg-subtle p-5">
-          <h2 className="text-sm font-semibold mb-3">Planos disponíveis</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {plans.map((p) => (
-              <div key={p.id} className="rounded-lg border border-line bg-fg/5 p-4 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold">{p.name}</span>
-                  <span className="text-sm text-accent-300">{formatBRL(p.price)}</span>
-                </div>
-                {p.description && <p className="text-xs text-muted">{p.description}</p>}
-                <p className="text-xs text-muted">{p.lead_limit} leads</p>
-                {p.lead_limit > 0 && (
-                  <Button onClick={() => buy(p)} loading={buyBusy} size="sm" className="mt-1">
-                  {buyBusy ? 'Processando…' : plan?.id === p.id ? 'Ativo' : 'Assinar'}
-                </Button>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 flex items-center gap-2">
-            <Input
-              placeholder="Cupom de desconto"
-              value={coupon}
-              onChange={(e) => setCoupon(e.target.value)}
-              className="max-w-xs"
-            />
-            {plans[0] && (
-              <Button onClick={() => validateCouponFor(plans[0])} size="sm">
-                Validar
-              </Button>
-            )}
-          </div>
-          {couponInfo && (
-            <p className="text-xs text-emerald-400 mt-2">
-              Desconto aplicado: {formatBRL(couponInfo.discountAmount ?? 0)} · Total: {formatBRL(couponInfo.total ?? 0)}
-            </p>
-          )}
-          {buyMsg && <p className={`text-xs mt-2 ${buyMsg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{buyMsg.text}</p>}
         </section>
       </div>
     </div>

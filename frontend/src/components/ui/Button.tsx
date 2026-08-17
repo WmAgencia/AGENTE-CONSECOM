@@ -1,13 +1,14 @@
 import { forwardRef } from 'react'
 
-type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'
+type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'gradient'
 type Size = 'sm' | 'md' | 'lg'
 
 const base =
-  'inline-flex items-center justify-center rounded-xl font-medium transition-all duration-200 focus-visible:shadow-glow disabled:opacity-50 disabled:pointer-events-none select-none'
+  'inline-flex items-center justify-center rounded-xl font-medium transition-all duration-200 focus-visible:shadow-glow disabled:opacity-50 disabled:pointer-events-none disabled:shadow-none select-none'
 
 const variants: Record<Variant, string> = {
-  primary: 'bg-accent-600 text-white hover:bg-accent-500 active:bg-accent-700 shadow-2 hover:shadow-3',
+  primary: 'bg-accent-600 text-white hover:bg-accent-500 active:bg-accent-700 shadow-2 hover:shadow-3 btn-sweep',
+  gradient: 'btn-gradient btn-sweep btn-glow text-white active:translate-y-px',
   secondary: 'bg-subtle-2 text-fg hover:bg-subtle border border-line',
   outline: 'border border-line-2 text-secondary hover:border-faint hover:bg-subtle',
   ghost: 'text-secondary hover:bg-subtle hover:text-fg',
@@ -24,17 +25,18 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant
   size?: Size
   loading?: boolean
+  glow?: boolean
   icon?: React.ReactNode
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'primary', size = 'md', loading, icon, children, className, disabled, ...rest }, ref) => {
+  ({ variant = 'primary', size = 'md', loading, glow, icon, children, className, disabled, ...rest }, ref) => {
     const isIconOnly = !children && !!icon
     const iconSize = size === 'lg' ? 18 : size === 'sm' ? 14 : 16
     return (
       <button
         ref={ref}
-        className={`${base} ${variants[variant]} ${sizes[size]} ${isIconOnly ? 'px-0 w-10' : ''} ${className ?? ''}`}
+        className={`${base} ${variants[variant]} ${sizes[size]} ${glow && variant !== 'gradient' ? 'btn-glow' : ''} ${isIconOnly ? 'px-0 w-10' : ''} ${className ?? ''}`}
         disabled={disabled ?? loading}
         {...rest}
       >

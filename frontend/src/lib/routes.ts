@@ -13,6 +13,7 @@ import {
   CalendarDays,
   UserPlus,
   UserCircle,
+  Gem,
 } from 'lucide-react'
 
 export type Tab =
@@ -30,6 +31,7 @@ export type Tab =
   | 'extensao'
   | 'app-mobile'
   | 'prospeccao-manual'
+  | 'planos'
   | 'conta'
 
 export interface NavItem {
@@ -55,6 +57,7 @@ export const TAB_PATHS: Record<Tab, string> = {
   extensao: '/extensao',
   'app-mobile': '/app-mobile',
   'prospeccao-manual': '/prospeccao-manual',
+  planos: '/planos',
   conta: '/conta',
 }
 
@@ -72,6 +75,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'voz', label: 'Voz', icon: BellRing, path: TAB_PATHS.voz },
   { key: 'extensao', label: 'Extensão e app', icon: Puzzle, path: TAB_PATHS.extensao },
   { key: 'prospeccao-manual', label: 'Prospecção Manual', icon: UserPlus, path: '/prospeccao-manual' },
+  { key: 'planos', label: 'Planos', icon: Gem, path: TAB_PATHS.planos },
   { key: 'conta', label: 'Conta', icon: UserCircle, path: TAB_PATHS.conta },
 ]
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Target, RefreshCw, TrendingUp, CalendarDays, Coins, Users, MessagesSquare, ChevronDown, X, DollarSign, PhoneCall, Handshake, UserPlus } from 'lucide-react'
+import { Target, RefreshCw, TrendingUp, CalendarDays, Coins, Users, MessagesSquare, ChevronDown, DollarSign, PhoneCall, Handshake, UserPlus, Send, MessageCircle, CalendarClock, Megaphone, Cable } from 'lucide-react'
 import { type Lead } from '../lib/supabase'
-import { Button, Card } from './ui'
+import { Button, Card, Modal } from './ui'
 import { KpiCard, AreaChart, DonutChart, HorizontalBars } from './charts'
 import {
   commercialApi,
@@ -102,99 +102,99 @@ function GoalModal({
   const p = projection
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Target className="w-5 h-5 text-accent-300" />
-            <div>
-              <div className="font-semibold">Configurar meta comercial</div>
-              <div className="text-xs text-muted">A projeção é calculada em tempo real conforme você digita</div>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none"><X size={16}/></button>
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title={
+        <div className="flex items-center gap-2">
+          <Target className="w-5 h-5 text-accent-300" />
+          Configurar meta comercial
         </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-xs text-muted">
-            Meta de faturamento (R$)
-            <input type="number" min={0} value={form.goal_amount || ''}
-              onChange={(e) => set('goal_amount', Number(e.target.value) || 0)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
-          </label>
-          <label className="block text-xs text-muted">
-            Período (dias)
-            <select value={form.period_days} onChange={(e) => set('period_days', Number(e.target.value) as 30 | 60 | 90)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500">
-              <option value={30}>30 dias</option>
-              <option value={60}>60 dias</option>
-              <option value={90}>90 dias</option>
-            </select>
-          </label>
-          <label className="block text-xs text-muted">
-            Ticket médio (R$)
-            <input type="number" min={0} value={form.avg_ticket || ''}
-              onChange={(e) => set('avg_ticket', Number(e.target.value) || 0)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
-          </label>
-          <label className="block text-xs text-muted">
-            Conversão reunião → venda (%)
-            <input type="number" min={0} max={100} value={form.meeting_close_rate || ''}
-              onChange={(e) => set('meeting_close_rate', Number(e.target.value) || 0)}
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
-          </label>
-          <label className="block text-xs text-muted sm:col-span-2">
-            Leads/dia (opcional — para estimar conversões necessárias)
-            <input type="number" min={0} value={form.leads_per_day ?? ''}
-              onChange={(e) => set('leads_per_day', e.target.value ? Number(e.target.value) : null)}
-              placeholder="Ex.: 20"
-              className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
-          </label>
-        </div>
-
-        <div className="mt-5 rounded-xl border border-accent-500/20 bg-accent-500/5 p-4">
-          <div className="flex items-center gap-2 text-xs font-semibold text-accent-300 uppercase tracking-wide mb-3">
-            <TrendingUp className="w-4 h-4" /> Projeção (calculadora)
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="text-center">
-              <div className="text-[10px] text-muted uppercase">Vendas necessárias</div>
-              <div className="text-lg font-bold">{p ? formatNumber(p.vendasNecessarias) : '…'}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-[10px] text-muted uppercase">Reuniões necessárias</div>
-              <div className="text-lg font-bold">{p ? formatNumber(p.reunioesNecessarias) : '…'}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-[10px] text-muted uppercase">Reuniões/dia</div>
-              <div className="text-lg font-bold">{p ? formatNumber(p.reunioesPorDia) : '…'}</div>
-            </div>
-            {p?.leadsPorDia != null && (
-              <>
-                <div className="text-center">
-                  <div className="text-[10px] text-muted uppercase">Leads no período</div>
-                  <div className="text-lg font-bold">{p.leadsNecessarios != null ? formatNumber(p.leadsNecessarios) : '—'}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-[10px] text-muted uppercase">Conv. lead→reunião nec.</div>
-                  <div className="text-lg font-bold">{p.conversaoLeadReuniaoNecessaria != null ? `${p.conversaoLeadReuniaoNecessaria}%` : '—'}</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-[10px] text-muted uppercase">Conv. lead→venda nec.</div>
-                  <div className="text-lg font-bold">{p.conversaoLeadVendaNecessaria != null ? `${p.conversaoLeadVendaNecessaria}%` : '—'}</div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {error && <p className="text-sm text-rose-400 mt-3">{error}</p>}
-        <div className="flex justify-end gap-2 mt-5">
+      }
+      subtitle="A projeção é calculada em tempo real conforme você digita"
+      footer={
+        <>
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button variant="primary" onClick={() => void save()} loading={busy}>{busy ? 'Salvando...' : 'Salvar meta'}</Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-xs text-muted">
+          Meta de faturamento (R$)
+          <input type="number" min={0} value={form.goal_amount || ''}
+            onChange={(e) => set('goal_amount', Number(e.target.value) || 0)}
+            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
+        </label>
+        <label className="block text-xs text-muted">
+          Período (dias)
+          <select value={form.period_days} onChange={(e) => set('period_days', Number(e.target.value) as 30 | 60 | 90)}
+            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500">
+            <option value={30}>30 dias</option>
+            <option value={60}>60 dias</option>
+            <option value={90}>90 dias</option>
+          </select>
+        </label>
+        <label className="block text-xs text-muted">
+          Ticket médio (R$)
+          <input type="number" min={0} value={form.avg_ticket || ''}
+            onChange={(e) => set('avg_ticket', Number(e.target.value) || 0)}
+            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
+        </label>
+        <label className="block text-xs text-muted">
+          Conversão reunião → venda (%)
+          <input type="number" min={0} max={100} value={form.meeting_close_rate || ''}
+            onChange={(e) => set('meeting_close_rate', Number(e.target.value) || 0)}
+            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
+        </label>
+        <label className="block text-xs text-muted sm:col-span-2">
+          Leads/dia (opcional — para estimar conversões necessárias)
+          <input type="number" min={0} value={form.leads_per_day ?? ''}
+            onChange={(e) => set('leads_per_day', e.target.value ? Number(e.target.value) : null)}
+            placeholder="Ex.: 20"
+            className="mt-1 w-full bg-field border border-line-2 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent-500" />
+        </label>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-accent-500/20 bg-accent-500/5 p-4">
+        <div className="flex items-center gap-2 text-xs font-semibold text-accent-300 uppercase tracking-wide mb-3">
+          <TrendingUp className="w-4 h-4" /> Projeção (calculadora)
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="text-center">
+            <div className="text-[10px] text-muted uppercase">Vendas necessárias</div>
+            <div className="text-lg font-bold">{p ? formatNumber(p.vendasNecessarias) : '…'}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[10px] text-muted uppercase">Reuniões necessárias</div>
+            <div className="text-lg font-bold">{p ? formatNumber(p.reunioesNecessarias) : '…'}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-[10px] text-muted uppercase">Reuniões/dia</div>
+            <div className="text-lg font-bold">{p ? formatNumber(p.reunioesPorDia) : '…'}</div>
+          </div>
+          {p?.leadsPorDia != null && (
+            <>
+              <div className="text-center">
+                <div className="text-[10px] text-muted uppercase">Leads no período</div>
+                <div className="text-lg font-bold">{p.leadsNecessarios != null ? formatNumber(p.leadsNecessarios) : '—'}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] text-muted uppercase">Conv. lead→reunião nec.</div>
+                <div className="text-lg font-bold">{p.conversaoLeadReuniaoNecessaria != null ? `${p.conversaoLeadReuniaoNecessaria}%` : '—'}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] text-muted uppercase">Conv. lead→venda nec.</div>
+                <div className="text-lg font-bold">{p.conversaoLeadVendaNecessaria != null ? `${p.conversaoLeadVendaNecessaria}%` : '—'}</div>
+              </div>
+            </>
+          )}
         </div>
       </div>
-    </div>
+
+      {error && <p className="text-sm text-rose-400 mt-3">{error}</p>}
+    </Modal>
   )
 }
 
@@ -238,6 +238,15 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
 
   const historico = useMemo(() => real?.historico ?? [], [real])
   const maxHistorico = historico.length > 0 ? Math.max(...historico.map((h) => h.faturamento)) : 0
+  const op = real?.operacao ?? {
+    mensagensEnviadas: 0,
+    respostasRecebidas: 0,
+    followUpsPendentes: 0,
+    campanhasAtivas: 0,
+    campanhasTotal: 0,
+    conexoesConectadas: 0,
+    conexoesTotal: 0,
+  }
 
   return (
     <div className="h-full overflow-auto px-6 py-5">
@@ -303,6 +312,57 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
               hint={`${real.conversando} conversando agora`}
               accent="var(--c-accent-600)"
             />
+          </div>
+
+          {/* Operação */}
+          <div className="mt-6">
+            <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
+              <MessagesSquare className="w-4 h-4 text-accent-300" /> Operação
+            </h2>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <KpiCard
+                label="Mensagens enviadas"
+                value={formatNumber(op.mensagensEnviadas)}
+                icon={<Send className="w-4 h-4" />}
+                hint="leads que receberam ao menos 1 msg"
+                accent="var(--c-sky-500, #38bdf8)"
+              />
+              <KpiCard
+                label="Respostas recebidas"
+                value={formatNumber(op.respostasRecebidas)}
+                icon={<MessageCircle className="w-4 h-4" />}
+                hint="leads que responderam a conversa"
+                accent="var(--c-emerald-400, #34d399)"
+              />
+              <KpiCard
+                label="Follow-ups pendentes"
+                value={formatNumber(op.followUpsPendentes)}
+                icon={<CalendarClock className="w-4 h-4" />}
+                hint="agendados ou em processamento"
+                accent="var(--c-amber-500, #f59e0b)"
+              />
+              <KpiCard
+                label="Campanhas"
+                value={`${formatNumber(op.campanhasAtivas)}/${formatNumber(op.campanhasTotal)}`}
+                icon={<Megaphone className="w-4 h-4" />}
+                hint="ativas / total"
+                accent="var(--c-fuchsia-500, #d946ef)"
+              />
+              <KpiCard
+                label="Conexões WhatsApp"
+                value={`${formatNumber(op.conexoesConectadas)}/${formatNumber(op.conexoesTotal)}`}
+                icon={<Cable className="w-4 h-4" />}
+                hint="conectadas / total"
+                accent="var(--c-violet-500, #8b5cf6)"
+              />
+              <KpiCard
+                label="Leads no sistema"
+                value={formatNumber(leads.length)}
+                icon={<Users className="w-4 h-4" />}
+                hint="total capturado"
+                accent="var(--c-accent-500)"
+              />
+            </div>
           </div>
 
           {/* Meta vs Real + Histórico */}

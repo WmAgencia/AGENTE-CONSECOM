@@ -238,11 +238,18 @@ body {
   from { background-position: -200% 0; }
   to { background-position: 200% 0; }
 }
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 .animate-fade-in-up {
   animation: fadeInUp var(--duration-slow) var(--ease-out) both;
 }
 .animate-fade-in {
   animation: fadeIn var(--duration-normal) var(--ease-out) both;
+}
+.animate-modal-in {
+  animation: modalIn var(--duration-normal) var(--ease-out) both;
 }
 .animate-pulse-soft {
   animation: pulse-soft 2s ease-in-out infinite;
@@ -256,4 +263,66 @@ body {
   );
   background-size: 200% 100%;
   animation: shimmer 1.8s linear infinite;
+}
+
+/* ── Botões premium: gradiente, glow e light-sweep ────────── */
+@keyframes lightSweep {
+  0% { transform: translateX(-130%) skewX(-18deg); }
+  60%, 100% { transform: translateX(240%) skewX(-18deg); }
+}
+
+.btn-gradient {
+  background-image: linear-gradient(135deg, var(--c-accent-500), var(--c-accent-600) 55%, var(--c-accent-700));
+  background-size: 150% 150%;
+  color: #fff;
+}
+.btn-gradient:hover {
+  background-position: 100% 50%;
+  box-shadow: 0 8px 24px -8px var(--c-accent-500), 0 2px 6px -2px var(--c-accent-600);
+}
+.btn-gradient:active {
+  background-position: 0 50%;
+  transform: translateY(1px);
+}
+
+/* Light sweep: faixa de luz que atravessa o botão no hover. */
+.btn-sweep { position: relative; overflow: hidden; isolation: isolate; }
+.btn-sweep::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: translateX(-130%) skewX(-18deg);
+  pointer-events: none;
+  z-index: 1;
+}
+.btn-sweep:hover::after {
+  animation: lightSweep 0.9s var(--ease-out);
+}
+
+/* Glow suave (reduz com movimento reduzido). */
+.btn-glow {
+  box-shadow: 0 0 0 1px var(--c-accent-400), 0 10px 30px -12px var(--c-accent-500);
+}
+.btn-glow:hover {
+  box-shadow: 0 0 0 1px var(--c-accent-400), 0 0 24px -4px var(--c-accent-500), 0 14px 34px -14px var(--c-accent-600);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-sweep::after { display: none; }
+  .btn-gradient { background-image: linear-gradient(135deg, var(--c-accent-500), var(--c-accent-700)); }
+}
+
+/* ── Reveal on scroll (landing + painel) ──────────────────── */
+@keyframes revealUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.reveal { opacity: 0; }
+.reveal.is-visible { animation: revealUp 0.7s var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; animation: none; }
 }

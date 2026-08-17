@@ -1,4 +1,4 @@
-// Gera ícones PNG da extensão (gradiente indigo->magenta com "C") sem dependências.
+// Gera ícones PNG da extensão (gradiente verde Vyntra com "C") sem dependências.
 import { deflateSync } from 'node:zlib'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -23,8 +23,8 @@ function chunk(type, data) {
 
 function makePng(size) {
   // RGBA por pixel, cada scanline com filtro 0
-  const top = [0x63, 0x66, 0xf1] // indigo #6366f1
-  const bottom = [0xd9, 0x46, 0xef] // fuchsia #d946ef
+  const top = [0x04, 0x78, 0x57] // emerald-700 #047857
+  const bottom = [0x10, 0xb9, 0x81] // emerald-500 #10b981
   const raw = Buffer.alloc(size * (size * 4 + 1))
   for (let y = 0; y < size; y++) {
     raw[y * (size * 4 + 1)] = 0 // filtro none

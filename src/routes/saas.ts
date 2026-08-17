@@ -24,8 +24,11 @@ import {
 import {
   listPlans,
   getPlan,
+  getPlanBySlug,
   getActiveSubscription,
   getUsageInfo,
+  getLeadsBalance,
+  listCreditLedger,
   getActiveGateway,
   validateCoupon,
   createPayment,
@@ -34,8 +37,10 @@ import {
   findPaymentByIdempotencyKey,
   processApprovedPayment,
   updatePaymentStatus,
+  activateTrialSubscription,
 } from '../services/saas.js';
 import { SandboxGateway } from '../services/payment.gateway.js';
+import { attemptTrialRedemption, hasRedeemedTrial } from '../services/trial.js';
 
 const URL_SCHEMA = new URL('https://example.com');
 function isValidHttpUrl(value: string): boolean {
@@ -61,13 +66,16 @@ export function registerSaaSRoutes(app: FastifyInstance): void {
     const guard = requireAuth(auth);
     if (!guard.ok) return reply.status(guard.statusCode).send({ error: guard.error, statusCode: guard.statusCode });
     const a = auth!;
-    const [usage, subscription, plan] = await Promise.all([
+    const [usage, subscription, plan, balance, trialUsed, ledger] = await Promise.all([
       getUsageInfo(a.tenantId),
       getActiveSubscription(a.tenantId),
       (async () => {
         const sub = await getActiveSubscription(a.tenantId);
         return sub ? getPlan(sub.plan_id) : null;
       })(),
+      getLeadsBalance(a.tenantId),
+      hasRedeemedTrial(a.userId),
+      listCreditLedger(a.tenantId, 25),
     ]);
     return reply.send({
       user: { id: a.userId, email: a.email, username: a.username, role: a.role, status: a.status },
@@ -75,7 +83,68 @@ export function registerSaaSRoutes(app: FastifyInstance): void {
       subscription,
       plan,
       usage,
+      balance,
+      trialUsed,
+      ledger,
     });
+  });
+
+  /** Histórico de compras + consumo de leads (credit_ledger). */
+  app.get('/api/saas/transactions', async (req, reply) => {
+    const auth = authOf(req);
+    const guard = requireAuth(auth);
+    if (!guard.ok) return reply.status(guard.statusCode).send({ error: guard.error, statusCode: guard.statusCode });
+    const a = auth!;
+    const ledger = await listCreditLedger(a.tenantId, 100);
+    return reply.send({ transactions: ledger });
+  });
+
+  /**
+   * Resgata o plano TESTE (anti-abuso no backend).
+   * body: { deviceId?: string, phone?: string }
+   */
+  app.post('/api/saas/trial/redeem', async (req, reply) => {
+    const auth = authOf(req);
+    const guard = requireAuth(auth);
+    if (!guard.ok) return reply.status(guard.statusCode).send({ error: guard.error, statusCode: guard.statusCode });
+    const a = auth!;
+
+    const body = (req.body ?? {}) as { deviceId?: unknown; phone?: unknown };
+    const deviceId = typeof body.deviceId === 'string' ? body.deviceId.slice(0, 128) : null;
+    const phone = typeof body.phone === 'string' ? body.phone : null;
+
+    const plan = await getPlanBySlug('teste');
+    if (!plan || !plan.active) {
+      return reply.status(404).send({ error: 'plan_not_found', statusCode: 404 });
+    }
+
+    const result = await attemptTrialRedemption(
+      {
+        userId: a.userId,
+        tenantId: a.tenantId,
+        email: a.email,
+        phone,
+        ip: req.ip ?? '0.0.0.0',
+        deviceId,
+      },
+      plan.id,
+    );
+    if (!result.ok) {
+      return reply.status(result.statusCode).send({
+        error: result.error,
+        message: result.message,
+        statusCode: result.statusCode,
+      });
+    }
+
+    const sub = await activateTrialSubscription(a.tenantId, plan.id);
+    if (!sub) {
+      return reply.status(502).send({ error: 'trial_activation_failed', statusCode: 502 });
+    }
+
+    const usage = await getUsageInfo(a.tenantId);
+    const balance = await getLeadsBalance(a.tenantId);
+    return reply.send({ ok: true, subscription: sub, plan, usage, balance });
   });
 
   app.get('/api/saas/plans', async (_req, reply) => {

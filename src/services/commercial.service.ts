@@ -73,6 +73,18 @@ export interface RealResults {
   diasRestantes: number;
   rPorDiaNecessario: number | null;
   metaAtingida: number | null;
+  operacao: OperacaoResults;
+}
+
+/** Métricas operacionais reais (mensagens, respostas, campanhas, conexões, follow-ups). */
+export interface OperacaoResults {
+  mensagensEnviadas: number;
+  respostasRecebidas: number;
+  followUpsPendentes: number;
+  campanhasAtivas: number;
+  campanhasTotal: number;
+  conexoesConectadas: number;
+  conexoesTotal: number;
 }
 
 export interface CommercialDashboard {
@@ -91,6 +103,7 @@ export interface LeadRowCommercial {
   meeting_outcome: string | null;
   closed_at: string | null;
   created_at: string | null;
+  last_message_sent: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +274,15 @@ export function computeRealResults(
     diasRestantes,
     rPorDiaNecessario,
     metaAtingida,
+    operacao: {
+      mensagensEnviadas: 0,
+      respostasRecebidas: 0,
+      followUpsPendentes: 0,
+      campanhasAtivas: 0,
+      campanhasTotal: 0,
+      conexoesConectadas: 0,
+      conexoesTotal: 0,
+    },
   };
 }
 
@@ -285,13 +307,87 @@ async function fetchLeads(): Promise<LeadRowCommercial[]> {
   if (!s) return [];
   try {
     const res = await fetch(
-      `${s.url}/rest/v1/leads?select=id,status,sale_value,sale_status,meeting_at,meeting_outcome,closed_at,created_at`,
+      `${s.url}/rest/v1/leads?select=id,status,sale_value,sale_status,meeting_at,meeting_outcome,closed_at,created_at,last_message_sent`,
       { headers: supHeaders() },
     );
     if (!res.ok) return [];
     return (await res.json()) as LeadRowCommercial[];
   } catch {
     return [];
+  }
+}
+
+async function fetchOperacaoCounts(): Promise<OperacaoResults> {
+  const s = sup();
+  const empty: OperacaoResults = {
+    mensagensEnviadas: 0,
+    respostasRecebidas: 0,
+    followUpsPendentes: 0,
+    campanhasAtivas: 0,
+    campanhasTotal: 0,
+    conexoesConectadas: 0,
+    conexoesTotal: 0,
+  };
+  if (!s) return empty;
+  try {
+    const res = await fetch(`${s.url}/rest/v1/leads?select=status,last_message_sent`, {
+      headers: supHeaders(),
+    });
+    if (!res.ok) return empty;
+    const rows = (await res.json()) as Array<{ status: string | null; last_message_sent: string | null }>;
+    const replied = new Set<string>([
+      'conversando', 'sem_interesse', 'remarketing', 'reuniao_marcada',
+      'reuniao_cancelada', 'fechado', 'nao_fechado', 'para_ligacao', 'responder_depois',
+    ]);
+    const mensagensEnviadas = rows.filter((l) => !!l.last_message_sent).length;
+    const respostasRecebidas = rows.filter((l) => replied.has(l.status ?? '')).length;
+    return { ...empty, mensagensEnviadas, respostasRecebidas };
+  } catch {
+    return empty;
+  }
+}
+
+async function fetchCampaignCounts(): Promise<{ ativas: number; total: number }> {
+  const s = sup();
+  if (!s) return { ativas: 0, total: 0 };
+  try {
+    const res = await fetch(`${s.url}/rest/v1/campaigns?select=status`, { headers: supHeaders() });
+    if (!res.ok) return { ativas: 0, total: 0 };
+    const rows = (await res.json()) as Array<{ status: string | null }>;
+    const ativas = rows.filter((c) => ['em_progresso', 'agendada', 'pausada', 'pronta'].includes(c.status ?? '')).length;
+    return { ativas, total: rows.length };
+  } catch {
+    return { ativas: 0, total: 0 };
+  }
+}
+
+async function fetchConnectionCounts(): Promise<{ conectadas: number; total: number }> {
+  const s = sup();
+  if (!s) return { conectadas: 0, total: 0 };
+  try {
+    const res = await fetch(`${s.url}/rest/v1/whatsapp_connections?select=status`, { headers: supHeaders() });
+    if (!res.ok) return { conectadas: 0, total: 0 };
+    const rows = (await res.json()) as Array<{ status: string | null }>;
+    const conectadas = rows.filter((c) => c.status === 'connected').length;
+    return { conectadas, total: rows.length };
+  } catch {
+    return { conectadas: 0, total: 0 };
+  }
+}
+
+async function fetchFollowUpCount(): Promise<number> {
+  const s = sup();
+  if (!s) return 0;
+  try {
+    const res = await fetch(
+      `${s.url}/rest/v1/follow_ups?select=id&status=in.("agendado","processando")`,
+      { headers: supHeaders() },
+    );
+    if (!res.ok) return 0;
+    const rows = (await res.json()) as Array<{ id: string }>;
+    return rows.length;
+  } catch {
+    return 0;
   }
 }
 
@@ -356,6 +452,21 @@ export async function buildCommercialDashboard(identifier: string): Promise<Comm
   const goal = await fetchGoal(identifier);
   const leads = await fetchLeads();
   const real = computeRealResults(leads, goal);
+  const [operacao, campanhas, conexoes, followUps] = await Promise.all([
+    fetchOperacaoCounts(),
+    fetchCampaignCounts(),
+    fetchConnectionCounts(),
+    fetchFollowUpCount(),
+  ]);
+  real.operacao = {
+    ...real.operacao,
+    ...operacao,
+    followUpsPendentes: followUps,
+    campanhasAtivas: campanhas.ativas,
+    campanhasTotal: campanhas.total,
+    conexoesConectadas: conexoes.conectadas,
+    conexoesTotal: conexoes.total,
+  };
   const projection = goal ? computeProjection({
     goal_amount: Number(goal.goal_amount),
     period_days: goal.period_days,

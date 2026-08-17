@@ -114,6 +114,10 @@ export interface SaasPlan {
   billing_type: 'one_time' | 'recurring'
   active: boolean
   features: unknown[]
+  featured: boolean
+  display_order: number
+  campaign_equivalence: number
+  badge_label: string | null
 }
 
 export interface SaasSubscription {
@@ -132,12 +136,33 @@ export interface SaasUsage {
   leads_remaining: number
 }
 
+export interface SaasBalance {
+  acquired: number
+  used: number
+  available: number
+  limited: boolean
+}
+
+export interface CreditTransaction {
+  id: string
+  kind: 'purchase' | 'consumption' | 'trial' | 'refund' | 'adjustment'
+  delta: number
+  plan_id: string | null
+  payment_id: string | null
+  note: string | null
+  detail: Record<string, unknown>
+  created_at: string
+}
+
 export interface SaasMe {
   user: { id: string; email: string; username: string | null; role: 'USER' | 'MASTER'; status: string }
   tenantId: string
   subscription: SaasSubscription | null
   plan: SaasPlan | null
   usage: SaasUsage
+  balance: SaasBalance
+  trialUsed: boolean
+  ledger: CreditTransaction[]
 }
 
 export interface CheckoutResult {
@@ -177,6 +202,13 @@ export const saasApi = {
   },
   async changePassword(currentPassword: string, newPassword: string, confirmPassword: string): Promise<void> {
     await api.post<{ ok: boolean }>('/api/account/password', { currentPassword, newPassword, confirmPassword })
+  },
+  async transactions(): Promise<CreditTransaction[]> {
+    const r = await api.get<{ transactions: CreditTransaction[] }>('/api/saas/transactions')
+    return r.transactions ?? []
+  },
+  async redeemTrial(deviceId?: string, phone?: string): Promise<{ ok: boolean }> {
+    return api.post<{ ok: boolean }>('/api/saas/trial/redeem', { deviceId, phone })
   },
 }
 
@@ -220,6 +252,11 @@ export interface MasterPlan {
   duration_days: number | null
   billing_type: string
   active: boolean
+  featured: boolean
+  display_order: number
+  campaign_equivalence: number
+  badge_label: string | null
+  features: unknown[]
 }
 
 export interface MasterCoupon {
@@ -330,6 +367,9 @@ export const masterApi = {
   async saveVisualReferences(patch: { landing_reference_url?: string | null; dashboard_reference_url?: string | null }): Promise<{ ok: boolean; landing_reference_url: string | null; dashboard_reference_url: string | null }> {
     return api.patch('/api/master/visual-references', patch)
   },
+  async antifraud(): Promise<{ redemptions: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>; stats: { total: number; highRisk: number; blockedEvents: number; uniqueIps: number; uniqueDevices: number } }> {
+    return api.get('/api/master/antifraud')
+  },
 }
 
 // ===== Inteligência Comercial (Metas + Faturamento) =====
@@ -387,6 +427,15 @@ export interface RealResults {
   diasRestantes: number
   rPorDiaNecessario: number | null
   metaAtingida: number | null
+  operacao: {
+    mensagensEnviadas: number
+    respostasRecebidas: number
+    followUpsPendentes: number
+    campanhasAtivas: number
+    campanhasTotal: number
+    conexoesConectadas: number
+    conexoesTotal: number
+  }
 }
 
 export interface CommercialDashboard {

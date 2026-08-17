@@ -4,7 +4,7 @@ import { masterApi, formatBRL, type MasterDashboard, type MasterPlan, type Maste
 import { KpiCard, BarChart, AreaChart, DonutChart, HorizontalBars } from './charts'
 import { Button } from './ui'
 
-type TabKey = 'dashboard' | 'users' | 'plans' | 'coupons' | 'gateways' | 'pixels' | 'extensao' | 'referencias' | 'requests' | 'logs'
+type TabKey = 'dashboard' | 'users' | 'plans' | 'coupons' | 'gateways' | 'pixels' | 'extensao' | 'referencias' | 'requests' | 'logs' | 'antifraude'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -16,6 +16,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'extensao', label: 'Extensão' },
   { key: 'referencias', label: 'Referências' },
   { key: 'requests', label: 'Solicitações' },
+  { key: 'antifraude', label: 'Antifraude' },
   { key: 'logs', label: 'Auditoria' },
 ]
 
@@ -164,6 +165,7 @@ export function MasterPanel({ onBack }: { onBack?: () => void }) {
         {tab === 'extensao' && <ExtensionSitesTab />}
         {tab === 'referencias' && <VisualReferencesTab />}
         {tab === 'requests' && <RequestsTab />}
+        {tab === 'antifraude' && <AntifraudTab />}
         {tab === 'logs' && <LogsTab />}
       </div>
     </div>
@@ -344,8 +346,12 @@ function UsersTab() {
 
 function PlansTab() {
   const [plans, setPlans] = useState<MasterPlan[]>([])
-  const [form, setForm] = useState({ name: '', price: '', lead_limit: '', duration_days: '', active: true })
+  const [form, setForm] = useState({
+    name: '', price: '', lead_limit: '', duration_days: '', active: true,
+    featured: false, display_order: '', campaign_equivalence: '', badge_label: '',
+  })
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
   const reload = () => masterApi.plans().then(setPlans).catch(() => setPlans([]))
   useEffect(() => { reload() }, [])
 
@@ -357,35 +363,165 @@ function PlansTab() {
       lead_limit: Number(form.lead_limit) || 0,
       duration_days: form.duration_days === '' ? null : Number(form.duration_days),
       active: form.active,
+      featured: form.featured,
+      display_order: Number(form.display_order) || 0,
+      campaign_equivalence: Number(form.campaign_equivalence) || 0,
+      badge_label: form.badge_label || null,
     })
     setMsg({ ok: true, text: 'Plano criado.' })
-    setForm({ name: '', price: '', lead_limit: '', duration_days: '', active: true })
+    setForm({ name: '', price: '', lead_limit: '', duration_days: '', active: true, featured: false, display_order: '', campaign_equivalence: '', badge_label: '' })
     reload()
   }
 
+  function startEdit(p: MasterPlan) {
+    setEditing(p.id)
+    setForm({
+      name: p.name, price: String(p.price), lead_limit: String(p.lead_limit),
+      duration_days: p.duration_days != null ? String(p.duration_days) : '',
+      active: p.active, featured: p.featured,
+      display_order: String(p.display_order ?? 0),
+      campaign_equivalence: String(p.campaign_equivalence ?? 0),
+      badge_label: p.badge_label ?? '',
+    })
+  }
+
+  async function saveEdit(id: string) {
+    await masterApi.updatePlan(id, {
+      name: form.name || undefined,
+      price: form.price === '' ? undefined : Number(form.price),
+      lead_limit: form.lead_limit === '' ? undefined : Number(form.lead_limit),
+      duration_days: form.duration_days === '' ? null : Number(form.duration_days),
+      active: form.active,
+      featured: form.featured,
+      display_order: Number(form.display_order) || 0,
+      campaign_equivalence: Number(form.campaign_equivalence) || 0,
+      badge_label: form.badge_label || null,
+    })
+    setMsg({ ok: true, text: 'Plano atualizado.' })
+    setEditing(null)
+    reload()
+  }
+
+  const isEditing = editing !== null
+
   return (
     <Section title="Planos">
-      <div className="grid sm:grid-cols-5 gap-2 mb-3">
+      <div className="grid sm:grid-cols-4 gap-2 mb-2">
         <input placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
         <input placeholder="Preço (R$)" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} />
         <input placeholder="Limite de leads" type="number" value={form.lead_limit} onChange={(e) => setForm({ ...form, lead_limit: e.target.value })} className={inputCls} />
         <input placeholder="Duração (dias)" type="number" value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: e.target.value })} className={inputCls} />
-        <button onClick={create} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Criar plano</button>
+      </div>
+      <div className="grid sm:grid-cols-4 gap-2 mb-2">
+        <input placeholder="Ordem de exibição" type="number" value={form.display_order} onChange={(e) => setForm({ ...form, display_order: e.target.value })} className={inputCls} />
+        <input placeholder="Campanhas incl." type="number" value={form.campaign_equivalence} onChange={(e) => setForm({ ...form, campaign_equivalence: e.target.value })} className={inputCls} />
+        <input placeholder="Badge (ex.: MAIS ESCOLHIDO)" value={form.badge_label} onChange={(e) => setForm({ ...form, badge_label: e.target.value })} className={inputCls} />
+        <label className="flex items-center gap-2 text-xs text-muted px-1">
+          <input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} />
+          Destaque (featured)
+        </label>
+      </div>
+      <div className="flex items-center gap-2 mb-3">
+        <label className="flex items-center gap-2 text-xs text-muted">
+          <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
+          Ativo
+        </label>
+        {isEditing ? (
+          <>
+            <button onClick={() => saveEdit(editing)} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Salvar alterações</button>
+            <button onClick={() => { setEditing(null); setForm({ name: '', price: '', lead_limit: '', duration_days: '', active: true, featured: false, display_order: '', campaign_equivalence: '', badge_label: '' }) }} className="px-3 py-2 rounded-lg text-xs font-semibold bg-subtle text-muted hover:text-fg transition">Cancelar</button>
+          </>
+        ) : (
+          <button onClick={create} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Criar plano</button>
+        )}
       </div>
       {msg && <p className={`text-xs mb-2 ${msg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{msg.text}</p>}
       <div className="space-y-2">
-        {plans.map((p) => (
+        {[...plans].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)).map((p) => (
           <div key={p.id} className="flex items-center justify-between rounded-lg border border-line bg-fg/5 px-3 py-2 text-sm">
-            <div>
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold">{p.name}</span>
-              <span className="text-xs text-muted ml-2">{formatBRL(p.price)} · {p.lead_limit} leads{p.duration_days ? ` · ${p.duration_days}d` : ''}</span>
-              {!p.active && <span className="text-xs text-amber-400 ml-2">inativo</span>}
+              {p.featured && <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-accent-600/20 text-accent-300">featured</span>}
+              <span className="text-xs text-muted">{formatBRL(p.price)} · {p.lead_limit} leads · {p.campaign_equivalence >= 999 ? 'camp. ilimitadas' : `${p.campaign_equivalence} camp.`}{p.duration_days ? ` · ${p.duration_days}d` : ''}</span>
+              {!p.active && <span className="text-xs text-amber-400">inativo</span>}
             </div>
-            <button onClick={() => masterApi.deletePlan(p.id).then(reload)}
-              className="text-xs text-red-400 hover:text-red-300 transition">Desativar</button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => startEdit(p)} className="text-xs text-accent-300 hover:text-accent-200 transition">Editar</button>
+              <button onClick={() => masterApi.deletePlan(p.id).then(reload)}
+                className="text-xs text-red-400 hover:text-red-300 transition">Desativar</button>
+            </div>
           </div>
         ))}
         {plans.length === 0 && <div className="text-sm text-muted">Nenhum plano.</div>}
+      </div>
+    </Section>
+  )
+}
+
+function AntifraudTab() {
+  const [data, setData] = useState<{ redemptions: Array<Record<string, unknown>>; events: Array<Record<string, unknown>>; stats: { total: number; highRisk: number; blockedEvents: number; uniqueIps: number; uniqueDevices: number } } | null>(null)
+  const reload = () => masterApi.antifraud().then(setData).catch(() => setData(null))
+  useEffect(() => { reload() }, [])
+
+  if (!data) return <Section title="Antifraude (plano TESTE)"><div className="text-sm text-muted">Carregando…</div></Section>
+
+  const stats: Array<{ label: string; value: number }> = [
+    { label: 'Resgates de TESTE', value: data.stats.total },
+    { label: 'Alto risco', value: data.stats.highRisk },
+    { label: 'Bloqueios', value: data.stats.blockedEvents },
+    { label: 'IPs distintos', value: data.stats.uniqueIps },
+    { label: 'Dispositivos', value: data.stats.uniqueDevices },
+  ]
+
+  return (
+    <Section title="Antifraude (plano TESTE)">
+      <p className="text-xs text-muted mb-4">Resgates do plano TESTE com hashing de identidade (e-mail, telefone, IP, dispositivo), ativação atômica e trilha de segurança.</p>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-lg border border-line bg-fg/5 px-3 py-2.5">
+            <div className="text-xl font-bold">{s.value}</div>
+            <div className="text-[11px] text-muted">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div>
+          <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Resgates</h3>
+          <div className="space-y-2">
+            {data.redemptions.map((r) => (
+              <div key={String(r.id)} className="rounded-lg border border-line bg-fg/5 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">{(r.user as Record<string, unknown>)?.email ? String((r.user as Record<string, unknown>).email) : (r.user_id as string)}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full font-bold uppercase text-[9px] ${Number(r.risk_score) >= 70 ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
+                    risco {String(r.risk_score)}
+                  </span>
+                </div>
+                <div className="text-faint mt-1 flex flex-wrap gap-x-3">
+                  <span>IP {String(r.ip_hash ?? '-').slice(0, 10)}…</span>
+                  <span>dev {String(r.device_hash ?? '-').slice(0, 10)}…</span>
+                  <span>{new Date(String(r.redeemed_at)).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
+            ))}
+            {data.redemptions.length === 0 && <div className="text-sm text-muted">Nenhum resgate ainda.</div>}
+          </div>
+        </div>
+        <div>
+          <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Eventos de segurança</h3>
+          <div className="space-y-2">
+            {data.events.slice(0, 30).map((e) => (
+              <div key={String(e.id)} className="rounded-lg border border-line bg-fg/5 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono font-semibold text-accent-300">{String(e.event_type)}</span>
+                  <span className="text-faint">{new Date(String(e.created_at)).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div className="text-faint mt-0.5">razão: {String(e.reason ?? '-')} · risco {String(e.risk_score)}</div>
+              </div>
+            ))}
+            {data.events.length === 0 && <div className="text-sm text-muted">Nenhum evento registrado.</div>}
+          </div>
+        </div>
       </div>
     </Section>
   )

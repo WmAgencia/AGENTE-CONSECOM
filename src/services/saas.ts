@@ -25,6 +25,10 @@ export interface Plan {
   billing_type: 'one_time' | 'recurring';
   active: boolean;
   features: unknown[];
+  featured: boolean;
+  display_order: number;
+  campaign_equivalence: number;
+  badge_label: string | null;
 }
 
 export interface Subscription {
@@ -75,6 +79,30 @@ export interface UsageInfo {
   leads_remaining: number;
 }
 
+export interface LeadsBalance {
+  /** Total de leads adquiridos (compras + trial). */
+  acquired: number;
+  /** Total de leads consumidos (importados/prospectados). */
+  used: number;
+  /** Saldo disponível = acquired - used (nunca negativo). */
+  available: number;
+  /** true quando o tenant tem limite (plano ativo com créditos). */
+  limited: boolean;
+}
+
+export interface CreditEntry {
+  id: string;
+  tenant_id: string;
+  kind: 'purchase' | 'consumption' | 'trial' | 'refund' | 'adjustment';
+  delta: number;
+  plan_id: string | null;
+  payment_id: string | null;
+  lead_id: string | null;
+  note: string | null;
+  detail: Record<string, unknown>;
+  created_at: string;
+}
+
 async function get<T>(path: string): Promise<T | null> {
   const url = `${serviceBaseUrl()}/rest/v1${path}`;
   try {
@@ -97,12 +125,16 @@ async function first<T>(path: string): Promise<T | null> {
 
 export async function listPlans(activeOnly = true): Promise<Plan[]> {
   const suffix = activeOnly ? '&active=eq.true' : '';
-  const rows = await get<Plan[]>(`/plans?select=*&order=price.asc${suffix}`);
+  const rows = await get<Plan[]>(`/plans?select=*&order=display_order.asc,price.asc${suffix}`);
   return rows ?? [];
 }
 
 export async function getPlan(planId: string): Promise<Plan | null> {
   return first<Plan>(`/plans?select=*&id=eq.${encodeURIComponent(planId)}&limit=1`);
+}
+
+export async function getPlanBySlug(slug: string): Promise<Plan | null> {
+  return first<Plan>(`/plans?select=*&slug=eq.${encodeURIComponent(slug)}&limit=1`);
 }
 
 // =============================================================
@@ -147,34 +179,103 @@ export async function getActiveLeadLimit(tenantId: string): Promise<number> {
 /**
  * Cota de importação da extensão.
  * Retorna { limited, used, limit, remaining }.
- * - Sem assinatura ativa => sem limite (backward compat com dados atuais).
- * - Com plano ativo => remaining = limit - used.
+ * - Sem saldo adquirido => sem limite (backward compat com dados atuais).
+ * - Com saldo => remaining = acquired - used.
  */
 export async function getImportQuota(
   tenantId: string,
 ): Promise<{ limited: boolean; used: number; limit: number; remaining: number | null }> {
-  const limit = await getActiveLeadLimit(tenantId);
-  if (limit <= 0) {
-    return { limited: false, used: await countConsumedLeads(tenantId), limit: 0, remaining: null };
+  const balance = await getLeadsBalance(tenantId);
+  if (!balance.limited) {
+    return { limited: false, used: balance.used, limit: 0, remaining: null };
   }
-  const used = await countConsumedLeads(tenantId);
-  return { limited: true, used, limit, remaining: Math.max(0, limit - used) };
+  return { limited: true, used: balance.used, limit: balance.acquired, remaining: balance.available };
 }
 
-/** Retorna limite/uso/restante do tenant (com base no plano ativo). */
+/** Retorna limite/uso/restante do tenant (saldo adquiridos - consumidos). */
 export async function getUsageInfo(tenantId: string): Promise<UsageInfo> {
-  const sub = await getActiveSubscription(tenantId);
-  let lead_limit = 0;
-  if (sub) {
-    const plan = await getPlan(sub.plan_id);
-    lead_limit = plan?.lead_limit ?? 0;
-  }
-  const leads_used = await countConsumedLeads(tenantId);
+  const balance = await getLeadsBalance(tenantId);
   return {
-    lead_limit,
-    leads_used,
-    leads_remaining: Math.max(0, lead_limit - leads_used),
+    lead_limit: balance.acquired,
+    leads_used: balance.used,
+    leads_remaining: balance.available,
   };
+}
+
+// =============================================================
+// Créditos de leads (saldo = adquiridos - consumidos)
+// =============================================================
+
+/**
+ * Total de leads adquiridos (credit_ledger kind purchase/trial/refund+).
+ * Sem registros no ledger, cai no limite do plano ativo (backward compat
+ * com tenants criados antes do ledger existir).
+ */
+export async function getAcquiredLeads(tenantId: string): Promise<number> {
+  const rows = await get<Array<{ kind: string; delta: number }>>(
+    `/credit_ledger?select=kind,delta&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+  );
+  const ledger = rows ?? [];
+  if (ledger.length > 0) {
+    const acquired = ledger.reduce(
+      (acc, r) => acc + (r.kind === 'purchase' || r.kind === 'trial' || r.kind === 'adjustment' ? r.delta : 0),
+      0,
+    );
+    return Math.max(0, acquired);
+  }
+  // Backward compat: sem ledger, usa o limite do plano ativo.
+  return getActiveLeadLimit(tenantId);
+}
+
+/** Saldo real do tenant: adquiridos - consumidos. */
+export async function getLeadsBalance(tenantId: string): Promise<LeadsBalance> {
+  const acquired = await getAcquiredLeads(tenantId);
+  const used = await countConsumedLeads(tenantId);
+  return {
+    acquired,
+    used,
+    available: Math.max(0, acquired - used),
+    limited: acquired > 0,
+  };
+}
+
+/** Registra um movimento no credit_ledger (best-effort). */
+export async function recordCredit(input: {
+  tenantId: string;
+  kind: CreditEntry['kind'];
+  delta: number;
+  planId?: string | null;
+  paymentId?: string | null;
+  leadId?: string | null;
+  note?: string;
+  detail?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await fetch(`${serviceBaseUrl()}/rest/v1/credit_ledger`, {
+      method: 'POST',
+      headers: serviceHeaders(true),
+      body: JSON.stringify({
+        tenant_id: input.tenantId,
+        kind: input.kind,
+        delta: input.delta,
+        plan_id: input.planId ?? null,
+        payment_id: input.paymentId ?? null,
+        lead_id: input.leadId ?? null,
+        note: input.note ?? null,
+        detail: input.detail ?? {},
+      }),
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Últimos movimentos de crédito/consumo do tenant. */
+export async function listCreditLedger(tenantId: string, limit = 50): Promise<CreditEntry[]> {
+  const rows = await get<CreditEntry[]>(
+    `/credit_ledger?select=*&tenant_id=eq.${encodeURIComponent(tenantId)}&order=created_at.desc&limit=${limit}`,
+  );
+  return rows ?? [];
 }
 
 // =============================================================
@@ -383,6 +484,58 @@ export async function activateSubscription(
 }
 
 /**
+ * Ativa o plano TESTE (sem pagamento). Cancela assinaturas ativas
+ * anteriores e registra o crédito no credit_ledger.
+ */
+export async function activateTrialSubscription(
+  tenantId: string,
+  planId: string,
+): Promise<Subscription | null> {
+  const plan = await getPlan(planId);
+  if (!plan) return null;
+
+  // Cancela assinaturas ativas anteriores.
+  await fetch(`${serviceBaseUrl()}/rest/v1/subscriptions?tenant_id=eq.${encodeURIComponent(tenantId)}&status=in.(active,past_due,pending)`, {
+    method: 'PATCH',
+    headers: serviceHeaders(true),
+    body: JSON.stringify({ status: 'cancelled', updated_at: new Date().toISOString() }),
+  });
+
+  const now = new Date();
+  const periodEnd =
+    plan.duration_days && plan.duration_days > 0
+      ? new Date(now.getTime() + plan.duration_days * 86400_000).toISOString()
+      : null;
+  const res = await fetch(`${serviceBaseUrl()}/rest/v1/subscriptions?select=*`, {
+    method: 'POST',
+    headers: { ...serviceHeaders(true), Prefer: 'return=representation' },
+    body: JSON.stringify({
+      tenant_id: tenantId,
+      plan_id: planId,
+      status: 'active',
+      current_period_start: now.toISOString(),
+      current_period_end: periodEnd,
+      leads_used: 0,
+    }),
+  });
+  if (!res.ok) return null;
+  const rows = (await res.json()) as Subscription[];
+  const sub = rows[0] ?? null;
+
+  if (sub && plan.lead_limit > 0) {
+    await recordCredit({
+      tenantId,
+      kind: 'trial',
+      delta: plan.lead_limit,
+      planId,
+      note: `Plano TESTE (${plan.lead_limit} leads)`,
+      detail: { plan_name: plan.name },
+    });
+  }
+  return sub;
+}
+
+/**
  * Processa um pagamento aprovado: atualiza status, ativa assinatura,
  * registra uso do cupom e auditoria. Idempotente por payment id.
  */
@@ -394,6 +547,18 @@ export async function processApprovedPayment(paymentId: string): Promise<{ ok: b
 
   await updatePaymentStatus(payment.id, 'approved');
   const sub = await activateSubscription(payment.tenant_id, payment.plan_id, payment.id);
+  const plan = await getPlan(payment.plan_id);
+  if (plan && plan.lead_limit > 0) {
+    await recordCredit({
+      tenantId: payment.tenant_id,
+      kind: 'purchase',
+      delta: plan.lead_limit,
+      planId: payment.plan_id,
+      paymentId: payment.id,
+      note: `Compra do plano ${plan.name} (${plan.lead_limit} leads)`,
+      detail: { plan_name: plan.name, amount: payment.amount },
+    });
+  }
   if (payment.coupon_code && payment.coupon_code.trim()) {
     const coupon = await first<Coupon>(`/coupons?select=id&code=eq.${encodeURIComponent(payment.coupon_code.trim().toUpperCase())}&limit=1`);
     if (coupon) await recordCouponUsage(coupon.id, payment.tenant_id, payment.id);

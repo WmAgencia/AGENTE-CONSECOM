@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -41,6 +41,56 @@ function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
+/** Reveal on scroll: adiciona .is-visible quando o elemento entra no viewport. */
+function useReveal<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            e.target.classList.add('is-visible')
+            obs.unobserve(e.target)
+          }
+        }
+      },
+      { threshold: 0.12 },
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+  return ref
+}
+
+/** Parallax suave no eixo Y conforme o scroll (desabilitado com reduced-motion). */
+function useParallax(strength = 30) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    let raf = 0
+    const onScroll = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect()
+        if (rect.bottom < 0 || rect.top > window.innerHeight) return
+        const progress = (window.innerHeight / 2 - rect.top) / window.innerHeight
+        el.style.transform = `translate3d(0, ${Math.round(progress * strength)}px, 0)`
+      })
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      cancelAnimationFrame(raf)
+    }
+  }, [strength])
+  return ref
+}
+
 const FAQS = [
   { q: 'Preciso instalar alguma coisa?', a: 'Sim, uma extensão leve para o Chrome. Ela funciona como um painel flutuante ao lado das suas buscas: captura leads, telefone e CNPJ em um clique — sem quebrar o seu fluxo de trabalho.' },
   { q: 'Como funciona a integração com o WhatsApp?', a: 'Você conecta uma instância da Evolution API no painel. A partir daí, as campanhas disparam mensagens, a IA responde e qualifica, e você acompanha tudo com histórico completo.' },
@@ -51,8 +101,9 @@ const FAQS = [
 ]
 
 function SectionTitle({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
+  const ref = useReveal<HTMLDivElement>()
   return (
-    <div className="max-w-2xl mx-auto text-center mb-14">
+    <div ref={ref} className="max-w-2xl mx-auto text-center mb-14 reveal">
       <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-accent-600 bg-subtle-2 border border-line rounded-full px-3 py-1">
         <Sparkles className="w-3.5 h-3.5" />
         {eyebrow}
@@ -63,9 +114,14 @@ function SectionTitle({ eyebrow, title, subtitle }: { eyebrow: string; title: st
   )
 }
 
-function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+function Feature({ icon, title, desc, delay = 0 }: { icon: React.ReactNode; title: string; desc: string; delay?: number }) {
+  const ref = useReveal<HTMLDivElement>()
   return (
-    <div className="group rounded-2xl border border-line bg-panel p-6 shadow-1 transition-all duration-300 hover:shadow-3 hover:-translate-y-1">
+    <div
+      ref={ref}
+      className="group rounded-2xl border border-line bg-panel p-6 shadow-1 transition-all duration-300 hover:shadow-3 hover:-translate-y-1 reveal"
+      style={{ animationDelay: `${delay}ms` }}
+    >
       <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center text-white shadow-2 mb-4">
         {icon}
       </div>
@@ -93,10 +149,11 @@ function Step({ n, title, desc }: { n: string; title: string; desc: string }) {
 }
 
 function HeroVisual() {
+  const parallax = useParallax(18)
   return (
     <div className="relative">
       <div className="absolute -inset-6 bg-gradient-to-tr from-accent-500/20 to-accent-300/10 rounded-[2rem] blur-2xl" />
-      <div className="relative rounded-3xl border border-line bg-sidebar shadow-4 overflow-hidden animate-fade-in-up" style={{ animationDelay: '120ms' }}>
+      <div ref={parallax} className="relative rounded-3xl border border-line bg-sidebar shadow-4 overflow-hidden animate-fade-in-up" style={{ animationDelay: '120ms' }}>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-subtle">
           <span className="w-3 h-3 rounded-full bg-line-strong" />
           <span className="w-3 h-3 rounded-full bg-line-strong" />
@@ -202,7 +259,7 @@ export function LandingPage() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/login')} className="hidden sm:inline-flex">
               Entrar
             </Button>
-            <Button size="sm" onClick={() => navigate('/login')} icon={<ArrowRight className="w-4 h-4" />}>
+            <Button size="sm" variant="gradient" onClick={() => navigate('/login')} icon={<ArrowRight className="w-4 h-4" />}>
               Começar agora
             </Button>
             <button
@@ -260,7 +317,7 @@ export function LandingPage() {
               acompanhamento comercial em um fluxo único — com IA cuidando das conversas e do follow-up.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 mt-8 animate-fade-in-up" style={{ animationDelay: '180ms' }}>
-              <Button size="lg" onClick={() => navigate('/login')} icon={<ArrowRight className="w-5 h-5" />} className="sm:!h-14 sm:!px-7 sm:!text-base">
+              <Button size="lg" variant="gradient" onClick={() => navigate('/login')} icon={<ArrowRight className="w-5 h-5" />} className="sm:!h-14 sm:!px-7 sm:!text-base">
                 Começar agora
               </Button>
               <Button size="lg" variant="outline" onClick={() => scrollTo('como-funciona')} className="sm:!h-14 sm:!px-7 sm:!text-base">
@@ -560,8 +617,8 @@ export function LandingPage() {
                 </div>
               ))
             ) : (
-              plans.map((p, i) => {
-                const featured = i === Math.floor(plans.length / 2)
+              plans.map((p) => {
+                const featured = p.featured
                 const price = p.price > 0 ? formatBRL(p.price) : 'Grátis'
                 const period = p.billing_type === 'recurring' ? '/mês' : p.duration_days ? ` /${p.duration_days}d` : ''
                 const feats = Array.isArray(p.features) && p.features.length > 0
@@ -570,13 +627,13 @@ export function LandingPage() {
                 return (
                   <div
                     key={p.id}
-                    className={`relative rounded-3xl border p-8 shadow-2 transition-all duration-300 hover:-translate-y-1 ${
+                    className={`relative rounded-3xl border p-8 shadow-2 transition-all duration-300 hover:-translate-y-1 reveal ${
                       featured ? 'border-accent-500/40 bg-gradient-to-br from-accent-500/10 to-accent-300/5' : 'border-line bg-panel'
                     }`}
                   >
                     {featured && (
-                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-bold text-white bg-accent-600 rounded-full px-3 py-1 shadow-2">
-                        Mais popular
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-bold text-white bg-accent-600 rounded-full px-3 py-1 shadow-2 btn-sweep">
+                        {p.badge_label ?? 'Mais popular'}
                       </span>
                     )}
                     <div className="text-sm font-semibold">{p.name}</div>
@@ -584,6 +641,12 @@ export function LandingPage() {
                     <div className="mt-5 flex items-baseline gap-1">
                       <span className="text-4xl font-extrabold tracking-tight">{price}</span>
                       <span className="text-sm text-muted">{period}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1 text-xs text-muted">
+                      <Zap className="w-3.5 h-3.5 text-accent-500" />
+                      {p.lead_limit} leads
+                      <span className="mx-1">·</span>
+                      {p.campaign_equivalence >= 999 ? 'campanhas ilimitadas' : `${p.campaign_equivalence} campanhas`}
                     </div>
                     <ul className="mt-6 space-y-2.5">
                       {feats.map((f) => (
@@ -595,11 +658,11 @@ export function LandingPage() {
                     </ul>
                     <Button
                       size="lg"
-                      variant={featured ? 'primary' : 'outline'}
+                      variant={featured ? 'gradient' : 'outline'}
                       className="w-full mt-7"
                       onClick={() => navigate('/login')}
                     >
-                      Começar agora
+                      {p.slug === 'teste' ? 'Ativar teste' : 'Começar agora'}
                     </Button>
                   </div>
                 )
@@ -647,8 +710,8 @@ export function LandingPage() {
 
       {/* CTA FINAL */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto rounded-3xl border border-line bg-gradient-to-br from-accent-600 to-accent-800 text-white p-10 sm:p-16 text-center relative overflow-hidden shadow-4">
-          <div className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
+        <div className="max-w-5xl mx-auto rounded-3xl border border-line bg-gradient-to-br from-accent-600 to-accent-800 text-white p-10 sm:p-16 text-center relative overflow-hidden shadow-4 reveal" ref={useReveal<HTMLDivElement>()}>
+          <div className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl animate-pulse-soft" />
           <div className="pointer-events-none absolute -bottom-24 -left-24 w-96 h-96 rounded-full bg-black/10 blur-3xl" />
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight relative">Pronto para prospectar com IA?</h2>
           <p className="text-white/80 mt-4 text-lg leading-relaxed max-w-2xl mx-auto relative">
@@ -656,7 +719,7 @@ export function LandingPage() {
             de WhatsApp no mesmo fluxo.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8 relative">
-            <Button size="lg" variant="secondary" onClick={() => navigate('/login')} icon={<ArrowRight className="w-5 h-5" />} className="bg-white !text-accent-800 hover:!bg-accent-100 !shadow-3">
+            <Button size="lg" variant="secondary" onClick={() => navigate('/login')} icon={<ArrowRight className="w-5 h-5" />} className="bg-white !text-accent-800 hover:!bg-accent-100 !shadow-3 btn-sweep">
               Entrar no painel
             </Button>
             <Button size="lg" variant="ghost" onClick={() => scrollTo('recursos')} className="text-white hover:bg-white/10 !border-white/30">

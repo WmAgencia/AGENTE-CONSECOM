@@ -23,6 +23,8 @@ import { ThemeToggle } from './components/ThemeToggle'
 import { ConnectionQrOverlay } from './components/ConnectionQrOverlay'
 import { ManualProspection } from './components/ManualProspection'
 import { ContaPage } from './components/ContaPage'
+import { PlansPage } from './components/PlansPage'
+import { LeadsWidget } from './components/LeadsWidget'
 import { MasterPanel } from './components/MasterPanel'
 import { downloadPersonalizedExtension } from './lib/extensionDownload'
 import { subscribeVoiceNotifications, scheduleMeetingReminders } from './lib/voice'
@@ -162,6 +164,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
         </nav>
 
         <div className="px-5 py-4 border-t border-line space-y-3">
+          <LeadsWidget compact onBuy={() => navigate('/planos')} />
           <div className="flex items-center justify-between text-[11px] text-faint">
             <span>{leads.length} leads no total</span>
             <span className="font-mono opacity-70">v{APP_VERSION}</span>
@@ -201,6 +204,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           <Route path="/app-mobile" element={<Navigate to="/extensao" replace />} />
           <Route path="/contatos" element={<ContactsView />} />
           <Route path="/conta" element={<ContaPage />} />
+          <Route path="/planos" element={<PlansPage />} />
           <Route path="/master" element={<MasterPanel />} />
           <Route path="/central-ia" element={<AICenter />} />
           <Route path="/central-ia/memoria" element={<CommercialMemory />} />

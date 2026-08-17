@@ -4,6 +4,7 @@ import { computeEngagement, type Engagement } from '../lib/engagement'
 import { filterLeadsBySearch } from '../lib/kanbanSearch'
 import { LeadChat } from './LeadChat'
 import { followUpsApi } from '../lib/api'
+import { Modal } from './ui'
 
 type Section =
   | 'enviados'
@@ -586,34 +587,33 @@ function MeetingModal({ lead, onClose, onSave }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="font-semibold">Reunião</div>
-            <div className="text-xs text-muted truncate max-w-[220px]">{lead.name || 'Sem nome'}</div>
-          </div>
-          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
-        </div>
-        <label className="block text-xs text-muted mb-3">
-          Data e hora
-          <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)}
-            className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500 transition-all" />
-        </label>
-        <label className="block text-xs text-muted mb-3">
-          Observações
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
-            className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500 transition-all resize-none" />
-        </label>
-        {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
-        <div className="flex justify-end gap-2">
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      title="Reunião"
+      subtitle={lead.name || 'Sem nome'}
+      footer={
+        <>
           <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Cancelar</button>
           <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium">
             {busy ? 'Salvando...' : 'Salvar'}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <label className="block text-xs text-muted mb-3">
+        Data e hora
+        <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)}
+          className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500 transition-all" />
+      </label>
+      <label className="block text-xs text-muted mb-3">
+        Observações
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
+          className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500 transition-all resize-none" />
+      </label>
+      {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
+    </Modal>
   )
 }
 
@@ -652,46 +652,45 @@ function CloseModal({ lead, onClose, onSave }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-line-2 bg-panel p-5 shadow-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="font-semibold">Concluir lead</div>
-            <div className="text-xs text-muted truncate max-w-[220px]">{lead.name || 'Sem nome'}</div>
-          </div>
-          <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
-        </div>
-        <div className="space-y-2 mb-3">
-          <label className="flex items-center gap-2 text-sm text-secondary">
-            <input type="radio" checked={closed} onChange={() => setClosed(true)} className="accent-emerald-500" />
-            Fechado (cliente fechou)
-          </label>
-          <label className="flex items-center gap-2 text-sm text-secondary">
-            <input type="radio" checked={!closed} onChange={() => setClosed(false)} className="accent-rose-500" />
-            Não fechado
-          </label>
-        </div>
-        {closed && (
-          <label className="block text-xs text-muted mb-3">
-            Valor da venda (R$)
-            <input value={valor} onChange={(e) => setValor(e.target.value)}
-              inputMode="decimal" placeholder="Ex.: 1500"
-              className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500" />
-          </label>
-        )}
-        <label className="block text-xs text-muted mb-3">
-          Motivo
-          <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: fora do orçamento, já tem fornecedor..."
-            className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500" />
-        </label>
-        {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
-        <div className="flex justify-end gap-2">
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      title="Concluir lead"
+      subtitle={lead.name || 'Sem nome'}
+      footer={
+        <>
           <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Cancelar</button>
           <button onClick={() => void submit()} disabled={busy} className="px-4 py-2 text-sm bg-accent-600 hover:bg-accent-500 disabled:opacity-50 rounded-xl font-medium">
             {busy ? 'Salvando...' : 'Concluir'}
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="space-y-2 mb-3">
+        <label className="flex items-center gap-2 text-sm text-secondary">
+          <input type="radio" checked={closed} onChange={() => setClosed(true)} className="accent-emerald-500" />
+          Fechado (cliente fechou)
+        </label>
+        <label className="flex items-center gap-2 text-sm text-secondary">
+          <input type="radio" checked={!closed} onChange={() => setClosed(false)} className="accent-rose-500" />
+          Não fechado
+        </label>
       </div>
-    </div>
+      {closed && (
+        <label className="block text-xs text-muted mb-3">
+          Valor da venda (R$)
+          <input value={valor} onChange={(e) => setValor(e.target.value)}
+            inputMode="decimal" placeholder="Ex.: 1500"
+            className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500" />
+        </label>
+      )}
+      <label className="block text-xs text-muted mb-3">
+        Motivo
+        <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: fora do orçamento, já tem fornecedor..."
+          className="mt-1 w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500" />
+      </label>
+      {error && <p className="text-sm text-rose-400 mb-2">{error}</p>}
+    </Modal>
   )
 }

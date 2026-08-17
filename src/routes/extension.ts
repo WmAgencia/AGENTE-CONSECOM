@@ -21,7 +21,7 @@ import { getEnv, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { getLogger } from '../utils/logger.js';
 import { extractBearerToken } from '../utils/auth.js';
 import { getTenantForUserId } from '../services/saas.auth.js';
-import { getImportQuota } from '../services/saas.js';
+import { getImportQuota, recordCredit } from '../services/saas.js';
 import { z } from 'zod';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
@@ -370,6 +370,18 @@ export function registerExtensionRoutes(app: FastifyInstance): void {
       }
 
       log.info({ total: leads.length, created, duplicates, failed, listId }, logPrefix);
+
+      // Baixa no saldo de leads (credit_ledger) por cada lead criado.
+      if (tenantId && created > 0) {
+        await recordCredit({
+          tenantId,
+          kind: 'consumption',
+          delta: -created,
+          note: `Importação pela extensão (${created} leads)`,
+          detail: { source: source ?? 'google_maps', list_id: listId },
+        });
+      }
+
       return reply.send({
         ok: failed === 0,
         summary: { total: leads.length, created, duplicates, errors: failed, quotaCut },

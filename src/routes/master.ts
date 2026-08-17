@@ -181,7 +181,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!name) return reply.status(400).send({ error: 'name_required', statusCode: 400 });
-    const payload = {
+const payload = {
       name,
       slug: typeof body.slug === 'string' ? body.slug : name.toLowerCase().replace(/\s+/g, '-'),
       description: typeof body.description === 'string' ? body.description : null,
@@ -192,6 +192,10 @@ export function registerMasterRoutes(app: FastifyInstance): void {
       billing_type: body.billing_type === 'recurring' ? 'recurring' : 'one_time',
       active: body.active === true,
       features: Array.isArray(body.features) ? body.features : [],
+      featured: body.featured === true,
+      display_order: Number(body.display_order) || 0,
+      campaign_equivalence: Number(body.campaign_equivalence) || 0,
+      badge_label: typeof body.badge_label === 'string' ? body.badge_label : null,
     };
     const res = await fetch(`${serviceBaseUrl()}/rest/v1/plans?select=*`, {
       method: 'POST',
@@ -215,8 +219,13 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     if (body.price != null) patch.price = Number(body.price) || 0;
     if (body.lead_limit != null) patch.lead_limit = Number(body.lead_limit) || 0;
     if (body.duration_days != null) patch.duration_days = Number(body.duration_days);
-    if (body.active === true || body.active === false) patch.active = body.active;
+if (body.active === true || body.active === false) patch.active = body.active;
     if (body.billing_type === 'one_time' || body.billing_type === 'recurring') patch.billing_type = body.billing_type;
+    if (body.featured === true || body.featured === false) patch.featured = body.featured;
+    if (body.display_order != null) patch.display_order = Number(body.display_order) || 0;
+    if (body.campaign_equivalence != null) patch.campaign_equivalence = Number(body.campaign_equivalence) || 0;
+    if (typeof body.badge_label === 'string') patch.badge_label = body.badge_label;
+    if (Array.isArray(body.features)) patch.features = body.features;
     if (Object.keys(patch).length === 0) return reply.status(400).send({ error: 'nothing_to_update', statusCode: 400 });
     const res = await fetch(`${serviceBaseUrl()}/rest/v1/plans?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -251,9 +260,36 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     return reply.send({ subscriptions: rows ?? [] });
   });
 
-  scoped.get('/api/master/payments', async (_req, reply) => {
+scoped.get('/api/master/payments', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>('/payments', '*,plan:plans(name,slug)');
     return reply.send({ payments: rows ?? [] });
+  });
+
+  // ---- Antifraude (plano TESTE) ----
+  scoped.get('/api/master/antifraud', async (_req, reply) => {
+    const [redemptions, events] = await Promise.all([
+      getJson<Record<string, unknown>>(
+        '/trial_redemption',
+        '*,user:app_users(email,full_name,created_at)',
+      ),
+      getJson<Record<string, unknown>>(
+        '/security_events?order=created_at.desc&limit=200',
+        '*',
+      ),
+    ]);
+    const red = redemptions ?? [];
+    const ev = events ?? [];
+    return reply.send({
+      redemptions: red,
+      events: ev,
+      stats: {
+        total: red.length,
+        highRisk: red.filter((r) => Number(r.risk_score) >= 70).length,
+        blockedEvents: ev.filter((e) => e.event_type === 'trial_blocked' || e.event_type === 'trial_rate_limited').length,
+        uniqueIps: new Set(red.map((r) => r.ip_hash).filter(Boolean)).size,
+        uniqueDevices: new Set(red.map((r) => r.device_hash).filter(Boolean)).size,
+      },
+    });
   });
 
   // ---- Gateways ----
