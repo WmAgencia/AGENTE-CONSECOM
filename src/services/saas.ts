@@ -125,8 +125,12 @@ async function first<T>(path: string): Promise<T | null> {
 
 export async function listPlans(activeOnly = true): Promise<Plan[]> {
   const suffix = activeOnly ? '&active=eq.true' : '';
-  const rows = await get<Plan[]>(`/plans?select=*&order=display_order.asc,price.asc${suffix}`);
-  return rows ?? [];
+  // Ordena por display_order quando a migration v31 já foi aplicada; cai para
+  // price.asc quando a coluna ainda não existe (schema antigo).
+  const ordered = await get<Plan[]>(`/plans?select=*&order=display_order.asc,price.asc${suffix}`);
+  if (ordered) return ordered;
+  const plain = await get<Plan[]>(`/plans?select=*&order=price.asc${suffix}`);
+  return plain ?? [];
 }
 
 export async function getPlan(planId: string): Promise<Plan | null> {
