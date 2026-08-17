@@ -378,9 +378,9 @@ scoped.get('/api/master/payments', async (_req, reply) => {
   scoped.get('/api/master/gateways', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>(
       '/payment_gateways',
-      'id,provider,enabled,sandbox,active,created_at,updated_at',
+      'id,name,provider,enabled,sandbox,created_at,updated_at',
     );
-    return reply.send({ gateways: rows ?? [] });
+    return reply.send({ gateways: (rows ?? []).map((row) => ({ ...row, active: row.enabled === true })) });
   });
 
   scoped.post('/api/master/gateways', async (req, reply) => {
@@ -405,9 +405,10 @@ scoped.get('/api/master/payments', async (_req, reply) => {
         method: 'PATCH',
         headers: serviceHeaders(true),
         body: JSON.stringify({
-          provider,
-          sandbox,
-          active: body.active === true,
+           name: 'mercadopago',
+           provider,
+           sandbox,
+           enabled: body.active === true,
            config: { accessToken, publicKey, webhookSecret },
           updated_at: new Date().toISOString(),
         }),
@@ -417,10 +418,10 @@ scoped.get('/api/master/payments', async (_req, reply) => {
         method: 'POST',
         headers: serviceHeaders(true),
         body: JSON.stringify({
-          provider,
-          sandbox,
-          enabled: true,
-          active: body.active === true,
+           name: 'mercadopago',
+           provider,
+           sandbox,
+           enabled: body.active === true,
            config: { accessToken, publicKey, webhookSecret },
         }),
       });
@@ -450,7 +451,7 @@ scoped.get('/api/master/payments', async (_req, reply) => {
     const body = (req.body ?? {}) as { enabled?: unknown; active?: unknown };
     const patch: Record<string, unknown> = {};
     if (body.enabled === true || body.enabled === false) patch.enabled = body.enabled;
-    if (body.active === true || body.active === false) patch.active = body.active;
+    if (body.active === true || body.active === false) patch.enabled = body.active;
     if (Object.keys(patch).length === 0) return reply.status(400).send({ error: 'nothing_to_update', statusCode: 400 });
     await fetch(`${serviceBaseUrl()}/rest/v1/payment_gateways?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
