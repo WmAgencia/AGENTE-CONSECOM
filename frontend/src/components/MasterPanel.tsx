@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Users, Wallet, Activity, CreditCard, Inbox, Database, ShieldCheck, TrendingUp } from 'lucide-react'
 import { masterApi, formatBRL, type MasterDashboard, type MasterPlan, type MasterCoupon, type MasterGateway } from '../lib/api'
+import { KpiCard, BarChart, AreaChart, DonutChart, HorizontalBars } from './charts'
+import { Button } from './ui'
 
 type TabKey = 'dashboard' | 'users' | 'plans' | 'coupons' | 'gateways' | 'pixels' | 'extensao' | 'referencias' | 'requests' | 'logs'
 
@@ -16,15 +18,6 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'requests', label: 'Solicitações' },
   { key: 'logs', label: 'Auditoria' },
 ]
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-line bg-subtle p-4">
-      <div className="text-2xl font-semibold">{value}</div>
-      <div className="text-xs text-muted mt-1">{label}</div>
-    </div>
-  )
-}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -235,18 +228,72 @@ function ExtensionSitesTab() {
 
 function DashboardTab() {
   const [d, setD] = useState<MasterDashboard | null>(null)
-  useEffect(() => { masterApi.dashboard().then(setD).catch(() => setD(null)) }, [])
-  if (!d) return <Section title="Métricas"><div className="text-muted text-sm">Carregando…</div></Section>
+  const [error, setError] = useState('')
+  const load = () => {
+    setError('')
+    masterApi.dashboard().then(setD).catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar métricas.'))
+  }
+  useEffect(() => { load() }, [])
+  if (!d && !error) return <Section title="Métricas"><div className="text-muted text-sm animate-pulse-soft">Carregando…</div></Section>
+  if (!d) return <Section title="Métricas"><div className="text-rose-400 text-sm">{error}</div></Section>
+
+  const s = d.series
+  const activePct = d.users > 0 ? Math.round((d.actives / d.users) * 100) : 0
+  const paidPct = d.subscriptions > 0 ? Math.round((d.activeSubscriptions / d.subscriptions) * 100) : 0
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <Stat label="Usuários" value={d.users} />
-      <Stat label="Ativos" value={d.actives} />
-      <Stat label="Tenants" value={d.tenants} />
-      <Stat label="Leads" value={d.leads} />
-      <Stat label="Assinaturas ativas" value={d.activeSubscriptions} />
-      <Stat label="Pagamentos aprovados" value={d.approvedPayments} />
-      <Stat label="Receita" value={formatBRL(d.revenue)} />
-      <Stat label="Solicitações pendentes" value={d.pendingRequests} />
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-secondary">Visão geral da operação</h2>
+        <Button variant="ghost" size="sm" onClick={load}>Atualizar</Button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard label="Receita total" value={formatBRL(d.revenue)} icon={<Wallet className="w-4 h-4" />} trend={null} spark={s.revenueByMonth.map((x) => x.value)} hint={`${d.approvedPayments} pagamentos aprovados`} />
+        <KpiCard label="Usuários" value={String(d.users)} icon={<Users className="w-4 h-4" />} trend={activePct >= 60 ? activePct : null} hint={`${d.actives} ativos · ${d.masters} masters`} />
+        <KpiCard label="Assinaturas" value={String(d.subscriptions)} icon={<CreditCard className="w-4 h-4" />} trend={paidPct >= 50 ? paidPct : null} hint={`${d.activeSubscriptions} ativas`} />
+        <KpiCard label="Leads" value={String(d.leads)} icon={<Database className="w-4 h-4" />} trend={null} spark={s.leadsByMonth.map((x) => x.value)} hint="no funil de prospecção" />
+      </div>
+
+      {/* Receita + status */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Section title="Receita por mês (aprovados)">
+          <AreaChart data={s.revenueByMonth} height={190} format={(n) => formatBRL(n)} />
+        </Section>
+        <Section title="Status dos pagamentos">
+          <DonutChart data={s.paymentsByStatus.map((x) => ({ label: x.label, value: x.value }))} />
+        </Section>
+        <Section title="Assinaturas por plano">
+          <HorizontalBars data={s.subsByPlan} format={(n) => String(n)} />
+        </Section>
+      </div>
+
+      {/* Crescimento + usuários */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Section title="Leads por mês">
+          <BarChart data={s.leadsByMonth} height={150} />
+        </Section>
+        <Section title="Usuários por papel">
+          <DonutChart data={s.usersByRole.map((x) => ({ label: x.label, value: x.value }))} />
+        </Section>
+        <Section title="Status das assinaturas">
+          <HorizontalBars data={s.subsByStatus} format={(n) => String(n)} />
+        </Section>
+      </div>
+
+      {/* Operacional */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard label="Tenants" value={String(d.tenants)} icon={<ShieldCheck className="w-4 h-4" />} spark={s.tenantsByMonth.map((x) => x.value)} hint="workspaces" />
+        <KpiCard label="Solicitações" value={String(d.requests)} icon={<Inbox className="w-4 h-4" />} trend={null} hint={`${d.pendingRequests} pendentes`} />
+        <KpiCard label="Planos" value={String(d.plans)} icon={<TrendingUp className="w-4 h-4" />} hint="no catálogo" />
+        <KpiCard label="Usuários bloqueados" value={String(s.usersByStatus.find((x) => x.label === 'Bloqueados')?.value ?? 0)} icon={<Activity className="w-4 h-4" />} hint={d.masters ? `${d.masters} master` : ''} />
+      </div>
+
+      {/* Requests por status */}
+      <Section title="Solicitações de fonte por status">
+        <HorizontalBars data={s.requestsByStatus} format={(n) => String(n)} />
+      </Section>
     </div>
   )
 }

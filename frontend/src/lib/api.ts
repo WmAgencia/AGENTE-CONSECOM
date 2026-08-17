@@ -182,6 +182,18 @@ export const saasApi = {
 
 // ===== Vyntra SaaS — Painel Master (apenas MASTER) =====
 
+export interface MasterSeries {
+  revenueByMonth: Array<{ mes: string; label: string; value: number }>
+  leadsByMonth: Array<{ mes: string; label: string; value: number }>
+  tenantsByMonth: Array<{ mes: string; label: string; value: number }>
+  usersByRole: Array<{ label: string; value: number }>
+  usersByStatus: Array<{ label: string; value: number }>
+  subsByStatus: Array<{ label: string; value: number }>
+  subsByPlan: Array<{ label: string; value: number }>
+  paymentsByStatus: Array<{ label: string; value: number }>
+  requestsByStatus: Array<{ label: string; value: number }>
+}
+
 export interface MasterDashboard {
   users: number
   masters: number
@@ -195,6 +207,7 @@ export interface MasterDashboard {
   pendingRequests: number
   leads: number
   plans: number
+  series: MasterSeries
 }
 
 export interface MasterPlan {

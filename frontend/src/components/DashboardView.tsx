@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Target, RefreshCw, TrendingUp, CalendarDays, Coins, Users, MessagesSquare, ChevronDown, X } from 'lucide-react'
+import { Target, RefreshCw, TrendingUp, CalendarDays, Coins, Users, MessagesSquare, ChevronDown, X, DollarSign, PhoneCall, Handshake, UserPlus } from 'lucide-react'
 import { type Lead } from '../lib/supabase'
 import { Button, Card } from './ui'
+import { KpiCard, AreaChart, DonutChart, HorizontalBars } from './charts'
 import {
   commercialApi,
   formatBRL,
@@ -253,9 +254,12 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
 
       {loading && !data ? (
         <div className="space-y-4">
-          <div className="h-40 rounded-xl border border-line bg-subtle animate-pulse" />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[1, 2, 3, 4].map((i) => <div key={i} className="h-28 rounded-xl border border-line bg-subtle animate-pulse" />)}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="h-52 rounded-xl border border-line bg-subtle animate-pulse lg:col-span-2" />
+            <div className="h-52 rounded-xl border border-line bg-subtle animate-pulse" />
           </div>
         </div>
       ) : error ? (
@@ -265,28 +269,54 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
         </Card>
       ) : real ? (
         <>
-          {/* Meta vs Real + faturamento */}
-          <div className="grid gap-4 lg:grid-cols-3">
+          {/* KPIs */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <KpiCard
+              label="Faturamento"
+              value={formatBRL(real.faturamento)}
+              icon={<DollarSign className="w-4 h-4" />}
+              spark={historico.map((h) => h.faturamento)}
+              hint={`${real.vendasComValor} vendas com valor`}
+              accent="var(--c-accent-500)"
+            />
+            <KpiCard
+              label="Vendas fechadas"
+              value={formatNumber(real.vendas)}
+              icon={<Handshake className="w-4 h-4" />}
+              trend={real.conversaoLeadVenda}
+              hint={`de ${real.leadsTrabalhados} leads trabalhados`}
+              accent="var(--c-accent-400)"
+            />
+            <KpiCard
+              label="Reuniões"
+              value={formatNumber(real.reunioesMarcadas)}
+              icon={<PhoneCall className="w-4 h-4" />}
+              trend={real.conversaoLeadReuniao}
+              hint={`${real.reunioesRealizadas} realizadas`}
+              accent="var(--c-accent-300)"
+            />
+            <KpiCard
+              label="Leads trabalhados"
+              value={formatNumber(real.leadsTrabalhados)}
+              icon={<UserPlus className="w-4 h-4" />}
+              trend={real.conversaoReuniaoVenda}
+              hint={`${real.conversando} conversando agora`}
+              accent="var(--c-accent-600)"
+            />
+          </div>
+
+          {/* Meta vs Real + Histórico */}
+          <div className="grid gap-4 lg:grid-cols-3 mt-4">
             <Card className="lg:col-span-2">
               <div className="flex items-center justify-between mb-2">
-                <div className="text-xs text-muted uppercase tracking-wide">Faturamento real</div>
-                <div className="text-[11px] text-faint">Σ vendas fechadas com valor</div>
+                <div className="text-xs text-muted uppercase tracking-wide">Faturamento histórico</div>
+                <div className="text-[11px] text-faint">por mês de fechamento</div>
               </div>
-              <div className="text-4xl font-bold">{formatBRL(real.faturamento)}</div>
-              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
-                <div className="rounded-lg bg-subtle p-3">
-                  <div className="text-[10px] text-muted uppercase">Vendas fechadas</div>
-                  <div className="text-xl font-semibold">{formatNumber(real.vendas)}</div>
-                </div>
-                <div className="rounded-lg bg-subtle p-3">
-                  <div className="text-[10px] text-muted uppercase">Com valor</div>
-                  <div className="text-xl font-semibold">{formatNumber(real.vendasComValor)}</div>
-                </div>
-                <div className="rounded-lg bg-subtle p-3">
-                  <div className="text-[10px] text-muted uppercase">Leads trabalhados</div>
-                  <div className="text-xl font-semibold">{formatNumber(real.leadsTrabalhados)}</div>
-                </div>
-              </div>
+              <AreaChart
+                data={historico.map((h) => ({ label: formatMonth(h.mes), value: h.faturamento }))}
+                height={190}
+                format={(n) => formatBRL(n)}
+              />
             </Card>
 
             <Card className="flex flex-col items-center justify-center">
@@ -323,7 +353,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
           </div>
 
           {/* Hoje */}
-          <div className="mt-4">
+          <div className="mt-6">
             <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
               <CalendarDays className="w-4 h-4 text-accent-300" /> Hoje
             </h2>
@@ -344,6 +374,52 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
                 <div className="text-xs text-faint mt-1">período da meta</div>
               </Card>
             </div>
+          </div>
+
+          {/* Funil + Conversões */}
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            <Card>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <Users className="w-4 h-4 text-accent-300" /> Funil de conversão
+              </h3>
+              <DonutChart
+                data={real.funnel.map((f, i) => ({
+                  label: f.label,
+                  value: f.value,
+                  color: ['var(--c-accent-500)', 'var(--c-accent-400)', 'var(--c-accent-300)', 'var(--c-sky-500, #38bdf8)', 'var(--c-amber-500, #f59e0b)'][i % 5],
+                }))}
+                format={(n) => formatNumber(n)}
+              />
+            </Card>
+            <Card className="lg:col-span-2">
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <Coins className="w-4 h-4 text-accent-300" /> Conversões reais
+              </h3>
+              <div className="grid sm:grid-cols-3 gap-3 mb-4">
+                <div className="rounded-xl bg-subtle p-4 text-center">
+                  <div className="text-[10px] text-muted uppercase">Lead → Reunião</div>
+                  <div className="text-2xl font-bold mt-1">
+                    {real.conversaoLeadReuniao == null ? <span className="text-sm text-faint font-normal">Sem dados</span> : `${real.conversaoLeadReuniao}%`}
+                  </div>
+                  <div className="text-[10px] text-faint mt-1">{real.reunioesMarcadas} ÷ {real.leadsTrabalhados}</div>
+                </div>
+                <div className="rounded-xl bg-subtle p-4 text-center">
+                  <div className="text-[10px] text-muted uppercase">Reunião → Venda</div>
+                  <div className="text-2xl font-bold mt-1">
+                    {real.conversaoReuniaoVenda == null ? <span className="text-sm text-faint font-normal">Sem dados</span> : `${real.conversaoReuniaoVenda}%`}
+                  </div>
+                  <div className="text-[10px] text-faint mt-1">{real.vendas} ÷ {real.reunioesRealizadas}</div>
+                </div>
+                <div className="rounded-xl bg-subtle p-4 text-center">
+                  <div className="text-[10px] text-muted uppercase">Lead → Venda</div>
+                  <div className="text-2xl font-bold mt-1">
+                    {real.conversaoLeadVenda == null ? <span className="text-sm text-faint font-normal">Sem dados</span> : `${real.conversaoLeadVenda}%`}
+                  </div>
+                  <div className="text-[10px] text-faint mt-1">{real.vendas} ÷ {real.leadsTrabalhados}</div>
+                </div>
+              </div>
+              <HorizontalBars data={real.funnel} format={(n) => formatNumber(n)} />
+            </Card>
           </div>
 
           {/* Projeção vs Real */}
@@ -377,60 +453,7 @@ export function DashboardView({ leads }: { leads: Lead[] }) {
             </div>
           )}
 
-          {/* Conversões reais */}
-          <div className="mt-6">
-            <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
-              <Coins className="w-4 h-4 text-accent-300" /> Conversões reais
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Card>
-                <div className="text-xs text-muted uppercase tracking-wide">Lead → Reunião</div>
-                <div className="text-3xl font-bold mt-2">
-                  {real.conversaoLeadReuniao == null ? <span className="text-base text-faint font-normal">Sem dados</span> : `${real.conversaoLeadReuniao}%`}
-                </div>
-                <div className="text-[10px] text-faint mt-1">{real.reunioesMarcadas} reuniões marcadas ÷ {real.leadsTrabalhados} leads</div>
-              </Card>
-              <Card>
-                <div className="text-xs text-muted uppercase tracking-wide">Reunião → Venda</div>
-                <div className="text-3xl font-bold mt-2">
-                  {real.conversaoReuniaoVenda == null ? <span className="text-base text-faint font-normal">Sem dados</span> : `${real.conversaoReuniaoVenda}%`}
-                </div>
-                <div className="text-[10px] text-faint mt-1">{real.vendas} vendas ÷ {real.reunioesRealizadas} reuniões</div>
-              </Card>
-              <Card>
-                <div className="text-xs text-muted uppercase tracking-wide">Lead → Venda</div>
-                <div className="text-3xl font-bold mt-2">
-                  {real.conversaoLeadVenda == null ? <span className="text-base text-faint font-normal">Sem dados</span> : `${real.conversaoLeadVenda}%`}
-                </div>
-                <div className="text-[10px] text-faint mt-1">{real.vendas} vendas ÷ {real.leadsTrabalhados} leads</div>
-              </Card>
-            </div>
-          </div>
-
-          {/* Funil */}
-          <div className="mt-6">
-            <h2 className="text-sm font-semibold mb-3 text-secondary flex items-center gap-2">
-              <Users className="w-4 h-4 text-accent-300" /> Funil de conversão
-            </h2>
-            <Card>
-              {real.funnel.map((f, i) => {
-                const denom = real.funnel[0]?.value || 0
-                const width = denom > 0 ? (f.value / denom) * 100 : 0
-                const colors = ['bg-sky-500', 'bg-violet-500', 'bg-emerald-500', 'bg-green-500', 'bg-accent-500']
-                return (
-                  <div key={f.label} className="flex items-center gap-3 px-1 py-2.5 border-b border-line last:border-0">
-                    <span className="w-44 text-xs text-muted">{f.label}</span>
-                    <div className="flex-1 h-2.5 rounded-full bg-subtle overflow-hidden">
-                      <div className={`h-full ${colors[i % colors.length]}`} style={{ width: `${width}%` }} />
-                    </div>
-                    <span className="text-xs text-secondary w-10 text-right">{f.value}</span>
-                  </div>
-                )
-              })}
-            </Card>
-          </div>
-
-          {/* Histórico */}
+          {/* Histórico detalhado */}
           <div className="mt-6">
             <button
               onClick={() => setExpanded(expanded === 'historico' ? null : 'historico')}

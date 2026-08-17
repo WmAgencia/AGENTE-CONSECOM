@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -21,21 +21,34 @@ import {
   Smartphone,
   BarChart3,
   PhoneCall,
+  ChevronDown,
+  CheckCircle2,
+  HelpCircle,
 } from 'lucide-react'
 import { Button } from './ui'
+import { saasApi, type SaasPlan, formatBRL } from '../lib/api'
 
 const NAV_LINKS = [
   { label: 'Problema', id: 'problema' },
   { label: 'Solução', id: 'solucao' },
   { label: 'Como funciona', id: 'como-funciona' },
   { label: 'Recursos', id: 'recursos' },
-  { label: 'IA', id: 'ia' },
-  { label: 'Resultados', id: 'resultados' },
+  { label: 'Planos', id: 'planos' },
+  { label: 'FAQ', id: 'faq' },
 ]
 
 function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
+
+const FAQS = [
+  { q: 'Preciso instalar alguma coisa?', a: 'Sim, uma extensão leve para o Chrome. Ela funciona como um painel flutuante ao lado das suas buscas: captura leads, telefone e CNPJ em um clique — sem quebrar o seu fluxo de trabalho.' },
+  { q: 'Como funciona a integração com o WhatsApp?', a: 'Você conecta uma instância da Evolution API no painel. A partir daí, as campanhas disparam mensagens, a IA responde e qualifica, e você acompanha tudo com histórico completo.' },
+  { q: 'A IA substitui a minha conversa?', a: 'Não. A IA cuida da triagem e das primeiras respostas, identifica interesse e agenda reuniões — mas você decide. Toda conversa pode ser assumida por você a qualquer momento.' },
+  { q: 'Meus dados estão seguros?', a: 'Sim. O acesso é por usuário autorizado, os dados são protegidos por RLS (row-level security) e cada workspace opera isolado dos demais.' },
+  { q: 'Funciona para o meu tipo de negócio?', a: 'O Vyntra é feito para vendas B2B que usam pesquisa ativa: prestadores de serviços, consultorias, psicólogos, imobiliárias, concessionárias e agências — o fluxo é o mesmo: encontrar, conversar e converter.' },
+  { q: 'Posso cancelar quando quiser?', a: 'Sim. A assinatura é controlada por você no painel e o acesso é interrompido ao final do período vigente.' },
+]
 
 function SectionTitle({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
   return (
@@ -161,6 +174,12 @@ function HeroVisual() {
 export function LandingPage() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const [plans, setPlans] = useState<SaasPlan[]>([])
+  const [openFaq, setOpenFaq] = useState<number | null>(0)
+
+  useEffect(() => {
+    saasApi.plans().then(setPlans).catch(() => setPlans([]))
+  }, [])
 
   return (
     <div className="min-h-screen bg-app text-fg overflow-x-hidden">
@@ -468,6 +487,158 @@ export function LandingPage() {
                 <div className="w-11 h-11 rounded-xl bg-subtle-2 text-accent-600 flex items-center justify-center mx-auto mb-4">{f.icon}</div>
                 <h3 className="font-semibold text-sm">{f.title}</h3>
                 <p className="text-xs text-muted mt-2 leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* COMPARAÇÃO */}
+      <section id="comparacao" className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <SectionTitle
+            eyebrow="Comparação"
+            title="Manual vs Vyntra"
+            subtitle="Veja o que muda quando a prospecção deixa de ser um processo manual."
+          />
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-line bg-panel p-6 shadow-1">
+              <div className="text-sm font-semibold text-muted mb-4">Prospecção manual</div>
+              <ul className="space-y-3">
+                {[
+                  'Horas copiando dados de empresa em empresa',
+                  'Planilhas que desatualizam na primeira semana',
+                  'Mensagens enviadas uma a uma, na mão',
+                  'Follow-ups esquecidos e leads esfriando',
+                  'Sem métrica de onde as vendas se perdem',
+                ].map((x) => (
+                  <li key={x} className="flex items-start gap-3 text-sm text-muted">
+                    <X className="w-4 h-4 text-rose-400 mt-0.5 shrink-0" />
+                    {x}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-accent-500/25 bg-gradient-to-br from-accent-500/8 to-accent-300/5 p-6 shadow-2">
+              <div className="text-sm font-semibold text-accent-600 mb-4">Com o Vyntra</div>
+              <ul className="space-y-3">
+                {[
+                  'Captura de leads com telefone e CNPJ em um clique',
+                  'Tudo centralizado: histórico, Kanban e agenda',
+                  'Campanhas de WhatsApp com disparo automático',
+                  'IA no follow-up e lembretes por voz',
+                  'Funil e conversões medidos em tempo real',
+                ].map((x) => (
+                  <li key={x} className="flex items-start gap-3 text-sm text-secondary">
+                    <Check className="w-4 h-4 text-accent-500 mt-0.5 shrink-0" />
+                    {x}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* PLANOS */}
+      <section id="planos" className="py-20 px-4 sm:px-6 lg:px-8 bg-sidebar border-y border-line">
+        <div className="max-w-7xl mx-auto">
+          <SectionTitle
+            eyebrow="Planos"
+            title="Comece simples, escale quando crescer"
+            subtitle="Escolha o plano que cabe no seu momento. Todos incluem o painel completo, a extensão e a integração WhatsApp."
+          />
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {plans.length === 0 ? (
+              [0, 1, 2].map((i) => (
+                <div key={i} className="rounded-3xl border border-line bg-panel p-8 animate-pulse-soft">
+                  <div className="h-4 w-1/3 rounded bg-subtle-2" />
+                  <div className="h-8 w-1/2 rounded bg-subtle-2 mt-4" />
+                  <div className="h-3 w-3/4 rounded bg-subtle-2 mt-4" />
+                  <div className="h-3 w-2/3 rounded bg-subtle-2 mt-2" />
+                  <div className="h-11 w-full rounded-xl bg-subtle-2 mt-6" />
+                </div>
+              ))
+            ) : (
+              plans.map((p, i) => {
+                const featured = i === Math.floor(plans.length / 2)
+                const price = p.price > 0 ? formatBRL(p.price) : 'Grátis'
+                const period = p.billing_type === 'recurring' ? '/mês' : p.duration_days ? ` /${p.duration_days}d` : ''
+                const feats = Array.isArray(p.features) && p.features.length > 0
+                  ? p.features.map((f) => String(f))
+                  : [`Até ${p.lead_limit} leads`, 'Painel completo', 'Extensão Chrome', 'WhatsApp via Evolution API']
+                return (
+                  <div
+                    key={p.id}
+                    className={`relative rounded-3xl border p-8 shadow-2 transition-all duration-300 hover:-translate-y-1 ${
+                      featured ? 'border-accent-500/40 bg-gradient-to-br from-accent-500/10 to-accent-300/5' : 'border-line bg-panel'
+                    }`}
+                  >
+                    {featured && (
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-bold text-white bg-accent-600 rounded-full px-3 py-1 shadow-2">
+                        Mais popular
+                      </span>
+                    )}
+                    <div className="text-sm font-semibold">{p.name}</div>
+                    {p.description && <p className="text-xs text-muted mt-1">{p.description}</p>}
+                    <div className="mt-5 flex items-baseline gap-1">
+                      <span className="text-4xl font-extrabold tracking-tight">{price}</span>
+                      <span className="text-sm text-muted">{period}</span>
+                    </div>
+                    <ul className="mt-6 space-y-2.5">
+                      {feats.map((f) => (
+                        <li key={f} className="flex items-start gap-2.5 text-sm text-secondary">
+                          <CheckCircle2 className="w-4 h-4 text-accent-500 mt-0.5 shrink-0" />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      size="lg"
+                      variant={featured ? 'primary' : 'outline'}
+                      className="w-full mt-7"
+                      onClick={() => navigate('/login')}
+                    >
+                      Começar agora
+                    </Button>
+                  </div>
+                )
+              })
+            )}
+          </div>
+          <p className="text-center text-xs text-faint mt-6">
+            Precisa de algo sob medida? Acesse o painel e fale com a gente.
+          </p>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <SectionTitle
+            eyebrow="FAQ"
+            title="Perguntas frequentes"
+            subtitle="Tudo o que você precisa saber antes de começar."
+          />
+          <div className="space-y-3">
+            {FAQS.map((f, i) => (
+              <div key={f.q} className="rounded-2xl border border-line bg-panel overflow-hidden">
+                <button
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left text-sm font-semibold hover:bg-subtle transition"
+                  aria-expanded={openFaq === i}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <HelpCircle className="w-4 h-4 text-accent-500 shrink-0" />
+                    {f.q}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-muted shrink-0 transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
+                </button>
+                {openFaq === i && (
+                  <div className="px-5 pb-4 pl-[3.25rem] text-sm text-muted leading-relaxed animate-fade-in">
+                    {f.a}
+                  </div>
+                )}
               </div>
             ))}
           </div>

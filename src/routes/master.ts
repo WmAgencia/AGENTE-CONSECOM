@@ -53,32 +53,94 @@ export function registerMasterRoutes(app: FastifyInstance): void {
     if (!guard.ok) return reply.status(guard.statusCode).send({ error: guard.error, statusCode: guard.statusCode });
   });
 
-  // Dashboard: métricas reais.
+// Dashboard: métricas reais + séries temporais (estilo Power BI).
   scoped.get('/api/master/dashboard', async (_req, reply) => {
-    const [appUsers, payments, subs, requests, leads] = await Promise.all([
-      getJson<{ role: string; status: string }>('/app_users', 'role,status'),
-      getJson<{ status: string; amount: number }>('/payments', 'status,amount'),
-      getJson<{ status: string }>('/subscriptions', 'status'),
-      getJson<{ status: string }>('/source_requests', 'status'),
-      getJson<{ id: string }>('/leads', 'id'),
+    const [appUsers, payments, subs, requests, leads, tenants, planRows] = await Promise.all([
+      getJson<{ role: string; status: string; created_at: string }>('/app_users', 'role,status,created_at'),
+      getJson<{ status: string; amount: number; created_at: string }>('/payments', 'status,amount,created_at'),
+      getJson<{ status: string; plan_id: string; created_at: string }>('/subscriptions', 'status,plan_id,created_at'),
+      getJson<{ status: string; created_at: string }>('/source_requests', 'status,created_at'),
+      getJson<{ id: string; created_at: string }>('/leads', 'id,created_at'),
+      getJson<{ id: string; created_at: string }>('/tenants', 'id,created_at'),
+      getJson<{ id: string; name: string }>('/plans', 'id,name'),
     ]);
-    const revenue = (payments ?? [])
-      .filter((p) => p.status === 'approved')
-      .reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-    const planCount = (await getJson<{ id: string }>('/plans', 'id')) ?? [];
+    const approved = (payments ?? []).filter((p) => p.status === 'approved');
+    const revenue = approved.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+
+    const countBy = <T>(rows: T[] | null, key: (r: T) => string): Array<{ label: string; value: number }> => {
+      const map = new Map<string, number>();
+      for (const r of rows ?? []) {
+        const k = key(r) || 'sem_status';
+        map.set(k, (map.get(k) ?? 0) + 1);
+      }
+      return Array.from(map.entries())
+        .map(([label, value]) => ({ label, value }))
+        .sort((a, b) => b.value - a.value);
+    };
+
+    // Últimos 12 meses (chaves YYYY-MM) em ordem crescente.
+    const monthKeys: string[] = [];
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      monthKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const monthLabel = (key: string): string => {
+      const [y, m] = key.split('-').map(Number);
+      return new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'short' });
+    };
+
+    const bucket = (rows: Array<{ created_at: string }> | null, months: string[]): Array<{ mes: string; label: string; value: number }> => {
+      const map = new Map<string, number>();
+      for (const k of months) map.set(k, 0);
+      for (const r of rows ?? []) {
+        const k = r.created_at ? r.created_at.slice(0, 7) : '';
+        if (map.has(k)) map.set(k, (map.get(k) ?? 0) + 1);
+      }
+      return months.map((k) => ({ mes: k, label: monthLabel(k), value: map.get(k) ?? 0 }));
+    };
+
+    const bucketSum = (rows: Array<{ created_at: string; amount: number }> | null, months: string[]): Array<{ mes: string; label: string; value: number }> => {
+      const map = new Map<string, number>();
+      for (const k of months) map.set(k, 0);
+      for (const r of rows ?? []) {
+        const k = r.created_at ? r.created_at.slice(0, 7) : '';
+        if (map.has(k)) map.set(k, (map.get(k) ?? 0) + (Number(r.amount) || 0));
+      }
+      return months.map((k) => ({ mes: k, label: monthLabel(k), value: Math.round((map.get(k) ?? 0) * 100) / 100 }));
+    };
+
+    // Assinaturas por plano (nome).
+    const subsByPlan = countBy(subs, (s) => {
+      const p = (planRows ?? []).find((x) => x.id === s.plan_id);
+      return p?.name ?? 'Sem plano';
+    });
+
+    const planCount = planRows?.length ?? 0;
     return reply.send({
       users: appUsers?.length ?? 0,
       masters: appUsers?.filter((u) => u.role === 'MASTER').length ?? 0,
       actives: appUsers?.filter((u) => u.status === 'active').length ?? 0,
-      tenants: (await getJson<{ id: string }>('/tenants', 'id'))?.length ?? 0,
+      tenants: tenants?.length ?? 0,
       subscriptions: subs?.length ?? 0,
       activeSubscriptions: subs?.filter((s) => s.status === 'active').length ?? 0,
-      approvedPayments: payments?.filter((p) => p.status === 'approved').length ?? 0,
+      approvedPayments: approved.length,
       revenue,
       requests: requests?.length ?? 0,
       pendingRequests: requests?.filter((r) => r.status === 'recebida').length ?? 0,
       leads: leads?.length ?? 0,
-      plans: planCount.length,
+      plans: planCount,
+      series: {
+        revenueByMonth: bucketSum(approved, monthKeys),
+        leadsByMonth: bucket(leads, monthKeys),
+        tenantsByMonth: bucket(tenants, monthKeys),
+        usersByRole: countBy(appUsers, (u) => (u.role === 'MASTER' ? 'Masters' : 'Usuários')),
+        usersByStatus: countBy(appUsers, (u) => (u.status === 'active' ? 'Ativos' : 'Bloqueados')),
+        subsByStatus: countBy(subs, (s) => s.status),
+        subsByPlan,
+        paymentsByStatus: countBy(payments, (p) => p.status),
+        requestsByStatus: countBy(requests, (r) => r.status),
+      },
     });
   });
 
