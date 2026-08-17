@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, Users, Wallet, Activity, CreditCard, Inbox, Database, ShieldCheck, TrendingUp } from 'lucide-react'
 import { masterApi, formatBRL, type MasterDashboard, type MasterPlan, type MasterCoupon, type MasterGateway } from '../lib/api'
 import { KpiCard, BarChart, AreaChart, DonutChart, HorizontalBars } from './charts'
-import { Button } from './ui'
+import { Button, Modal } from './ui'
 
 type TabKey = 'dashboard' | 'users' | 'plans' | 'coupons' | 'gateways' | 'pixels' | 'extensao' | 'referencias' | 'requests' | 'logs' | 'antifraude'
 
@@ -20,10 +20,13 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'logs', label: 'Auditoria' },
 ]
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
     <section className="bi-section rounded-2xl border border-line bg-panel p-5 shadow-1">
-      <h2 className="text-sm font-semibold mb-3">{title}</h2>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {actions}
+      </div>
       {children}
     </section>
   )
@@ -306,6 +309,7 @@ function UsersTab() {
   const [plans, setPlans] = useState<MasterPlan[]>([])
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState({ email: '', full_name: '', password: '' })
   const reload = () => masterApi.users().then(setUsers).catch(() => setUsers([]))
   useEffect(() => { reload(); masterApi.plans().then(setPlans).catch(() => setPlans([])) }, [])
@@ -319,11 +323,11 @@ function UsersTab() {
     catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao atualizar usuário.' }) }
   }
 
-  async function createUser(e: React.FormEvent) {
-    e.preventDefault()
+  async function createUser(e?: { preventDefault: () => void }) {
+    e?.preventDefault()
     if (form.password.length < 8) { setMsg({ ok: false, text: 'A senha precisa ter pelo menos 8 caracteres.' }); return }
     setBusy(true)
-    try { await masterApi.createUser(form); setForm({ email: '', full_name: '', password: '' }); setMsg({ ok: true, text: 'Usuário criado e pronto para acessar.' }); reload() }
+    try { await masterApi.createUser(form); setForm({ email: '', full_name: '', password: '' }); setCreateOpen(false); setMsg({ ok: true, text: 'Usuário criado e pronto para acessar.' }); reload() }
     catch (err) { setMsg({ ok: false, text: err instanceof Error ? err.message : 'Falha ao criar usuário.' }) }
     finally { setBusy(false) }
   }
@@ -341,7 +345,7 @@ function UsersTab() {
   }
 
   return (
-    <Section title="Usuários e tenants">
+    <Section title="Usuários e tenants" actions={<Button size="sm" onClick={() => setCreateOpen(true)}>+ Adicionar usuário</Button>}>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
         <div className="space-y-2">
         {users.map((u) => (
@@ -376,18 +380,15 @@ function UsersTab() {
         ))}
         {users.length === 0 && <div className="text-sm text-muted">Nenhum usuário.</div>}
         </div>
-        <form onSubmit={(e) => void createUser(e)} className="rounded-2xl border border-accent-500/20 bg-accent-500/5 p-4 space-y-3">
-          <div>
-            <div className="font-semibold">Criar novo usuário</div>
-            <div className="text-xs text-muted mt-0.5">A conta é criada confirmada e pode acessar imediatamente.</div>
-          </div>
+      </div>
+      {msg && <p className={`mt-3 text-xs font-semibold ${msg.ok ? 'text-emerald-400' : 'text-rose-300'}`}>{msg.text}</p>}
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Adicionar usuário" subtitle="Crie uma conta pronta para acessar o Vyntra." size="sm" footer={<><Button variant="secondary" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button onClick={() => void createUser()} loading={busy}>Criar usuário</Button></>}>
+        <div className="space-y-3">
           <input required type="text" placeholder="Nome completo" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className={inputCls} />
           <input required type="email" placeholder="E-mail" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputCls} />
           <input required type="password" minLength={8} placeholder="Senha inicial (mínimo 8)" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inputCls} />
-          <button disabled={busy} className="w-full rounded-xl bg-accent-600 px-3 py-2 text-sm font-semibold text-white hover:bg-accent-500 disabled:opacity-50">{busy ? 'Criando...' : 'Criar usuário'}</button>
-        </form>
-      </div>
-      {msg && <p className={`mt-3 text-xs font-semibold ${msg.ok ? 'text-emerald-400' : 'text-rose-300'}`}>{msg.text}</p>}
+        </div>
+      </Modal>
     </Section>
   )
 }
@@ -400,6 +401,7 @@ function PlansTab() {
   })
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
+  const [planModalOpen, setPlanModalOpen] = useState(false)
   const reload = () => masterApi.plans().then(setPlans).catch(() => setPlans([]))
   useEffect(() => { reload() }, [])
   const parseMoney = (value: string) => Number(value.replace(',', '.')) || 0
@@ -416,12 +418,13 @@ function PlansTab() {
       display_order: Number(form.display_order) || 0,
       campaign_equivalence: Number(form.campaign_equivalence) || 0,
       badge_label: form.badge_label || null,
-    }); setMsg({ ok: true, text: 'Plano criado.' }); setForm({ name: '', price: '', lead_limit: '', duration_days: '', active: true, featured: false, display_order: '', campaign_equivalence: '', badge_label: '' }); reload()
+    }); setMsg({ ok: true, text: 'Plano criado.' }); setForm({ name: '', price: '', lead_limit: '', duration_days: '', active: true, featured: false, display_order: '', campaign_equivalence: '', badge_label: '' }); setPlanModalOpen(false); reload()
     } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao criar plano.' }) }
   }
 
   function startEdit(p: MasterPlan) {
     setEditing(p.id)
+    setPlanModalOpen(true)
     setForm({
       name: p.name, price: String(p.price), lead_limit: String(p.lead_limit),
       duration_days: p.duration_days != null ? String(p.duration_days) : '',
@@ -443,43 +446,29 @@ function PlansTab() {
       display_order: Number(form.display_order) || 0,
       campaign_equivalence: Number(form.campaign_equivalence) || 0,
       badge_label: form.badge_label || null,
-    }); setMsg({ ok: true, text: 'Plano atualizado.' }); setEditing(null); reload()
+    }); setMsg({ ok: true, text: 'Plano atualizado.' }); setEditing(null); setPlanModalOpen(false); reload()
     } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao atualizar plano.' }) }
   }
 
   const isEditing = editing !== null
 
   return (
-    <Section title="Planos">
-      <div className="grid sm:grid-cols-4 gap-2 mb-2">
-        <input placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
-        <input placeholder="Preço (R$)" type="text" inputMode="decimal" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} />
-        <input placeholder="Limite de leads" type="number" value={form.lead_limit} onChange={(e) => setForm({ ...form, lead_limit: e.target.value })} className={inputCls} />
-        <input placeholder="Duração (dias)" type="number" value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: e.target.value })} className={inputCls} />
-      </div>
-      <div className="grid sm:grid-cols-4 gap-2 mb-2">
-        <input placeholder="Ordem de exibição" type="number" value={form.display_order} onChange={(e) => setForm({ ...form, display_order: e.target.value })} className={inputCls} />
-        <input placeholder="Campanhas incl." type="number" value={form.campaign_equivalence} onChange={(e) => setForm({ ...form, campaign_equivalence: e.target.value })} className={inputCls} />
-        <input placeholder="Badge (ex.: MAIS ESCOLHIDO)" value={form.badge_label} onChange={(e) => setForm({ ...form, badge_label: e.target.value })} className={inputCls} />
-        <label className="flex items-center gap-2 text-xs text-muted px-1">
-          <input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} />
-          Destaque (featured)
-        </label>
-      </div>
-      <div className="flex items-center gap-2 mb-3">
-        <label className="flex items-center gap-2 text-xs text-muted">
-          <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
-          Ativo
-        </label>
-        {isEditing ? (
-          <>
-            <button onClick={() => saveEdit(editing)} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Salvar alterações</button>
-            <button onClick={() => { setEditing(null); setForm({ name: '', price: '', lead_limit: '', duration_days: '', active: true, featured: false, display_order: '', campaign_equivalence: '', badge_label: '' }) }} className="px-3 py-2 rounded-lg text-xs font-semibold bg-subtle text-muted hover:text-fg transition">Cancelar</button>
-          </>
-        ) : (
-          <button onClick={create} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Criar plano</button>
-        )}
-      </div>
+    <Section title="Planos" actions={<Button size="sm" onClick={() => { setEditing(null); setPlanModalOpen(true) }}>+ Adicionar plano</Button>}>
+      <Modal open={planModalOpen} onClose={() => { setPlanModalOpen(false); setEditing(null) }} title={isEditing ? 'Editar plano' : 'Adicionar plano'} subtitle="Configure preço, limites e publicação do plano." size="lg" footer={<><Button variant="secondary" onClick={() => { setPlanModalOpen(false); setEditing(null) }}>Cancelar</Button><Button onClick={() => void (isEditing ? saveEdit(editing) : create())}>{isEditing ? 'Salvar alterações' : 'Criar plano'}</Button></>}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <input placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
+          <input placeholder="Preço (R$)" type="text" inputMode="decimal" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} />
+          <input placeholder="Limite de leads" type="number" value={form.lead_limit} onChange={(e) => setForm({ ...form, lead_limit: e.target.value })} className={inputCls} />
+          <input placeholder="Duração (dias)" type="number" value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: e.target.value })} className={inputCls} />
+          <input placeholder="Ordem de exibição" type="number" value={form.display_order} onChange={(e) => setForm({ ...form, display_order: e.target.value })} className={inputCls} />
+          <input placeholder="Campanhas incluídas" type="number" value={form.campaign_equivalence} onChange={(e) => setForm({ ...form, campaign_equivalence: e.target.value })} className={inputCls} />
+          <input placeholder="Badge (ex.: MAIS ESCOLHIDO)" value={form.badge_label} onChange={(e) => setForm({ ...form, badge_label: e.target.value })} className={inputCls} />
+          <div className="flex items-center gap-4 text-xs text-muted">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} /> Destaque</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Ativo</label>
+          </div>
+        </div>
+      </Modal>
       {msg && <p className={`text-xs mb-2 ${msg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{msg.text}</p>}
       <div className="space-y-2">
         {[...plans].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)).map((p) => (

@@ -149,7 +149,7 @@ export function registerMasterRoutes(app: FastifyInstance): void {
   scoped.get('/api/master/users', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>(
       '/app_users',
-      'id,user_id,tenant_id,email,role,status,plan,last_login_at,created_at',
+      'id,tenant_id,email,full_name,role,status,created_at,updated_at',
     );
     const [subs, plans] = await Promise.all([
       getJson<{ tenant_id: string; plan_id: string; status: string }>('/subscriptions?status=in.(active,pending)', 'tenant_id,plan_id,status'),
