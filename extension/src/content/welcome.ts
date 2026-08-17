@@ -54,8 +54,10 @@ const WELCOME_CSS = `
 .vy-welcome {
   position: fixed; inset: 0; z-index: 2147483647;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(2,26,18,0.82);
-  backdrop-filter: blur(18px) saturate(1.4);
+  background: rgba(12,8,24,0.86);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  will-change: opacity;
   animation: vy-fade-in 0.45s ease-out;
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
 }
@@ -75,6 +77,7 @@ const WELCOME_CSS = `
   color: #ecfdf5;
   box-shadow: 0 30px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08);
   animation: vy-card-in 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
   overflow: hidden;
 }
 .vy-welcome.leaving .vy-welcome__card { animation: vy-card-out 0.4s ease-in forwards; }
@@ -95,6 +98,7 @@ const WELCOME_CSS = `
   background: linear-gradient(135deg, #047857, #059669, #10b981);
   box-shadow: 0 16px 40px rgba(4,120,87,0.5);
   animation: vy-logo-pop 0.85s 0.15s cubic-bezier(0.16, 1, 0.3, 1) backwards, vy-logo-glow 2.6s 1.2s ease-in-out infinite;
+  will-change: transform, box-shadow;
 }
 @keyframes vy-logo-pop {
   0% { transform: scale(0.4) rotate(-22deg); opacity: 0; }
@@ -153,6 +157,11 @@ const WELCOME_CSS = `
   10% { opacity: 1; }
   100% { transform: translateY(-120vh) scale(1); opacity: 0; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .vy-welcome, .vy-welcome__card, .vy-welcome__logo,
+  .vy-welcome__title, .vy-welcome__site, .vy-welcome__tagline,
+  .vy-welcome__cta, .vy-welcome__particles span { animation: none !important; }
+}
 `
 
 export function showWelcome(site: WelcomeSite): void {
@@ -176,7 +185,7 @@ export function showWelcome(site: WelcomeSite): void {
   overlay.innerHTML = `
     <div class="vy-welcome__card">
       <div class="vy-welcome__particles">${Array.from(
-        { length: 26 },
+        { length: 12 },
         () => `<span style="left:${(Math.random() * 100).toFixed(2)}%;--d:${(Math.random() * 1.5).toFixed(2)}s;--t:${(2.2 + Math.random() * 3).toFixed(2)}s"></span>`,
       ).join('')}</div>
       <div class="vy-welcome__logo">V</div>

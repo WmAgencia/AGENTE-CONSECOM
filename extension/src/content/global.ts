@@ -387,51 +387,11 @@ export class GlobalScanner {
     const body = document.createElement('div')
     body.className = 'cs-balloon-body'
 
-    // Bloco de busca: cidade + estado + PESQUISAR
-    const search = document.createElement('div')
-    search.className = 'cs-block cs-search'
-    const fields = document.createElement('div')
-    fields.className = 'cs-search__fields'
-    const cityWrap = document.createElement('label')
-    cityWrap.className = 'cs-search__field'
-    const cityLab = document.createElement('span')
-    cityLab.textContent = 'CIDADE'
-    const cityInput = document.createElement('input')
-    cityInput.type = 'text'
-    cityInput.className = 'cs-search__input'
-    cityInput.placeholder = 'Ex.: Sorocaba'
-    cityInput.autocomplete = 'off'
-    this.searchCity = cityInput
-    cityWrap.append(cityLab, cityInput)
-    const stateWrap = document.createElement('label')
-    stateWrap.className = 'cs-search__field cs-search__field--sm'
-    const stateLab = document.createElement('span')
-    stateLab.textContent = 'ESTADO'
-    const stateInput = document.createElement('input')
-    stateInput.type = 'text'
-    stateInput.className = 'cs-search__input'
-    stateInput.placeholder = 'SP'
-    stateInput.maxLength = 2
-    stateInput.autocomplete = 'off'
-    this.searchState = stateInput
-    stateWrap.append(stateLab, stateInput)
-    fields.append(cityWrap, stateWrap)
-    const searchBtn = document.createElement('button')
-    searchBtn.type = 'button'
-    searchBtn.className = 'cs-search__btn'
-    searchBtn.textContent = 'PESQUISAR'
-    searchBtn.addEventListener('click', () => void this.doSearch())
-    search.append(fields, searchBtn)
-    const loc = document.createElement('div')
-    loc.className = 'cs-loc'
-    loc.innerHTML = pinIcon
     this.statusEl = document.createElement('span')
     this.statusEl.textContent =
       this.contacts.length > 0
         ? `${this.contacts.length} contato(s) encontrado(s)`
-        : 'Preencha cidade/estado e PESQUISE, ou toque em PROSPECTAR.'
-    loc.append(this.statusEl)
-    search.appendChild(loc)
+        : 'Toque em PROSPECTAR para encontrar contatos nesta página.'
 
     // Bloco de filtros: SEM SITE / NOTA BAIXA / COM WHATSAPP
     const filters = document.createElement('div')
@@ -498,7 +458,7 @@ export class GlobalScanner {
     const account = this.buildAccountCard()
     this.accountEl = account
 
-    body.append(search, filters, actions, leads, account)
+    body.append(filters, actions, leads, account)
 
     // Rodapé: LIMPAR LISTA | CONTA (linha 1), EXCLUIR | IMPORTAR LEADS (linha 2)
     const footer = document.createElement('div')

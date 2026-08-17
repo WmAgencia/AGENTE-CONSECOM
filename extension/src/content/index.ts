@@ -509,36 +509,6 @@ export class MapsScanner {
     const body = document.createElement('div')
     body.className = 'cs-panel__body'
 
-    // Busca por palavra-chave + PESQUISAR
-    const search = document.createElement('div')
-    search.className = 'cs-search'
-    const input = document.createElement('input')
-    input.className = 'cs-search__input'
-    input.type = 'text'
-    input.placeholder = 'Ex.: Psicólogos em Sorocaba'
-    input.spellcheck = false
-    input.autocomplete = 'off'
-    const runSearch = () => {
-      const q = input.value.trim()
-      if (!q) return
-      this.doMapsSearch(q)
-    }
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') runSearch()
-    })
-    const searchBtn = document.createElement('button')
-    searchBtn.type = 'button'
-    searchBtn.className = 'cs-search__btn'
-    searchBtn.textContent = 'PESQUISAR'
-    searchBtn.addEventListener('click', runSearch)
-    const loc = document.createElement('div')
-    loc.className = 'cs-panel__loc'
-    loc.innerHTML = pinIcon
-    this.locEl = document.createElement('span')
-    this.locEl.textContent = 'Aguardando busca…'
-    loc.append(this.locEl)
-    search.append(input, searchBtn, loc)
-
     // FILTROS (prospecção automática)
     const filtersPanel = this.buildFiltersPanel()
     this.filtersPanel = filtersPanel
@@ -567,7 +537,7 @@ export class MapsScanner {
     this.listEl = list
     leads.append(leadsTitle, resultPanel, list)
 
-    body.append(search, filtersPanel, prospectBtn, leads)
+    body.append(filtersPanel, prospectBtn, leads)
 
     // Rodapé: EXCLUIR / LIMPAR + IMPORTAR LEADS
     const footer = document.createElement('div')
