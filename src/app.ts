@@ -88,6 +88,7 @@ export function buildApp(): BuiltApp {
   const app = Fastify({
     logger: false, // we use our own pino instance to ensure redaction
     trustProxy: true,
+    ignoreTrailingSlash: true,
     disableRequestLogging: false,
     bodyLimit: 100 * 1024, // 100KB hard cap on request body
   });
