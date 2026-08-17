@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/saas/webhook/payments/", "destination": "https://consecom-backend-production.up.railway.app/api/saas/webhook/payments" },
     { "source": "/api/:path*", "destination": "https://consecom-backend-production.up.railway.app/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
