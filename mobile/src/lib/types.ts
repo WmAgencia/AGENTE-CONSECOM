@@ -174,7 +174,7 @@ const NOTIF_LABELS: Record<keyof NotifPrefs, string> = {
   campanha_concluida: 'Campanha concluída',
   campanha_erro: 'Campanha com erro',
   whatsapp_desconectado: 'WhatsApp desconectado',
-  alex_evento: 'Eventos do Alex',
+  alex_evento: 'Eventos do Agente IA',
   voz_reuniao_30min: 'Reunião em 30 min',
   voz_reuniao_15min: 'Reunião em 15 min',
   voz_reuniao_10min: 'Reunião em 10 min',

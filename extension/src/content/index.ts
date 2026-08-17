@@ -531,7 +531,7 @@ export class MapsScanner {
     leads.className = 'cs-leads'
     const leadsTitle = document.createElement('div')
     leadsTitle.className = 'cs-leads__title'
-    leadsTitle.textContent = 'AREA DE LEADS E SCROLL'
+    leadsTitle.textContent = 'Leads Encontrados'
     const list = document.createElement('div')
     list.className = 'cs-panel__list'
     this.listEl = list
@@ -821,21 +821,9 @@ export class MapsScanner {
     }
     panel.appendChild(stats)
 
-    // Recomendação do Alex (resumo textual; não impede a importação)
+    // Resumo do Agente IA (não impede a importação pelo rodapé).
     if (matched.length > 0) {
-      const alex = this.buildAlexHint(matched)
-      panel.appendChild(alex)
-    }
-
-    // CTA IMPORTAR
-    if (novoCount > 0) {
-      const importCta = document.createElement('button')
-      importCta.type = 'button'
-      importCta.className = 'cs-result__cta'
-      const target = existenteCount > 0 ? `${novoCount} NOVOS` : `${novoCount} LEADS`
-      importCta.textContent = existenteCount > 0 ? `IMPORTAR ${novoCount} NOVOS` : `IMPORTAR ${novoCount} LEADS`
-      importCta.addEventListener('click', () => void this.doProspectImport(importCta, matched, target))
-      panel.appendChild(importCta)
+      panel.appendChild(this.buildAgentHint(matched))
     } else {
       const empty = document.createElement('div')
       empty.className = 'cs-result__empty'
@@ -847,8 +835,8 @@ export class MapsScanner {
     this.resultPanel.style.display = 'block'
   }
 
-  /** Recomendação do Alex (resumo determinístico, sem IA por ora). */
-  private buildAlexHint(matched: ParsedCard[]): HTMLElement {
+  /** Resumo do Agente IA (determinístico por enquanto). */
+  private buildAgentHint(matched: ParsedCard[]): HTMLElement {
     const wrap = document.createElement('div')
     wrap.className = 'cs-alex'
     const avatar = document.createElement('div')
@@ -858,7 +846,7 @@ export class MapsScanner {
     body.className = 'cs-alex__body'
     const name = document.createElement('div')
     name.className = 'cs-alex__name'
-    name.textContent = 'Alex'
+    name.textContent = 'Agente IA'
     const msg = document.createElement('div')
     msg.className = 'cs-alex__msg'
     const alta = matched.filter((m) => computeVyntraScore(m.lead).band === 'alta').length
@@ -871,92 +859,6 @@ export class MapsScanner {
     body.append(name, msg)
     wrap.append(avatar, body)
     return wrap
-  }
-
-  /**
-   * Importa os leads selecionados automaticamente, REUSANDO o fluxo atual
-   * (importLeads). Aplica tags automáticas, source/source_detail, score e
-   * snapshot dos filtros usados. Mostra progresso e relatório final.
-   */
-  private async doProspectImport(
-    btn: HTMLButtonElement,
-    matched: ParsedCard[],
-    _target: string,
-  ): Promise<void> {
-    this.cfg = this.cfg ?? (await getStoredConfig())
-    if (!this.cfg || !this.cfg.extensionKey || !this.cfg.ownerUserId) {
-      alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
-      return
-    }
-
-    // leads a importar = matched (já sem used/noInterest), respeita limite 50
-    const leads = matched.map((pc) => pc.lead).slice(0, 50)
-    if (leads.length === 0) {
-      alert('Nenhuma empresa nova selecionada para importar.')
-      return
-    }
-
-    const prev = btn.textContent
-    btn.disabled = true
-    try {
-      // Tags + score por lead: importLeads grava os mesmos campos para todos;
-      // tags individuais seriam ideais, mas o upsert atual é por-place_id.
-      // Para respeitar a arquitetura sem criar fluxo paralelo, enviamos tags
-      // agregadas + score médio no snapshot (filtros), e mantemos has_website
-      // por linha (já gravado em importLeads).
-      const baseTags = ['Google Maps']
-      const allTags = baseTags
-      const opts: ImportOptions = {
-        source: 'google_maps',
-        sourceDetail: 'vyntra_prospector',
-        tags: allTags,
-        prospectFilters: this.filtersToSnapshot(),
-        prospectedAt: new Date().toISOString(),
-      }
-
-      let done = 0
-      const res = await importLeads(this.cfg, leads, (d, total) => {
-        done = d
-        const pct = Math.round((d / total) * 100)
-        btn.textContent = `Importando… ${pct}%`
-      }, opts)
-
-      console.log('[IMPORT] Resultado completo:', {
-        ok: res.ok,
-        failed: res.failed,
-        firstError: res.firstError,
-        errors: res.errors,
-      })
-
-      // Relatório final
-      this.renderProspectReport({
-        analyzed: this.found.length,
-        opportunities: matched.length,
-        imported: res.ok,
-        failed: res.failed,
-        alreadyExists: this.countAlreadyExists(matched),
-        filtersText: describeFilters(this.filters),
-      })
-
-      btn.textContent = res.failed === 0 ? `✓ ${res.ok} LEADS IMPORTADOS` : `${res.ok} ok, ${res.failed} falharam`
-      if (res.failed === 0) {
-        showToast(`✅ ${res.ok} lead(s) importado(s)!`)
-        this.selected.clear()
-      } else {
-        showToast(`⚠️ ${res.ok} ok, ${res.failed} falharam${res.firstError ? `: ${res.firstError}` : ''}`, 'warn')
-      }
-      void this.checkUsed()
-      this.syncAll()
-      void done
-    } catch (err) {
-      btn.textContent = `Erro: ${err}`
-      showToast(`Erro ao importar: ${err}`, 'warn')
-    } finally {
-      setTimeout(() => {
-        btn.textContent = prev
-        btn.disabled = false
-      }, 4000)
-    }
   }
 
   private countAlreadyExists(matched: ParsedCard[]): number {

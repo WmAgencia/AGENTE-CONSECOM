@@ -1151,3 +1151,73 @@
 .consecom-balloon .cs-filters .cs-chips { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 5px !important; flex-wrap: nowrap !important; }
 .consecom-balloon .cs-filters .cs-chip { min-width: 0 !important; width: 100% !important; padding: 7px 2px !important; font-size: 8px !important; letter-spacing: 0 !important; text-align: center !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
 .consecom-balloon .cs-filters .cs-chip--on { box-shadow: 0 0 0 1px rgba(196, 181, 253, 0.22), 0 5px 14px rgba(124, 58, 237, 0.16) !important; }
+
+/* Resumo da prospecção: compacto, escaneável e sem CTA duplicado. */
+.consecom-balloon .cs-leads__title {
+  padding: 2px 3px 0 !important;
+  color: #c4b5fd !important;
+  font-size: 10px !important;
+  letter-spacing: .08em !important;
+  text-transform: none !important;
+}
+.consecom-balloon .cs-result__card {
+  padding: 9px !important;
+  margin: 0 !important;
+  border-radius: 12px !important;
+  background: linear-gradient(145deg, #211a35, #1b1729) !important;
+  border-color: rgba(167, 139, 250, 0.24) !important;
+}
+.consecom-balloon .cs-result__head {
+  display: flex !important;
+  align-items: baseline !important;
+  gap: 6px !important;
+  margin: 0 0 7px !important;
+}
+.consecom-balloon .cs-result__big {
+  font-size: 25px !important;
+  line-height: 1 !important;
+  color: #c4b5fd !important;
+}
+.consecom-balloon .cs-result__sub {
+  font-size: 10px !important;
+  color: #eeeaff !important;
+  font-weight: 700 !important;
+}
+.consecom-balloon .cs-result__stats {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 4px !important;
+  margin: 0 !important;
+}
+.consecom-balloon .cs-result__stats > div {
+  min-width: 0 !important;
+  padding: 6px 3px !important;
+  border: 1px solid rgba(221, 214, 254, 0.1) !important;
+  border-radius: 8px !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  color: #aca5c8 !important;
+  font-size: 8px !important;
+  line-height: 1.2 !important;
+  text-align: center !important;
+}
+.consecom-balloon .cs-result__stats span {
+  display: block !important;
+  margin-bottom: 2px !important;
+  color: #f8f7ff !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+}
+.consecom-balloon .cs-result__dup { color: #fbbf24 !important; font-size: 8px !important; margin-top: 5px !important; }
+.consecom-balloon .cs-alex {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 6px !important;
+  margin-top: 7px !important;
+  padding: 7px !important;
+  border-radius: 9px !important;
+  background: rgba(139, 92, 246, 0.1) !important;
+  border-color: rgba(167, 139, 250, 0.18) !important;
+}
+.consecom-balloon .cs-alex__avatar { width: 20px !important; height: 20px !important; flex: 0 0 20px !important; font-size: 11px !important; }
+.consecom-balloon .cs-alex__name { color: #c4b5fd !important; font-size: 9px !important; font-weight: 800 !important; margin-bottom: 2px !important; }
+.consecom-balloon .cs-alex__msg { color: #aca5c8 !important; font-size: 8.5px !important; line-height: 1.35 !important; }

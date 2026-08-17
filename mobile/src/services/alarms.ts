@@ -54,7 +54,7 @@ export async function ensureChannels(): Promise<void> {
   await LocalNotifications.createChannel({
     id: CHANNEL_EVENTS,
     name: 'Eventos',
-    description: 'Atualizações da operação (campanhas, WhatsApp, Alex)',
+    description: 'Atualizações da operação (campanhas, WhatsApp, Agente IA)',
     importance: 4,
   })
 }

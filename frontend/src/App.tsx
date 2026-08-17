@@ -114,7 +114,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center text-sm font-extrabold text-white shadow-2 shrink-0">V</div>
              <div className="min-w-0">
                <div className="font-semibold text-sm leading-none truncate">Vyntra</div>
-               <div className="text-[11px] text-faint mt-1 truncate">Alex · Prospecção</div>
+               <div className="text-[11px] text-faint mt-1 truncate">Agente IA · Prospecção</div>
              </div>
            </div>
          </div>

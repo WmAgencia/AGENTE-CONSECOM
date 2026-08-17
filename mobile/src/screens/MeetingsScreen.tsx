@@ -305,7 +305,7 @@ export function MeetingsScreen({ leads, reminder, onLeadReminderChange, onClearL
 
       {meetings.length === 0 ? (
         <p className="text-sm text-slate-500 text-center py-10">
-          Nenhuma reunião agendada. Toque em "Nova" para marcar uma reunião ou aguarde o Alex agendar —
+          Nenhuma reunião agendada. Toque em "Nova" para marcar uma reunião ou aguarde o Agente IA agendar —
           ela aparece aqui e dispara o alarme no celular.
         </p>
       ) : (
