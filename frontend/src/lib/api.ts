@@ -337,7 +337,7 @@ export const masterApi = {
     const r = await api.get<{ gateways: MasterGateway[] }>('/api/master/gateways')
     return r.gateways ?? []
   },
-  async saveGateway(input: { provider: string; accessToken: string; publicKey?: string; sandbox: boolean; active: boolean }): Promise<void> {
+  async saveGateway(input: { provider: string; accessToken: string; publicKey?: string; webhookSecret?: string; sandbox: boolean; active: boolean }): Promise<void> {
     await api.post('/api/master/gateways', input)
   },
   async testGateway(id: string): Promise<{ ok: boolean; error: string | null }> {

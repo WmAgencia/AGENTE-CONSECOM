@@ -324,6 +324,13 @@ export async function getActiveGatewayPublicKey(): Promise<string> {
   try { return getEnv().MERCADOPAGO_PUBLIC_KEY; } catch { return ''; }
 }
 
+export async function getActiveGatewayWebhookSecret(): Promise<string> {
+  const row = await first<{ config: Record<string, unknown> }>(`/payment_gateways?select=config&enabled=eq.true&order=created_at.asc&limit=1`);
+  const configured = row?.config?.webhookSecret ?? row?.config?.webhook_secret;
+  if (typeof configured === 'string' && configured.trim()) return configured.trim();
+  try { return getEnv().MERCADOPAGO_WEBHOOK_SECRET; } catch { return ''; }
+}
+
 // =============================================================
 // Cupons
 // =============================================================

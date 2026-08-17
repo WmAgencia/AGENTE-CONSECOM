@@ -618,7 +618,7 @@ function CouponsTab() {
 
 function GatewaysTab() {
   const [gateways, setGateways] = useState<MasterGateway[]>([])
-  const [form, setForm] = useState({ accessToken: '', publicKey: '', sandbox: true })
+  const [form, setForm] = useState({ accessToken: '', publicKey: '', webhookSecret: '', sandbox: true })
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [testing, setTesting] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
@@ -628,9 +628,9 @@ function GatewaysTab() {
   async function save() {
     if (!form.accessToken) { setMsg({ ok: false, text: 'Access token é obrigatório.' }); return }
     try {
-      await masterApi.saveGateway({ provider: 'mercadopago', accessToken: form.accessToken, publicKey: form.publicKey, sandbox: form.sandbox, active: true })
+      await masterApi.saveGateway({ provider: 'mercadopago', accessToken: form.accessToken, publicKey: form.publicKey, webhookSecret: form.webhookSecret, sandbox: form.sandbox, active: true })
       setMsg({ ok: true, text: 'Gateway configurado e testado com sucesso.' })
-      setForm({ accessToken: '', publicKey: '', sandbox: true })
+      setForm({ accessToken: '', publicKey: '', webhookSecret: '', sandbox: true })
       setOpen(false)
       reload()
     } catch (e) {
@@ -652,6 +652,7 @@ function GatewaysTab() {
         <div className="space-y-3">
           <input placeholder="Access token (Mercado Pago)" value={form.accessToken} onChange={(e) => setForm({ ...form, accessToken: e.target.value })} className={inputCls} type="password" />
           <input placeholder="Public key (para cartão transparente)" value={form.publicKey} onChange={(e) => setForm({ ...form, publicKey: e.target.value })} className={inputCls} />
+          <input placeholder="Segredo do webhook (x-signature)" value={form.webhookSecret} onChange={(e) => setForm({ ...form, webhookSecret: e.target.value })} className={inputCls} type="password" />
           <select value={form.sandbox ? '1' : '0'} onChange={(e) => setForm({ ...form, sandbox: e.target.value === '1' })} className={inputCls}>
             <option value="1">Sandbox (teste)</option>
             <option value="0">Produção</option>

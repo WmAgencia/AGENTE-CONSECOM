@@ -43,6 +43,7 @@ const envSchema = z.object({
     .default('meta/llama-3.1-8b-instruct'),
 
   MERCADOPAGO_PUBLIC_KEY: z.string().optional().default(''),
+  MERCADOPAGO_WEBHOOK_SECRET: z.string().optional().default(''),
 
   PUBLIC_BACKEND_URL: z.string().optional().default('https://consecom-backend-production.up.railway.app'),
 

@@ -11,6 +11,7 @@
  * GET   /api/public/pixels              -> pixels ativos (público, landing)
  */
 import type { FastifyInstance } from 'fastify';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getLogger } from '../utils/logger.js';
 import { getEnv, getSupabaseProspeccaoConfig } from '../config/env.js';
 import { extractBearerToken } from '../utils/auth.js';
@@ -31,6 +32,7 @@ import {
   listCreditLedger,
   getActiveGateway,
   getActiveGatewayPublicKey,
+  getActiveGatewayWebhookSecret,
   validateCoupon,
   createPayment,
   setPaymentGatewayIds,
@@ -310,6 +312,20 @@ export function registerSaaSRoutes(app: FastifyInstance): void {
 
   app.post('/api/saas/webhook/payments', async (req, reply) => {
     const gateway = (await getActiveGateway()) ?? new SandboxGateway();
+    if (gateway.provider === 'mercadopago') {
+      const secret = await getActiveGatewayWebhookSecret();
+      if (secret) {
+        const signature = typeof req.headers['x-signature'] === 'string' ? req.headers['x-signature'] : '';
+        const requestId = typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : '';
+        const dataId = String(((req.body ?? {}) as { data?: { id?: unknown } }).data?.id ?? '').toLowerCase();
+        const ts = signature.match(/(?:^|,)ts=([^,]+)/)?.[1] ?? '';
+        const v1 = signature.match(/(?:^|,)v1=([^,]+)/)?.[1] ?? '';
+        const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+        const expected = createHmac('sha256', secret).update(manifest).digest('hex');
+        const valid = Boolean(v1) && v1.length === expected.length && timingSafeEqual(Buffer.from(v1), Buffer.from(expected));
+        if (!valid) return reply.status(401).send({ error: 'invalid_webhook_signature', statusCode: 401 });
+      }
+    }
     const parsed = await gateway.parseWebhook(req.body ?? {});
     const payment =
       (parsed.externalReference ? await findPaymentById(parsed.externalReference) : null) ??
