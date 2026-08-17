@@ -539,7 +539,12 @@ export function getAgentApiKey(): string {
  */
 export function getAllowedOrigins(): string[] {
   try {
-    return getEnv().ALLOWED_ORIGINS ?? [];
+    const configured = getEnv().ALLOWED_ORIGINS ?? [];
+    return Array.from(new Set([
+      ...configured,
+      'https://frontend-seven-sooty-78.vercel.app',
+      'https://vyntra.consecom.com.br',
+    ]));
   } catch {
     return [];
   }

@@ -234,6 +234,27 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
+/* Native selects inherit the browser's white popup in several environments.
+ * Keep the control and its option list on the application's surface. */
+select,
+select option,
+select optgroup {
+  color: var(--c-fg);
+  background-color: var(--c-field);
+  color-scheme: light;
+}
+select option:checked,
+select option:hover { background-color: var(--c-accent-600); color: #fff; }
+html[data-theme="dark"] select,
+html[data-theme="dark"] select option,
+html[data-theme="dark"] select optgroup {
+  color: var(--c-fg);
+  background-color: #16161f;
+  color-scheme: dark;
+}
+html[data-theme="dark"] select option:checked,
+html[data-theme="dark"] select option:hover { background-color: var(--c-accent-600); color: #fff; }
+
 /* ── Scrollbar (sutil, cross-browser) ─────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

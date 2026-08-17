@@ -565,6 +565,7 @@ function CouponsTab() {
   const [coupons, setCoupons] = useState<MasterCoupon[]>([])
   const [form, setForm] = useState({ code: '', discount_type: 'percentage', discount_value: '', usage_limit: '', active: true })
   const [msg, setMsg] = useState<string>('')
+  const [open, setOpen] = useState(false)
   const reload = () => masterApi.coupons().then(setCoupons).catch(() => setCoupons([]))
   useEffect(() => { reload() }, [])
 
@@ -579,22 +580,24 @@ function CouponsTab() {
     })
     setMsg('Cupom criado.')
     setForm({ code: '', discount_type: 'percentage', discount_value: '', usage_limit: '', active: true })
+    setOpen(false)
     reload()
   }
 
   return (
-    <Section title="Cupons">
-      <div className="grid sm:grid-cols-5 gap-2 mb-3">
-        <input placeholder="Código" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className={inputCls} />
-        <select value={form.discount_type} onChange={(e) => setForm({ ...form, discount_type: e.target.value })} className={inputCls}>
-          <option value="percentage">%</option>
-          <option value="fixed">R$ fixo</option>
-        </select>
-        <input placeholder="Valor" type="number" value={form.discount_value} onChange={(e) => setForm({ ...form, discount_value: e.target.value })} className={inputCls} />
-        <input placeholder="Limite de uso" type="number" value={form.usage_limit} onChange={(e) => setForm({ ...form, usage_limit: e.target.value })} className={inputCls} />
-        <button onClick={create} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Criar cupom</button>
-      </div>
+    <Section title="Cupons" actions={<Button size="sm" onClick={() => setOpen(true)}>+ Adicionar cupom</Button>}>
       {msg && <p className="text-xs text-emerald-400 mb-2">{msg}</p>}
+      <Modal open={open} onClose={() => setOpen(false)} title="Adicionar cupom" subtitle="Defina a regra de desconto e limite de uso." size="sm" footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={() => void create()}>Criar cupom</Button></>}>
+        <div className="space-y-3">
+          <input placeholder="Código (ex.: BEMVINDO10)" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className={inputCls} />
+          <select value={form.discount_type} onChange={(e) => setForm({ ...form, discount_type: e.target.value })} className={inputCls}>
+            <option value="percentage">Percentual (%)</option>
+            <option value="fixed">Valor fixo (R$)</option>
+          </select>
+          <input placeholder="Valor do desconto" type="number" step="0.01" value={form.discount_value} onChange={(e) => setForm({ ...form, discount_value: e.target.value })} className={inputCls} />
+          <input placeholder="Limite de uso (opcional)" type="number" value={form.usage_limit} onChange={(e) => setForm({ ...form, usage_limit: e.target.value })} className={inputCls} />
+        </div>
+      </Modal>
       <div className="space-y-2">
         {coupons.map((c) => (
           <div key={c.id} className="flex items-center justify-between rounded-lg border border-line bg-fg/5 px-3 py-2 text-sm">
@@ -618,6 +621,7 @@ function GatewaysTab() {
   const [form, setForm] = useState({ accessToken: '', sandbox: true })
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [testing, setTesting] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
   const reload = () => masterApi.gateways().then(setGateways).catch(() => setGateways([]))
   useEffect(() => { reload() }, [])
 
@@ -627,6 +631,7 @@ function GatewaysTab() {
       await masterApi.saveGateway({ provider: 'mercadopago', accessToken: form.accessToken, sandbox: form.sandbox, active: true })
       setMsg({ ok: true, text: 'Gateway configurado e testado com sucesso.' })
       setForm({ accessToken: '', sandbox: true })
+      setOpen(false)
       reload()
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'Falha ao configurar o gateway.' })
@@ -641,16 +646,17 @@ function GatewaysTab() {
   }
 
   return (
-    <Section title="Gateway de pagamento">
+    <Section title="Gateway de pagamento" actions={<Button size="sm" onClick={() => setOpen(true)}>+ Configurar gateway</Button>}>
       {msg && <p className={`text-xs mb-2 ${msg.ok ? 'text-emerald-400' : 'text-red-400'}`}>{msg.text}</p>}
-      <div className="grid sm:grid-cols-3 gap-2 mb-3">
-        <input placeholder="Access token (Mercado Pago)" value={form.accessToken} onChange={(e) => setForm({ ...form, accessToken: e.target.value })} className={inputCls} type="password" />
-        <select value={form.sandbox ? '1' : '0'} onChange={(e) => setForm({ ...form, sandbox: e.target.value === '1' })} className={inputCls}>
-          <option value="1">Sandbox (teste)</option>
-          <option value="0">Produção</option>
-        </select>
-        <button onClick={save} className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-accent-600 hover:bg-accent-500 transition">Salvar e testar</button>
-      </div>
+      <Modal open={open} onClose={() => setOpen(false)} title="Configurar gateway" subtitle="As credenciais ficam somente no backend." size="sm" footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={() => void save()}>Salvar e testar</Button></>}>
+        <div className="space-y-3">
+          <input placeholder="Access token (Mercado Pago)" value={form.accessToken} onChange={(e) => setForm({ ...form, accessToken: e.target.value })} className={inputCls} type="password" />
+          <select value={form.sandbox ? '1' : '0'} onChange={(e) => setForm({ ...form, sandbox: e.target.value === '1' })} className={inputCls}>
+            <option value="1">Sandbox (teste)</option>
+            <option value="0">Produção</option>
+          </select>
+        </div>
+      </Modal>
       <div className="space-y-2">
         {gateways.map((g) => (
           <div key={g.id} className="flex items-center justify-between rounded-lg border border-line bg-fg/5 px-3 py-2 text-sm">
