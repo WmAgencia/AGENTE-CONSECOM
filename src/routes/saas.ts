@@ -156,6 +156,40 @@ export function registerSaaSRoutes(app: FastifyInstance): void {
     return reply.send({ plans });
   });
 
+  app.post('/api/public/checkout', async (req, reply) => {
+    const body = (req.body ?? {}) as { planId?: unknown; name?: unknown; email?: unknown; password?: unknown; cpf?: unknown; phone?: unknown; method?: unknown; paymentMethodId?: unknown; cardToken?: unknown; installments?: unknown; issuerId?: unknown; couponCode?: unknown };
+    const planId = typeof body.planId === 'string' ? body.planId : '';
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : '';
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const cpf = typeof body.cpf === 'string' ? body.cpf.replace(/\D/g, '') : '';
+    const method = body.method === 'pix' ? 'pix' : 'card';
+    if (!planId || !name || !/^\S+@\S+\.\S+$/.test(email) || password.length < 8 || cpf.length !== 11) return reply.status(400).send({ error: 'checkout_fields_invalid', message: 'Informe nome, e-mail, senha de 8 caracteres e CPF válido.', statusCode: 400 });
+    const plan = await getPlan(planId);
+    if (!plan || !plan.active) return reply.status(400).send({ error: 'plan_not_found', statusCode: 400 });
+    const sup = getSupabaseProspeccaoConfig();
+    if (!sup.url || !sup.serviceRoleKey) return reply.status(503).send({ error: 'server_misconfigured', statusCode: 503 });
+    const created = await fetch(`${sup.url.replace(/\/$/, '')}/auth/v1/admin/users`, { method: 'POST', headers: serviceHeaders(true), body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: name, cpf } }) });
+    if (!created.ok) return reply.status(400).send({ error: 'account_create_failed', message: 'Não foi possível criar a conta. Verifique se o e-mail já está cadastrado.', statusCode: 400 });
+    const authUser = (await created.json()) as { id?: string };
+    const appUserRes = await fetch(`${sup.url.replace(/\/$/, '')}/rest/v1/app_users?select=tenant_id&id=eq.${encodeURIComponent(authUser.id ?? '')}&limit=1`, { headers: serviceHeaders() });
+    const appUsers = (await appUserRes.json()) as Array<{ tenant_id: string }>;
+    const tenantId = appUsers[0]?.tenant_id;
+    if (!tenantId) return reply.status(502).send({ error: 'account_profile_failed', statusCode: 502 });
+    let discountAmount = 0;
+    const couponCode = typeof body.couponCode === 'string' ? body.couponCode.trim() : '';
+    if (couponCode) { const coupon = await validateCoupon(couponCode, plan); if (!coupon.ok) return reply.status(400).send({ error: coupon.error, statusCode: 400 }); discountAmount = coupon.discountAmount; }
+    const gateway = (await getActiveGateway()) ?? new SandboxGateway();
+    if (!gateway.createTransparentPayment) return reply.status(503).send({ error: 'transparent_checkout_unavailable', statusCode: 503 });
+    const payment = await createPayment({ tenantId, planId, amount: plan.price, discountAmount, couponCode: couponCode || null, gateway: gateway.provider, idempotencyKey: randomKey() });
+    if (!payment) return reply.status(502).send({ error: 'payment_create_failed', statusCode: 502 });
+    const result = await gateway.createTransparentPayment({ externalId: payment.id, amount: Math.max(0, Math.round((plan.price - discountAmount) * 100) / 100), planName: plan.name, payerEmail: email, cpf, phone: typeof body.phone === 'string' ? body.phone : undefined, paymentMethodId: typeof body.paymentMethodId === 'string' ? body.paymentMethodId : method === 'pix' ? 'pix' : '', cardToken: typeof body.cardToken === 'string' ? body.cardToken : undefined, installments: typeof body.installments === 'number' ? body.installments : 1, issuerId: typeof body.issuerId === 'string' ? body.issuerId : undefined, notificationUrl: `${getEnv().PUBLIC_BACKEND_URL}/api/saas/webhook/payments`, idempotencyKey: randomKey() });
+    if (!result.ok) return reply.status(502).send({ error: 'payment_failed', message: result.error, statusCode: 502 });
+    if (result.gatewayPaymentId) await setPaymentGatewayIds(payment.id, { gatewayPaymentId: result.gatewayPaymentId });
+    if (result.status === 'approved') await processApprovedPayment(payment.id);
+    return reply.send({ ok: true, userId: authUser.id, paymentId: payment.id, status: result.status, qrCode: result.qrCode ?? null, qrCodeBase64: result.qrCodeBase64 ?? null, ticketUrl: result.ticketUrl ?? null });
+  });
+
   app.get('/api/saas/payment/public-key', async (_req, reply) => {
     return reply.send({ provider: 'mercadopago', publicKey: await getActiveGatewayPublicKey() });
   });

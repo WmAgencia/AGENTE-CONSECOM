@@ -25,8 +25,19 @@ import {
   CheckCircle2,
   HelpCircle,
 } from 'lucide-react'
-import { Button } from './ui'
+import { Button, Modal } from './ui'
 import { saasApi, type SaasPlan, formatBRL } from '../lib/api'
+
+type MercadoClient = { createCardToken(input: Record<string, string>): Promise<{ id?: string }>; getPaymentMethods(input: { bin: string }): Promise<Array<{ id?: string; issuer?: { id?: string } }>> }
+async function loadMercadoClient(): Promise<MercadoClient> {
+  const key = await saasApi.paymentPublicKey()
+  if (!key) throw new Error('Checkout ainda não configurado para cartão.')
+  const win = window as unknown as { MercadoPago?: (key: string, options: { locale: string }) => MercadoClient }
+  if (!win.MercadoPago) await new Promise<void>((resolve, reject) => { const s = document.createElement('script'); s.src = 'https://sdk.mercadopago.com/js/v2'; s.onload = () => resolve(); s.onerror = () => reject(new Error('Não foi possível carregar o checkout.')); document.head.appendChild(s) })
+  const factory = (window as unknown as { MercadoPago?: (key: string, options: { locale: string }) => MercadoClient }).MercadoPago
+  if (!factory) throw new Error('SDK do Mercado Pago indisponível.')
+  return factory(key, { locale: 'pt-BR' })
+}
 
 const NAV_LINKS = [
   { label: 'Problema', id: 'problema' },
@@ -233,10 +244,40 @@ export function LandingPage() {
   const [open, setOpen] = useState(false)
   const [plans, setPlans] = useState<SaasPlan[]>([])
   const [openFaq, setOpenFaq] = useState<number | null>(0)
+  const [checkoutPlan, setCheckoutPlan] = useState<SaasPlan | null>(null)
+  const [checkoutMethod, setCheckoutMethod] = useState<'pix' | 'card'>('pix')
+  const [checkoutBusy, setCheckoutBusy] = useState(false)
+  const [checkoutMsg, setCheckoutMsg] = useState('')
+  const [checkoutPix, setCheckoutPix] = useState<string | null>(null)
+  const [checkoutForm, setCheckoutForm] = useState({ name: '', email: '', password: '', cpf: '', phone: '', number: '', holder: '', month: '', year: '', cvv: '' })
 
   useEffect(() => {
     saasApi.plans().then(setPlans).catch(() => setPlans([]))
   }, [])
+
+  async function submitLandingCheckout() {
+    if (!checkoutPlan) return
+    setCheckoutBusy(true)
+    setCheckoutMsg('')
+    try {
+      let cardToken: string | undefined
+      let paymentMethodId: string | undefined
+      let issuerId: string | undefined
+      if (checkoutMethod === 'card') {
+        const mp = await loadMercadoClient()
+        const token = await mp.createCardToken({ cardNumber: checkoutForm.number.replace(/\D/g, ''), cardholderName: checkoutForm.holder, cardExpirationMonth: checkoutForm.month, cardExpirationYear: checkoutForm.year, securityCode: checkoutForm.cvv, identificationType: 'CPF', identificationNumber: checkoutForm.cpf.replace(/\D/g, '') })
+        cardToken = token.id
+        const methods = await mp.getPaymentMethods({ bin: checkoutForm.number.replace(/\D/g, '').slice(0, 6) })
+        paymentMethodId = methods[0]?.id
+        issuerId = methods[0]?.issuer?.id
+        if (!cardToken || !paymentMethodId) throw new Error('Não foi possível validar o cartão.')
+      }
+      const result = await saasApi.publicCheckout({ planId: checkoutPlan.id, name: checkoutForm.name, email: checkoutForm.email, password: checkoutForm.password, cpf: checkoutForm.cpf, phone: checkoutForm.phone, method: checkoutMethod, cardToken, paymentMethodId, issuerId, installments: 1 })
+      if (result.qrCode) { setCheckoutPix(result.qrCode); setCheckoutMsg('Conta criada. Pague o Pix para ativar seu plano.') }
+      else { setCheckoutMsg('Conta criada e pagamento enviado. Você já pode entrar no painel.'); setTimeout(() => navigate('/login'), 1200) }
+    } catch (e) { setCheckoutMsg(e instanceof Error ? e.message : 'Não foi possível concluir o cadastro e pagamento.') }
+    finally { setCheckoutBusy(false) }
+  }
 
   return (
     <div className="min-h-screen bg-app text-fg overflow-x-hidden">
@@ -660,7 +701,7 @@ export function LandingPage() {
                       size="lg"
                       variant={featured ? 'gradient' : 'outline'}
                       className="w-full mt-7"
-                      onClick={() => navigate('/login')}
+                      onClick={() => { setCheckoutPlan(p); setCheckoutMsg(''); setCheckoutPix(null) }}
                     >
                       {p.slug === 'teste' ? 'Ativar teste' : 'Começar agora'}
                     </Button>
@@ -747,6 +788,25 @@ export function LandingPage() {
           <p className="text-[11px] text-faint">© {new Date().getFullYear()} Vyntra · Prospecção Inteligente</p>
         </div>
       </footer>
+      <Modal open={!!checkoutPlan} onClose={() => { if (!checkoutBusy) setCheckoutPlan(null) }} title={checkoutPlan ? `Começar com ${checkoutPlan.name}` : ''} subtitle="Crie sua conta e pague em poucos passos." size="md" footer={!checkoutPix ? <><Button variant="secondary" onClick={() => setCheckoutPlan(null)}>Cancelar</Button><Button onClick={() => void submitLandingCheckout()} loading={checkoutBusy}>{checkoutBusy ? 'Processando…' : 'Criar conta e pagar'}</Button></> : <Button onClick={() => navigate('/login')}>Entrar no painel</Button>}>
+        {!checkoutPix ? (
+          <div className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input required placeholder="Seu nome" value={checkoutForm.name} onChange={(e) => setCheckoutForm({ ...checkoutForm, name: e.target.value })} className="input" />
+              <input required type="email" placeholder="Seu e-mail" value={checkoutForm.email} onChange={(e) => setCheckoutForm({ ...checkoutForm, email: e.target.value })} className="input" />
+              <input required type="password" minLength={8} placeholder="Crie uma senha (8+ caracteres)" value={checkoutForm.password} onChange={(e) => setCheckoutForm({ ...checkoutForm, password: e.target.value })} className="input" />
+              <input required placeholder="CPF" inputMode="numeric" value={checkoutForm.cpf} onChange={(e) => setCheckoutForm({ ...checkoutForm, cpf: e.target.value })} className="input" />
+              <input required placeholder="Celular" inputMode="tel" value={checkoutForm.phone} onChange={(e) => setCheckoutForm({ ...checkoutForm, phone: e.target.value })} className="input sm:col-span-2" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setCheckoutMethod('pix')} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${checkoutMethod === 'pix' ? 'border-accent-500 bg-accent-600/15 text-accent-300' : 'border-line bg-subtle text-muted'}`}>Pix</button>
+              <button type="button" onClick={() => setCheckoutMethod('card')} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${checkoutMethod === 'card' ? 'border-accent-500 bg-accent-600/15 text-accent-300' : 'border-line bg-subtle text-muted'}`}>Cartão</button>
+            </div>
+            {checkoutMethod === 'card' && <div className="grid gap-2 sm:grid-cols-2"><input placeholder="Número do cartão" inputMode="numeric" value={checkoutForm.number} onChange={(e) => setCheckoutForm({ ...checkoutForm, number: e.target.value })} className="input sm:col-span-2" /><input placeholder="Nome no cartão" value={checkoutForm.holder} onChange={(e) => setCheckoutForm({ ...checkoutForm, holder: e.target.value })} className="input sm:col-span-2" /><input placeholder="Mês" value={checkoutForm.month} onChange={(e) => setCheckoutForm({ ...checkoutForm, month: e.target.value })} className="input" /><input placeholder="Ano" value={checkoutForm.year} onChange={(e) => setCheckoutForm({ ...checkoutForm, year: e.target.value })} className="input" /><input placeholder="CVV" value={checkoutForm.cvv} onChange={(e) => setCheckoutForm({ ...checkoutForm, cvv: e.target.value })} className="input" /></div>}
+            {checkoutMsg && <p className="text-xs text-rose-300">{checkoutMsg}</p>}
+          </div>
+        ) : <div className="space-y-3 text-center"><p className="text-sm text-secondary">Conta criada para <b>{checkoutForm.email}</b>. Escaneie o QR Code ou copie o Pix.</p><div className="rounded-xl border border-accent-500/20 bg-accent-500/5 p-4"><div className="mx-auto max-w-full break-all text-xs text-secondary">{checkoutPix}</div><button className="mt-3 text-xs text-accent-500" onClick={() => void navigator.clipboard.writeText(checkoutPix)}>Copiar código Pix</button></div><p className="text-xs text-muted">Após a confirmação, entre no painel com o e-mail e senha criados.</p></div>}
+      </Modal>
     </div>
   )
 }

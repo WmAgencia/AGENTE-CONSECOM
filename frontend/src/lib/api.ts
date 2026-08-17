@@ -210,6 +210,12 @@ export const saasApi = {
     const r = await api.get<{ publicKey?: string }>('/api/saas/payment/public-key')
     return r.publicKey ?? ''
   },
+  async publicCheckout(input: {
+    planId: string; name: string; email: string; password: string; cpf: string; phone: string; method: 'pix' | 'card';
+    paymentMethodId?: string; cardToken?: string; installments?: number; issuerId?: string
+  }): Promise<{ ok: boolean; status?: string; paymentId: string; qrCode?: string | null; qrCodeBase64?: string | null }> {
+    return api.post('/api/public/checkout', input)
+  },
   async changePassword(currentPassword: string, newPassword: string, confirmPassword: string): Promise<void> {
     await api.post<{ ok: boolean }>('/api/account/password', { currentPassword, newPassword, confirmPassword })
   },
