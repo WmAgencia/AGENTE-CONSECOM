@@ -94,6 +94,7 @@ export interface Campaign {
   whatsapp_instance: string | null
   connection_ids?: string[] | null
   owner_user_id?: string | null
+  ai_enabled?: boolean
   position?: number | null
   created_at: string
 }

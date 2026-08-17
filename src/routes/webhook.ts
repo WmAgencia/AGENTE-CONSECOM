@@ -494,14 +494,11 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       '[CONVERSA] Conversa carregada',
     );
 
-    loadLeadCampaignStatus(lead.id)
-      .then((info) => {
-        log.info(
-          { leadId: lead.id, campaignId: info?.campaignId, runStatus: info?.runStatus, campaignStatus: info?.campaignStatus },
-          '[CAMPAIGN] Status da campanha do lead',
-        );
-      })
-      .catch(() => {});
+    const campaignInfo = await loadLeadCampaignStatus(lead.id);
+    log.info(
+      { leadId: lead.id, campaignId: campaignInfo?.campaignId, runStatus: campaignInfo?.runStatus, campaignStatus: campaignInfo?.campaignStatus, aiEnabled: campaignInfo?.aiEnabled },
+      '[CAMPAIGN] Status da campanha do lead',
+    );
 
     // O takeover é por lead e persistido no banco; não desliga a IA global.
     if (lead.ai_control === 'human') {
@@ -510,6 +507,13 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       } catch {}
       await appendConversationTurn(lead.id, 'user', msg.text).catch(() => {});
       log.info({ leadId: lead.id }, '[AI] conversa assumida por operador — resposta automática ignorada');
+      return;
+    }
+
+    if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
+      try { await store.appendUser(conversationId, msg.text); } catch {}
+      await appendConversationTurn(lead.id, 'user', msg.text).catch(() => {});
+      log.info({ leadId: lead.id, campaignId: campaignInfo.campaignId }, '[AI] IA desativada para esta campanha');
       return;
     }
 
@@ -715,7 +719,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
  */
 async function loadLeadCampaignStatus(
   leadId: string,
-): Promise<{ campaignId: string | null; runStatus: string | null; campaignStatus: string | null } | null> {
+): Promise<{ campaignId: string | null; runStatus: string | null; campaignStatus: string | null; aiEnabled: boolean } | null> {
   const cfg = getSupabaseProspeccaoConfig();
   if (!cfg.url || !cfg.serviceRoleKey) return null;
   const headers = {
@@ -734,15 +738,16 @@ async function loadLeadCampaignStatus(
     let campaignStatus: string | null = null;
     if (row.campaign_id) {
       const c = await fetch(
-        `${cfg.url}/rest/v1/campaigns?select=status&id=eq.${encodeURIComponent(row.campaign_id)}&limit=1`,
+      `${cfg.url}/rest/v1/campaigns?select=status,ai_enabled&id=eq.${encodeURIComponent(row.campaign_id)}&limit=1`,
         { headers },
       );
       if (c.ok) {
-        const cs = (await c.json()) as Array<{ status: string }>;
+        const cs = (await c.json()) as Array<{ status: string; ai_enabled?: boolean | null }>;
         campaignStatus = cs[0]?.status ?? null;
+        return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: cs[0]?.ai_enabled !== false };
       }
     }
-    return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus };
+    return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: true };
   } catch {
     return null;
   }

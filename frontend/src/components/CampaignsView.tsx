@@ -200,6 +200,11 @@ export function CampaignsView() {
     }
   }
 
+  async function setCampaignAi(c: Campaign, enabled: boolean) {
+    const { error } = await supabase.from('campaigns').update({ ai_enabled: enabled }).eq('id', c.id)
+    if (!error) setCampaigns((items) => items.map((item) => item.id === c.id ? { ...item, ai_enabled: enabled } : item))
+  }
+
 async function loadRuns() {
     const { data, error } = await supabase
       .from('send_runs')
@@ -359,6 +364,7 @@ async function fireCampaign(c: Campaign) {
                           runs={runsByCampaign[c.id] ?? []}
                           onChanged={load}
                           onSetConnections={(ids) => void setCampaignConnections(c, ids)}
+                          onSetAi={(enabled) => void setCampaignAi(c, enabled)}
                           onShowQueue={() => setQueueFor(c)}
                           onFire={() => void fireCampaign(c)}
                           onPause={() => void pauseCampaign(c)}
@@ -637,6 +643,7 @@ function CampaignCard({
   onSchedule,
   onCancelSchedule,
   onDelete,
+  onSetAi,
 }: {
   campaign: Campaign
   messages: QueueMessage[]
@@ -651,6 +658,7 @@ function CampaignCard({
   onSchedule: () => void
   onCancelSchedule: () => void
   onDelete: () => void
+  onSetAi: (enabled: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
   const activeConnections = connections.filter((c) => c.status === 'connected')
@@ -663,6 +671,10 @@ function CampaignCard({
           <div className="text-[11px] text-muted">
             {messages.length} mensagem(ns) na sequência · {runs.length} lead(s) na fila
           </div>
+          <button type="button" onClick={() => onSetAi(!campaign.ai_enabled)} className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${campaign.ai_enabled ? 'border-accent-500/40 bg-accent-500/10 text-accent-300' : 'border-line-2 bg-subtle text-muted'}`}>
+            <span className={`h-2 w-2 rounded-full ${campaign.ai_enabled ? 'bg-accent-400 shadow-[0_0_0_3px_rgba(99,102,241,.16)]' : 'bg-faint'}`} />
+            IA {campaign.ai_enabled ? 'ATIVA' : 'DESATIVADA'}
+          </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <CampaignStatusBadge status={campaign.status} />
@@ -799,6 +811,10 @@ function QueueModal({
   onChanged: () => void
 }) {
   const [detail, setDetail] = useState<SendRun | null>(null)
+  const [associatedLeads, setAssociatedLeads] = useState<Array<{ id: string; name: string | null; phone: string | null; status: string | null }>>([])
+  useEffect(() => {
+    void supabase.from('leads').select('id,name,phone,status').eq('campaign_id', campaign.id).then(({ data }) => setAssociatedLeads((data ?? []) as typeof associatedLeads))
+  }, [campaign.id])
   if (runs.length === 0) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -811,9 +827,11 @@ function QueueModal({
             <button onClick={onClose} className="text-muted hover:text-fg text-xl leading-none">×</button>
           </div>
           <p className="text-sm text-faint border border-dashed border-line-2 rounded-xl px-4 py-6 text-center">
-            Esta campanha ainda não tem leads na fila. Distribua leads para ela na guia Importados
-            ou no painel de leads para começar.
-          </p>
+             {associatedLeads.length > 0
+               ? `${associatedLeads.length} lead(s) estão associados à campanha, mas ainda não possuem uma execução na fila. Redistribua-os pela guia Importados para criar os envios.`
+               : 'Esta campanha ainda não tem leads associados nem na fila. Distribua leads para ela na guia Importados ou no painel de leads para começar.'}
+           </p>
+           {associatedLeads.length > 0 && <div className="mt-3 max-h-48 overflow-y-auto space-y-1">{associatedLeads.map((lead) => <div key={lead.id} className="flex items-center justify-between rounded-lg bg-subtle px-3 py-2 text-xs"><span className="truncate">{lead.name ?? 'Sem nome'} <span className="text-faint">{lead.phone ?? ''}</span></span><span className="text-amber-300">Aguardando distribuição</span></div>)}</div>}
           <div className="flex justify-end mt-4">
             <button onClick={onClose} className="px-3 py-2 text-sm bg-subtle hover:bg-subtle-2 rounded-xl">Fechar</button>
           </div>

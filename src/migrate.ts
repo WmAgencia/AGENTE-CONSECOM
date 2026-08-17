@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   is_active    BOOLEAN NOT NULL DEFAULT true,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS queue_messages (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
