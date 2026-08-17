@@ -378,7 +378,7 @@ scoped.get('/api/master/payments', async (_req, reply) => {
   scoped.get('/api/master/gateways', async (_req, reply) => {
     const rows = await getJson<Record<string, unknown>>(
       '/payment_gateways',
-      'id,name,provider,enabled,sandbox,created_at,updated_at',
+      '*',
     );
     return reply.send({ gateways: (rows ?? []).map((row) => ({ ...row, active: row.enabled === true })) });
   });
