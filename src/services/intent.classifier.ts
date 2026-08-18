@@ -23,6 +23,8 @@ export type InboundIntent =
   | 'orcamento'
   | 'sem_interesse'
   | 'encerrar'
+  | 'responder_depois'
+  | 'humano'
   | 'ambiguo';
 
 export const VALID_INTENTS: InboundIntent[] = [
@@ -168,6 +170,61 @@ const ENCERRAR = [
   'encerrar conversa',
 ];
 
+// --- Responder depois / falar depois (contato futuro) -------------------------
+const RESPONDER_DEPOIS = [
+  'falar comigo amanha',
+  'falar comigo depois',
+  'fala comigo amanha',
+  'fala comigo depois',
+  'fale comigo amanha',
+  'fale comigo depois',
+  'me chama amanha',
+  'me chame amanha',
+  'me chama depois',
+  'me chame depois',
+  'me lembra amanha',
+  'me avisa amanha',
+  'amanha eu te respondo',
+  'amanha eu respondo',
+  'depois eu te respondo',
+  'depois eu respondo',
+  'te respondo depois',
+  'respondo mais tarde',
+  'amanha te respondo',
+  'volto a falar depois',
+  'volto a falar mais tarde',
+  'vamos falar depois',
+  'me procure depois',
+  'me procura depois',
+  'pode falar amanha',
+  'pode me chamar amanha',
+  'pode me chamar depois',
+  'me contata depois',
+  'me chama mais tarde',
+  'falo com voce amanha',
+  'falo com voce depois',
+  'mais tarde',
+];
+
+// --- Falar com humano / pessoa real ------------------------------------------
+const HUMANO = [
+  'quero falar com uma pessoa',
+  'quero falar com humano',
+  'falar com um humano',
+  'falar com uma pessoa',
+  'quero falar com alguem',
+  'atendente',
+  'quero atendimento humano',
+  'me passa um atendente',
+  'pode me transferir para um atendente',
+  'quero falar com o responsavel',
+  'quero falar com um vendedor',
+  'falar com o vendedor',
+  'quero falar com alguem de verdade',
+  'voce e uma maquina quero humano',
+  'pode me passar para um humano',
+];
+
 export interface HeuristicResult {
   intent: InboundIntent;
   /** confiança qualitativa: high somente para sinais inequívocos. */
@@ -191,6 +248,16 @@ export function classifyIntentHeuristic(text: string): HeuristicResult | null {
     return { intent: 'sem_interesse', confidence: 'high' };
   }
 
+  // "Amanhã/depois eu respondo" — contato futuro explícito.
+  if (hasAny(n, RESPONDER_DEPOIS)) {
+    return { intent: 'responder_depois', confidence: 'high' };
+  }
+
+  // Pedido explícito por atendimento humano.
+  if (hasAny(n, HUMANO)) {
+    return { intent: 'humano', confidence: 'high' };
+  }
+
   if (hasAny(n, REUNIAO_SIGNAL) && hasAny(n, REUNIAO_VERBS)) {
     return { intent: 'reuniao', confidence: 'high' };
   }
@@ -212,7 +279,7 @@ export function classifyIntentHeuristic(text: string): HeuristicResult | null {
 export interface InboundPlan {
   intent: InboundIntent;
   /** Status que o lead deve assumir no Kanban (undefined = manter). */
-  nextStatus?: 'conversando' | 'sem_interesse';
+  nextStatus?: 'conversando' | 'sem_interesse' | 'responder_depois';
   /** true quando a campanha do lead deve ser interrompida. */
   stopCampaign: boolean;
 }
@@ -233,6 +300,10 @@ export function planInbound(
 
   if (intent === 'sem_interesse') {
     return { intent, nextStatus: 'sem_interesse', stopCampaign: true };
+  }
+
+  if (intent === 'responder_depois') {
+    return { intent, nextStatus: 'responder_depois', stopCampaign: false };
   }
 
   // Reunião marcada: só rebaixa para "conversando" se NÃO estiver em reunião.

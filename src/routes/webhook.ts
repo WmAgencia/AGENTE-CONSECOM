@@ -41,6 +41,7 @@ import {
   loadCommercialMemoryForPrompt,
 } from '../services/memory.service.js';
 import { sendText, isEvolutionMockMode } from '../services/evolution.service.js';
+import { findConnectionByInstanceName } from '../services/evolution.connections.js';
 import {
   getConversationStore,
   turnsToHistory,
@@ -59,6 +60,7 @@ import {
   updateLeadAnalytics,
   cancelLeadSendRuns,
   recordAgentOutcome,
+  updateLeadNeedsAttention,
   type LeadRow,
 } from '../services/supabase.leads.js';
 import {
@@ -510,10 +512,16 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
       return;
     }
 
-    if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
+if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
       try { await store.appendUser(conversationId, msg.text); } catch {}
       await appendConversationTurn(lead.id, 'user', msg.text).catch(() => {});
-      log.info({ leadId: lead.id, campaignId: campaignInfo.campaignId }, '[AI] IA desativada para esta campanha');
+      await classifyInboundWithoutAi(lead.id, msg.text).catch((err) => {
+        log.warn(
+          { leadId: lead.id, errMessage: err instanceof Error ? err.message : 'unknown' },
+          '[AI][OFF] classificação determinística falhou',
+        );
+      });
+      log.info({ leadId: lead.id, campaignId: campaignInfo.campaignId }, '[AI] IA desativada — mensagem salva e classificada');
       return;
     }
 
@@ -546,8 +554,17 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
     try {
       log.info({ messageKeyId: msg.messageKeyId }, '[AI] Processando mensagem');
 
-      // Delegate to the agent loop with conversation history attached.
+// Delegate to the agent loop with conversation history attached.
       const memoryOwnerId = await resolveUserIdForInstance(msg.instance);
+      const connection = await findConnectionByInstanceName(msg.instance ?? '');
+      const connectionIdentity =
+        connection && (connection.display_name || connection.whatsapp_name)
+          ? {
+              connection_id: connection.id,
+              connection_name: (connection.display_name ?? connection.whatsapp_name) as string,
+              connection_phone: connection.phone_number,
+            }
+          : undefined;
       const agentResult = await runAgentLoop({
         task: msg.text,
         conversationId,
@@ -559,6 +576,7 @@ export function registerWebhookRoutes(app: FastifyInstance): void {
         instance: msg.instance,
         leadContext,
         strategyDirective,
+        connectionIdentity,
       });
       log.info(
         {
@@ -747,9 +765,51 @@ async function loadLeadCampaignStatus(
         return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: cs[0]?.ai_enabled !== false };
       }
     }
-    return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: true };
+return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: true };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Classificação DETERMINÍSTICA quando a IA da campanha está DESATIVADA.
+ * Nenhuma resposta automática é enviada, mas eventos importantes ainda movem o
+ * lead no Kanban (sem interesse / responder depois / conversando) e marcam
+ * "precisa de atenção" para o operador acompanhar.
+ */
+async function classifyInboundWithoutAi(leadId: string, text: string): Promise<void> {
+  const log = getLogger();
+  const heuristic = classifyIntentHeuristic(text);
+  const intent = heuristic?.intent ?? 'ambiguo';
+  const fresh = await getLeadById(leadId);
+  const plan = planInbound(fresh?.status, intent);
+  log.info({ leadId, intent, confidence: heuristic?.confidence ?? 'none' }, '[AI][OFF] intenção detectada');
+
+  if (plan.nextStatus === 'sem_interesse') {
+    const alreadyRecorded = fresh?.status === 'sem_interesse';
+    if (!alreadyRecorded) {
+      await recordAgentOutcome({ leadId, outcome: 'sem_interesse', noInterestMonths: 6 });
+    }
+    if (plan.stopCampaign) await cancelLeadSendRuns(leadId, 'sem_interesse');
+    log.info({ leadId }, '[AI][OFF] Lead movido para Sem interesse + campanha interrompida');
+    return;
+  }
+
+  if (plan.nextStatus === 'responder_depois') {
+    await updateLeadStatus(leadId, 'responder_depois');
+    await updateLeadNeedsAttention(leadId, true);
+    log.info({ leadId }, '[AI][OFF] Lead marcado como Responder depois');
+    return;
+  }
+
+  // Qualquer outra resposta real com IA desativada = operador precisa ver.
+  await updateLeadNeedsAttention(leadId, true);
+  if (shouldActivateConversation(fresh?.status)) {
+    const sequence = await loadLeadSequenceCompleteness(leadId).catch(() => null);
+    if (sequence === null || isSequenceComplete(sequence)) {
+      await updateLeadStatus(leadId, 'conversando');
+      log.info({ leadId }, '[AI][OFF] Lead movido para Conversando (sequência concluída)');
+    }
   }
 }
 

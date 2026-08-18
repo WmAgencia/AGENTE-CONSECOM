@@ -60,10 +60,11 @@ export interface Lead {
   source_detail?: string | null
   is_active_in_prospecting?: boolean
   owner_user_id?: string | null
-  import_state?: 'imported' | 'distributed' | 'blocked'
+import_state?: 'imported' | 'distributed' | 'blocked'
   phone_normalized?: string | null
   imported_at?: string | null
   distributed_at?: string | null
+  needs_attention?: boolean
   created_at: string
   updated_at: string
   ai_control?: 'ai' | 'human'

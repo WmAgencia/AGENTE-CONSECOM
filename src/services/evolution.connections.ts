@@ -214,6 +214,26 @@ export async function getUserConnection(identifier: string): Promise<WhatsAppCon
   return resolveConnection(identifier);
 }
 
+/** Resolve a conexão real pelo nome da instância Evolution (ex.: webhook inbound).
+ *  Fonte de verdade no momento do envio — nunca usa instância fantasma nem
+ *  identidade herdada do frontend. */
+export async function findConnectionByInstanceName(
+  instanceName: string,
+): Promise<WhatsAppConnection | null> {
+  if (!instanceName) return null;
+  try {
+    const res = await fetch(
+      `${supUrl()}/rest/v1/whatsapp_connections?select=*&instance_name=eq.${encodeURIComponent(instanceName)}&limit=1`,
+      { headers: supHeaders() },
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as WhatsAppConnection[];
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve o grupo de notificações configurado para o dono da instância.
  * Fluxo: instance_name -> whatsapp_connections (user_id/workspace_id) ->

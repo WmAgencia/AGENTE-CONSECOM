@@ -274,6 +274,32 @@ export async function getLeadById(leadId: string): Promise<LeadRow | null> {
 }
 
 /**
+ * Marca o lead como "precisa de atenção" (respondeu com IA desativada ou em
+ * situação que o operador precisa acompanhar). Não altera o status do funil.
+ */
+export async function updateLeadNeedsAttention(
+  leadId: string,
+  value: boolean,
+): Promise<boolean> {
+  const cfg = getSupabaseProspeccaoConfig();
+  if (!cfg.url || !cfg.serviceRoleKey || !leadId) return false;
+  try {
+    const res = await fetch(`${cfg.url}/rest/v1/leads?id=eq.${encodeURIComponent(leadId)}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: cfg.serviceRoleKey,
+        Authorization: `Bearer ${cfg.serviceRoleKey}`,
+      },
+      body: JSON.stringify({ needs_attention: value }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Interrompe a campanha PARA ESTE LEAD: marca como `failed` qualquer run
  * pendente/em andamento, impedindo que o worker envie a próxima mensagem
  * programada. Quando todos os runs da campanha terminarem (done/failed), o

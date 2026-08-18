@@ -485,7 +485,12 @@ export function LeadCard({ lead, engagement, followUps, onAction, onChat, onMeet
       onClick={onChat}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm truncate">{lead.name || 'Sem nome'}</div>
+          <div className="flex items-center gap-1.5">
+            {lead.needs_attention && (
+              <span title="Respondeu e precisa de atenção (IA desativada)" className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300 font-semibold">⚠ ATENÇÃO</span>
+            )}
+            <div className="font-medium text-sm truncate">{lead.name || 'Sem nome'}</div>
+          </div>
           {lead.niche && <div className="text-[11px] text-accent-300/80 truncate">{lead.niche}</div>}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">

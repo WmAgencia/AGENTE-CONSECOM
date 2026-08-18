@@ -139,6 +139,11 @@ ALTER TABLE public.leads
 CREATE INDEX IF NOT EXISTS leads_active_prospecting_idx
   ON public.leads (is_active_in_prospecting);
 
+-- Lead respondeu com IA desativada (operador precisa acompanhar).
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS needs_attention BOOLEAN NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS leads_needs_attention_idx
+  ON public.leads (needs_attention) WHERE needs_attention = true;
+
 -- Status enum expandido (11 estados do funil + "Números para ligação" v10)
 ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status;
 ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_status_check;
