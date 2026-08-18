@@ -97,6 +97,15 @@ function engagementTooltip(e: Engagement | undefined): string | undefined {
   return rows.join('\n')
 }
 
+function scoreTooltip(lead: Lead): string {
+  const factors = Array.isArray(lead.score_factors) ? (lead.score_factors as string[]) : []
+  return [
+    `Score ${lead.score}/100`,
+    ...factors.map((f) => `• ${f}`),
+    factors.length ? '' : '• Sem motivos registrados ainda',
+  ].join('\n')
+}
+
 export function KanbanBoard({
   leads,
   campaigns,
@@ -497,6 +506,12 @@ export function LeadCard({ lead, engagement, followUps, onAction, onChat, onMeet
           <button onClick={(e) => { e.stopPropagation(); onAction() }} title="Abrir conversa (WhatsApp)"
             className="text-slate-600 hover:text-fg text-xs">•••</button>
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.label}</span>
+          {typeof lead.score === 'number' && (
+            <span
+              title={scoreTooltip(lead)}
+              className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-500/15 text-slate-300 font-semibold"
+            >{lead.score} pts</span>
+          )}
         </div>
       </div>
 

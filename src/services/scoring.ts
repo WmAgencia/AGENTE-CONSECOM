@@ -95,3 +95,102 @@ export function computeLeadScore(input: ScoreInput): ScoreResult {
   score = Math.max(0, Math.min(100, Math.round(score)));
   return { score, band: bandOf(score), factors };
 }
+
+// ---------------------------------------------------------------------------
+// Scoring de mensagens recebidas (SINAIS REAIS do lead).
+//
+// O score não é um número arbitrário: ele sobe/desce com eventos observáveis
+// na conversa (intenção detectada, resposta rápida, visualização, palavras-chave
+// de negócio) e é acompanhado dos MOTIVOS (factors) para o operador entender.
+// Determinístico e sem chamadas de modelo.
+// ---------------------------------------------------------------------------
+
+export interface InboundScoreInput {
+  /** Score atual persistido no lead (null = sem histórico, usa status base). */
+  currentScore?: number | null;
+  currentStatus?: string | null;
+  intent: string;
+  text: string;
+  /** Lead respondeu em até N minutos após a última mensagem enviada. */
+  repliedFast?: boolean;
+  /** O lead visualizou a última mensagem antes de responder. */
+  readReceipt?: boolean;
+}
+
+export interface InboundScoreResult {
+  score: number;
+  delta: number;
+  band: ScoreResult['band'];
+  factors: string[];
+}
+
+function normalizeForScore(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const INTENT_DELTA: Record<string, number> = {
+  sem_interesse: -25,
+  encerrar: -10,
+  humano: 0,
+  responder_depois: 2,
+  informacao: 5,
+  duvida: 5,
+  orcamento: 8,
+  interesse: 15,
+  reuniao: 20,
+  ambiguo: 0,
+};
+
+/** Palavras-chave de negócio (buzzwords de prospecção do Vyntra). */
+const BIZ_KEYWORDS = [
+  'sistema',
+  'software',
+  'plataforma',
+  'app',
+  'site',
+  'marketing',
+  'gestao',
+  'automacao',
+  'orcamento',
+  'proposta',
+  'implantacao',
+  'integracao',
+  'assinatura',
+  'mensal',
+  'valor',
+  'demonstracao',
+];
+
+export function scoreInboundMessage(input: InboundScoreInput): InboundScoreResult {
+  const factors: string[] = [];
+  const t = normalizeForScore(input.text);
+
+  let delta = INTENT_DELTA[input.intent] ?? 0;
+  if (delta !== 0) factors.push(`${input.intent}=${delta > 0 ? '+' : ''}${delta}`);
+
+  if (input.repliedFast) {
+    delta += 8;
+    factors.push('resposta_rapida=+8');
+  }
+  if (input.readReceipt) {
+    delta += 4;
+    factors.push('visualizou=+4');
+  }
+
+  const bizHits = BIZ_KEYWORDS.filter((k) => t.includes(k));
+  if (bizHits.length > 0) {
+    const bonus = Math.min(6, bizHits.length * 2);
+    delta += bonus;
+    factors.push(`palavras_chave=${bizHits.slice(0, 3).join(',')}=+${bonus}`);
+  }
+
+  const base = input.currentScore ?? (STATUS_BASE[input.currentStatus ?? 'novo'] ?? 5);
+  const score = Math.max(0, Math.min(100, Math.round(base + delta)));
+  return { score, delta, band: bandOf(score), factors };
+}

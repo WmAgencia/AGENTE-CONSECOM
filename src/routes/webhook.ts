@@ -73,7 +73,7 @@ import {
   classifyIntentHeuristic,
   planInbound,
 } from '../services/intent.classifier.js';
-import { computeLeadScore } from '../services/scoring.js';
+import { scoreInboundMessage } from '../services/scoring.js';
 import { blockIfSequenceActive, isLeadSequenceActive } from '../services/campaign.gate.js';
 import { InboundMessageDebouncer } from '../services/inbound.message.debouncer.js';
 import { parseFollowUpMarker, stripFollowUpMarker } from '../services/followup.parser.js';
@@ -669,17 +669,13 @@ if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
         await appendConversationTurn(lead.id, 'assistant', cleanReply, agentResult.model).catch(() => {});
       }
 
-      // --- Lead score (best-effort, alimenta o funil analítico) ------------
+      // --- Lead score (SINAIS reais: intenção + engajamento) ---------------
       if (lead.id) {
-        const score = computeLeadScore({
-          status: 'conversando',
-          hasConversation: true,
-          messagesCount: history.length + 1,
-          meetingBooked: false,
-          meetingOutcome: null,
-          saleStatus: null,
-          problemIdentified: false,
-          interestLevel: null,
+        const score = scoreInboundMessage({
+          currentScore: freshLead?.score ?? lead.score,
+          currentStatus: freshStatus,
+          intent,
+          text: msg.text,
         });
         void updateLeadAnalytics(lead.id, {
           score: score.score,
@@ -784,6 +780,14 @@ async function classifyInboundWithoutAi(leadId: string, text: string): Promise<v
   const fresh = await getLeadById(leadId);
   const plan = planInbound(fresh?.status, intent);
   log.info({ leadId, intent, confidence: heuristic?.confidence ?? 'none' }, '[AI][OFF] intenção detectada');
+
+  const scored = scoreInboundMessage({
+    currentScore: fresh?.score,
+    currentStatus: fresh?.status,
+    intent,
+    text,
+  });
+  void updateLeadAnalytics(leadId, { score: scored.score, score_factors: scored.factors }).catch(() => {});
 
   if (plan.nextStatus === 'sem_interesse') {
     const alreadyRecorded = fresh?.status === 'sem_interesse';

@@ -19,6 +19,8 @@ export interface LeadRow {
   category: string | null;
   ai_control?: 'ai' | 'human' | null;
   owner_user_id?: string | null;
+  score?: number | null;
+  score_factors?: unknown;
 }
 // CAMPAIGN ≠ CONVERSAÇÃO. O lead pode responder em QUALQUER status do funil
 // (novo/na_fila durante a campanha, enviado após concluir, conversando,
@@ -175,7 +177,7 @@ async function fetchLeadIndex(): Promise<LeadRow[]> {
     let offset = 0;
     for (let page = 0; page < 20; page++) {
       let res = await fetch(
-        `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category,ai_control,owner_user_id&order=id&offset=${offset}&limit=1000`,
+        `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category,ai_control,owner_user_id,score&order=id&offset=${offset}&limit=1000`,
         { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
       );
       if (!res.ok) {
@@ -256,7 +258,7 @@ export async function getLeadById(leadId: string): Promise<LeadRow | null> {
   if (!cfg.url || !cfg.serviceRoleKey || !leadId) return null;
   try {
     let res = await fetch(
-      `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category,ai_control,owner_user_id&id=eq.${encodeURIComponent(leadId)}&limit=1`,
+      `${cfg.url}/rest/v1/leads?select=id,name,phone,status,niche,category,ai_control,owner_user_id,score&id=eq.${encodeURIComponent(leadId)}&limit=1`,
       { headers: { apikey: cfg.serviceRoleKey, Authorization: `Bearer ${cfg.serviceRoleKey}` } },
     );
     if (!res.ok) {
