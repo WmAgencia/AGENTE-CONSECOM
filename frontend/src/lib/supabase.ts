@@ -99,6 +99,8 @@ export interface Campaign {
   knowledge_base_id?: string | null
   ai_persona?: CampaignPersona | null
   ai_handoff?: CampaignHandoff | null
+  ai_mode?: 'traditional' | 'intelligent'
+  ai_initial_message?: string | null
   position?: number | null
   created_at: string
 }

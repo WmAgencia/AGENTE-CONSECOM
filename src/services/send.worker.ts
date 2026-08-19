@@ -548,6 +548,20 @@ export class SendWorker {
     return (await r.json()) as QueueMessageRow[];
   }
 
+  private async getCampaignAiMode(campaignId: string): Promise<{ mode: 'traditional' | 'intelligent'; initialMessage: string | null }> {
+    const r = await fetch(
+      `${this.url}/rest/v1/campaigns?select=ai_mode,ai_initial_message&id=eq.${encodeURIComponent(campaignId)}&limit=1`,
+      { headers: this.headers() },
+    ).catch(() => null);
+    if (!r?.ok) return { mode: 'traditional', initialMessage: null };
+    const rows = (await r.json()) as Array<{ ai_mode?: string | null; ai_initial_message?: string | null }>;
+    const row = rows[0];
+    return {
+      mode: row?.ai_mode === 'intelligent' ? 'intelligent' : 'traditional',
+      initialMessage: row?.ai_initial_message?.trim() || null,
+    };
+  }
+
   private async patchSendRun(runId: string, patch: Record<string, unknown>): Promise<void> {
     await fetch(`${this.url}/rest/v1/send_runs?id=eq.${runId}`, {
       method: 'PATCH',
@@ -740,7 +754,20 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
     }
 
     const position = run.current_position;
-    const next = msgs[position];
+    const aiMode = await this.getCampaignAiMode(run.campaign_id);
+    const intelligentInitial = aiMode.mode === 'intelligent' && position === 0 && aiMode.initialMessage
+      ? {
+          id: `ai-initial-${run.campaign_id}`,
+          campaign_id: run.campaign_id,
+          position: 0,
+          kind: 'text' as const,
+          text: aiMode.initialMessage,
+          media_url: null,
+          media_caption: null,
+          delay_seconds: 0,
+        }
+      : null;
+    const next = msgs[position] ?? intelligentInitial;
     if (!next) {
       await this.patchSendRun(run.id, { status: 'done', current_position: position });
       await this.updateLeadStatus(run.lead_id, 'enviado');
@@ -810,6 +837,16 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
         { runId: run.id, err: err instanceof Error ? err.message : 'unknown' },
         'send-worker: strategy assignment failed; continuing with default sequence',
       );
+    }
+
+    // No modo inteligente, a primeira abordagem é única; depois dela a IA
+    // assume a conversa e nenhuma mensagem adicional da sequência é enviada.
+    if (intelligentInitial) {
+      strategyText = intelligentInitial.text ?? '';
+      strategyKind = 'text';
+      strategyMediaUrl = null;
+      strategyCaption = null;
+      log.info({ runId: run.id }, 'send-worker: modo inteligente — usando abordagem inicial');
     }
 
     log.info({ runId: run.id, position, kind: next.kind, phone: sendPhone }, '[CAMPAIGN] disparando mensagem da campanha');
@@ -983,7 +1020,7 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
     const delayMs = (next.delay_seconds ?? 0) * 1000;
     const newPosition = position + 1;
     const nextAt = new Date(Date.now() + Math.max(0, delayMs)).toISOString();
-    const done = newPosition >= msgs.length;
+    const done = Boolean(intelligentInitial) || newPosition >= msgs.length;
     await this.patchSendRun(run.id, {
       status: done ? 'done' : 'running',
       current_position: newPosition,

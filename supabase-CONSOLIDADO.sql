@@ -945,6 +945,10 @@ ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS knowledge_base_id UUID
   REFERENCES public.kb_folders (id) ON DELETE SET NULL;
 ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS ai_persona JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS ai_handoff JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS ai_mode TEXT NOT NULL DEFAULT 'traditional';
+ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS ai_initial_message TEXT;
+ALTER TABLE public.campaigns DROP CONSTRAINT IF EXISTS campaigns_ai_mode_check;
+ALTER TABLE public.campaigns ADD CONSTRAINT campaigns_ai_mode_check CHECK (ai_mode IN ('traditional', 'intelligent'));
 
 ALTER TABLE public.kb_folders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_files    ENABLE ROW LEVEL SECURITY;

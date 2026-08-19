@@ -225,6 +225,12 @@ export function CampaignsView() {
     else await load()
   }
 
+  async function setCampaignAiMode(c: Campaign, ai_mode: 'traditional' | 'intelligent', ai_initial_message: string | null) {
+    const { error } = await supabase.from('campaigns').update({ ai_mode, ai_initial_message }).eq('id', c.id)
+    if (error) setLoadError(error.message)
+    else await load()
+  }
+
 async function setCampaignAi(c: Campaign, enabled: boolean) {
     setCampaigns((items) => items.map((item) => item.id === c.id ? { ...item, ai_enabled: enabled } : item))
     const { error } = await supabase.from('campaigns').update({ ai_enabled: enabled }).eq('id', c.id)
@@ -398,6 +404,7 @@ async function fireCampaign(c: Campaign) {
                            onSetKnowledgeBase={(id) => void setCampaignKnowledgeBase(c, id)}
                            onSetPersona={(persona) => void setCampaignPersona(c, persona)}
                            onSetHandoff={(handoff) => void setCampaignHandoff(c, handoff)}
+                           onSetAiMode={(mode, message) => void setCampaignAiMode(c, mode, message)}
                           onShowQueue={() => setQueueFor(c)}
                           onFire={() => void fireCampaign(c)}
                           onPause={() => void pauseCampaign(c)}
@@ -681,6 +688,7 @@ function CampaignCard({
   onSetKnowledgeBase,
   onSetPersona,
   onSetHandoff,
+  onSetAiMode,
 }: {
   campaign: Campaign
   messages: QueueMessage[]
@@ -700,12 +708,15 @@ function CampaignCard({
   onSetKnowledgeBase: (id: string | null) => void
   onSetPersona: (persona: CampaignPersona) => void
   onSetHandoff: (handoff: CampaignHandoff) => void
+  onSetAiMode: (mode: 'traditional' | 'intelligent', message: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
   const [personaOpen, setPersonaOpen] = useState(false)
   const [persona, setPersona] = useState<CampaignPersona>(campaign.ai_persona ?? { tone: 'consultivo', formality: 'neutro', verbosity: 'equilibrada', emojis: 'moderado', style: '' })
   const [handoffOpen, setHandoffOpen] = useState(false)
   const [handoff, setHandoff] = useState<CampaignHandoff>(campaign.ai_handoff ?? { name: '', phone: '', instructions: '' })
+  const [aiMode, setAiMode] = useState<'traditional' | 'intelligent'>(campaign.ai_mode ?? 'traditional')
+  const [initialMessage, setInitialMessage] = useState(campaign.ai_initial_message ?? '')
   const activeConnections = connections.filter((c) => c.status === 'connected')
   const runActive = runs.filter((r) => r.status === 'pending' || r.status === 'running').length
   return (
@@ -780,6 +791,17 @@ function CampaignCard({
           <label className="text-[11px] text-muted sm:col-span-2">Estilo adicional<input value={persona.style} maxLength={240} onChange={(event) => setPersona({ ...persona, style: event.target.value })} placeholder="Ex.: faça perguntas curtas e use exemplos práticos" /></label>
           <div className="flex justify-end sm:col-span-2"><Button type="button" onClick={() => { onSetPersona(persona); setPersonaOpen(false) }}>Salvar persona</Button></div>
         </div>}
+      </div>
+
+      <div className="mb-3 rounded-lg border border-line bg-panel/40 p-3">
+        <label className="block text-[11px] text-muted">Modo de disparo
+          <select className="mt-1 w-full text-xs" value={aiMode} onChange={(event) => setAiMode(event.target.value as 'traditional' | 'intelligent')}>
+            <option value="traditional">Tradicional — sequência completa</option>
+            <option value="intelligent">Inteligente — abordagem inicial + IA</option>
+          </select>
+        </label>
+        {aiMode === 'intelligent' && <div className="mt-2 space-y-2"><label className="block text-[11px] text-muted">Mensagem de abordagem inicial<textarea rows={2} maxLength={1000} value={initialMessage} onChange={(event) => setInitialMessage(event.target.value)} placeholder="Olá, {nome}! Posso te fazer uma pergunta rápida?" /></label><div className="flex justify-end"><Button type="button" onClick={() => onSetAiMode(aiMode, initialMessage.trim() || null)}>Salvar modo</Button></div></div>}
+        {aiMode === 'traditional' && campaign.ai_mode === 'intelligent' && <div className="mt-2 flex justify-end"><Button type="button" onClick={() => onSetAiMode('traditional', null)}>Salvar modo tradicional</Button></div>}
       </div>
 
       <div className="mb-3 rounded-lg border border-line bg-panel/40 p-3">
