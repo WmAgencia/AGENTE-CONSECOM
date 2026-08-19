@@ -1,4 +1,4 @@
-export type WelcomeSite = 'wepsy' | 'webmotors' | 'airbnb' | 'google' | 'global'
+export type WelcomeSite = 'wepsy' | 'webmotors' | 'google' | 'global'
 
 interface WelcomeCopy {
   title: string
@@ -22,13 +22,6 @@ const COPY: Record<WelcomeSite, WelcomeCopy> = {
     subtitle: 'Você está prospectando no',
     siteName: 'WebMotors',
     emoji: '🚗',
-  },
-  airbnb: {
-    title: 'Bem-vindo ao Vyntra',
-    tagline: 'Onde tem anfitrião, tem oportunidade. Bora caçar.',
-    subtitle: 'Você está prospectando no',
-    siteName: 'Airbnb',
-    emoji: '🏠',
   },
   google: {
     title: 'Bem-vindo ao Vyntra',
@@ -210,7 +203,6 @@ export function detectWelcomeSite(hostname: string, href: string): WelcomeSite |
   const h = hostname.toLowerCase()
   if (/(^|\.)wepsy\.com\.br$/.test(h)) return 'wepsy'
   if (/(^|\.)webmotors\.com\.br$/.test(h)) return 'webmotors'
-  if (/(^|\.)airbnb\.com(\.br)?$/.test(h)) return 'airbnb'
   if (/(^|\.)google\.(com|com\.br|[a-z.]+)\/maps\//.test(href) || h.startsWith('maps.google')) return 'google'
   return 'global'
 }

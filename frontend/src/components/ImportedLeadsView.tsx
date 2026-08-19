@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, type Campaign, type Lead, type WhatsAppConnection } from '../lib/supabase'
 
+function extractDdd(phone?: string | null): string {
+  const digits = (phone ?? '').replace(/\D/g, '')
+  if (digits.length >= 12) return digits.slice(2, 4)
+  if (digits.length >= 10) return digits.slice(0, 2)
+  return ''
+}
+
 export function ImportedLeadsView({
   leads,
   campaigns,
@@ -24,12 +31,31 @@ export function ImportedLeadsView({
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [connections, setConnections] = useState<WhatsAppConnection[]>([])
+  const [dddFilter, setDddFilter] = useState('')
 
   useEffect(() => {
     supabase.from('whatsapp_connections').select('*').order('created_at').then(({ data }) => {
       if (data) setConnections(data as WhatsAppConnection[])
     })
   }, [])
+
+  const dddAvailable = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const lead of imported) {
+      const ddd = extractDdd(lead.phone)
+      if (ddd) counts.set(ddd, (counts.get(ddd) ?? 0) + 1)
+    }
+    return Array.from(counts.entries()).sort(([a], [b]) => a.localeCompare(b))
+  }, [imported])
+
+  const filteredLeads = useMemo(() => {
+    if (!dddFilter) return imported
+    return imported.filter((lead) => extractDdd(lead.phone) === dddFilter)
+  }, [imported, dddFilter])
+
+  const selectAll = () => {
+    setSelected(new Set(filteredLeads.map((lead) => lead.id)))
+  }
 
   function toggleLead(id: string) {
     setSelected((current) => {
@@ -73,6 +99,7 @@ export function ImportedLeadsView({
       setSelected(new Set())
       setCampaignId('')
       setNewCampaign('')
+      setDddFilter('')
       await onChanged()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao distribuir leads.')
@@ -111,17 +138,35 @@ export function ImportedLeadsView({
         {error && <p className="text-sm text-rose-400">{error}</p>}
         {notice && <p className="text-sm text-emerald-400">{notice}</p>}
       </div>
+      <div className="px-6 py-3 border-b border-line flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-muted">Filtrar por DDD:</span>
+        <input
+          inputMode="numeric"
+          maxLength={2}
+          value={dddFilter}
+          onChange={(e) => setDddFilter(e.target.value.replace(/\D/g, '').slice(0, 2))}
+          placeholder="Ex.: 11"
+          className="w-20 bg-field border border-line-2 rounded-lg px-2 py-1.5 text-sm text-center"
+        />
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => setDddFilter('')} className={`px-2.5 py-1 rounded-full text-xs border transition ${!dddFilter ? 'border-accent-400 text-accent-300 bg-accent-400/10' : 'border-line-2 text-muted hover:border-line'}`}>Todos</button>
+          {dddAvailable.map(([ddd, count]) => (
+            <button key={ddd} type="button" onClick={() => setDddFilter(ddd)} className={`px-2.5 py-1 rounded-full text-xs border transition ${dddFilter === ddd ? 'border-accent-400 text-accent-300 bg-accent-400/10' : 'border-line-2 text-muted hover:border-line'}`}>{ddd} <span className="opacity-70">({count})</span></button>
+          ))}
+        </div>
+        {dddFilter && <button type="button" onClick={() => setDddFilter('')} className="text-xs text-muted hover:text-fg">Limpar</button>}
+      </div>
       <div className="flex-1 overflow-auto px-6 py-5">
-        {imported.length === 0 ? <p className="text-sm text-faint">Nenhum lead importado pendente.</p> : (
+        {filteredLeads.length === 0 ? <p className="text-sm text-faint">{imported.length === 0 ? 'Nenhum lead importado pendente.' : 'Nenhum lead encontrado para o DDD selecionado.'}</p> : (
           <div className="rounded-xl border border-line overflow-hidden">
             <div className="px-4 py-3 border-b border-line text-sm font-medium flex items-center justify-between">
-              <span>{imported.length} lead(s) importado(s)</span>
+              <span>{filteredLeads.length} lead(s) encontrado(s){dddFilter ? ` · DDD ${dddFilter}` : ` de ${imported.length} importado(s)`}</span>
               <span className="flex items-center gap-2">
-                <button type="button" onClick={() => setSelected(new Set(imported.map((l) => l.id)))} disabled={imported.length === 0} className="text-xs text-accent-400 hover:text-accent-300 disabled:opacity-40 disabled:cursor-not-allowed">Selecionar todos ({imported.length})</button>
+                <button type="button" onClick={selectAll} disabled={filteredLeads.length === 0} className="text-xs text-accent-400 hover:text-accent-300 disabled:opacity-40 disabled:cursor-not-allowed">Selecionar todos ({filteredLeads.length})</button>
                 {selected.size > 0 && <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-muted hover:text-faint">Limpar</button>}
               </span>
             </div>
-            {imported.map((lead) => (
+            {filteredLeads.map((lead) => (
               <label key={lead.id} className="flex items-center gap-3 px-4 py-3 border-b border-line last:border-0 hover:bg-subtle cursor-pointer">
                 <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggleLead(lead.id)} className="accent-emerald-600" />
                 <span className="flex-1 min-w-0"><span className="block text-sm truncate">{lead.name ?? 'Sem nome'}</span><span className="block text-xs text-faint">{lead.phone ?? 'Sem telefone'} · {lead.city ?? ''}</span></span>

@@ -26,10 +26,10 @@ import { z } from 'zod';
 import { shortenLeadName } from '../services/lead-name.service.js';
 
 /** Versão do manifesto da extensão publicada (mantenha em sincronia com manifest.ts). */
-const VERSION = '1.21.0';
+const VERSION = '1.22.0';
 
 const DEFAULT_BASE_ZIP_URL =
-  'https://frontend-seven-sooty-78.vercel.app/downloads/consecom-extension.zip?v=1.21.0';
+  'https://nzexythhastovjwuedsh.supabase.co/storage/v1/object/public/consecom-media/extensions/vyntra-prospector.zip?v=1.22.0';
 
 /** Se EXTENSION_API_KEY não estiver setada, usa este valor (dev/autoconfig). */
 const DEFAULT_EXTENSION_KEY = 'consecom-extension-v1';

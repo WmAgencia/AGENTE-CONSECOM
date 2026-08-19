@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Badge } from './ui'
+import { Button, Badge, Modal } from './ui'
 import { supabase, type Campaign, type CampaignHandoff, type CampaignPersona, type KbFolder, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
@@ -669,6 +669,23 @@ function CampaignButton({ onCreated }: { onCreated: () => Promise<void> }) {
   )
 }
 
+function Switch({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${checked ? 'bg-accent-500' : 'bg-line-2'}`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`}
+      />
+    </button>
+  )
+}
+
 function CampaignCard({
   campaign,
   messages,
@@ -710,122 +727,90 @@ function CampaignCard({
   onSetHandoff: (handoff: CampaignHandoff) => void
   onSetAiMode: (mode: 'traditional' | 'intelligent', message: string | null) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const [personaOpen, setPersonaOpen] = useState(false)
-  const [persona, setPersona] = useState<CampaignPersona>(campaign.ai_persona ?? { tone: 'consultivo', formality: 'neutro', verbosity: 'equilibrada', emojis: 'moderado', style: '' })
+const [seqOpen, setSeqOpen] = useState(false)
+  const [kbOpen, setKbOpen] = useState(false)
+  const [kbId, setKbId] = useState(campaign.knowledge_base_id ?? '')
   const [handoffOpen, setHandoffOpen] = useState(false)
   const [handoff, setHandoff] = useState<CampaignHandoff>(campaign.ai_handoff ?? { name: '', phone: '', instructions: '' })
-  const [aiMode, setAiMode] = useState<'traditional' | 'intelligent'>(campaign.ai_mode ?? 'traditional')
+  const [approachOpen, setApproachOpen] = useState(false)
+  const [persona, setPersona] = useState<CampaignPersona>(campaign.ai_persona ?? { tone: 'consultivo', formality: 'neutro', verbosity: 'equilibrada', emojis: 'moderado', style: '' })
   const [initialMessage, setInitialMessage] = useState(campaign.ai_initial_message ?? '')
   const activeConnections = connections.filter((c) => c.status === 'connected')
   const runActive = runs.filter((r) => r.status === 'pending' || r.status === 'running').length
+  const intelligent = campaign.ai_mode === 'intelligent'
   return (
-    <div className="rounded-xl border border-line bg-subtle p-4 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between mb-3">
-        <div className="min-w-0">
-          <div className="font-semibold truncate">{campaign.name}</div>
-          <div className="text-[11px] text-muted">
-            {messages.length} mensagem(ns) na sequência · {runs.length} lead(s) na fila
+    <div className="rounded-2xl border border-line bg-subtle shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+      <div className="px-4 pt-4 pb-3 border-b border-line/70">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <CampaignStatusBadge status={campaign.status} />
+              <h3 className="font-semibold text-[15px] leading-snug break-words">{campaign.name}</h3>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-subtle text-secondary">{campaign.lead_count} leads</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{campaign.success_count} sucessos</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300">{campaign.fail_count} falhas</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300">{messages.length} msg</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-accent-600/15 text-accent-300">{runs.length} na fila</span>
+              {runActive > 0 && <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">{runActive} em envio</span>}
+            </div>
           </div>
-          <button type="button" onClick={() => onSetAi(!campaign.ai_enabled)} className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${campaign.ai_enabled ? 'border-accent-500/40 bg-accent-500/10 text-accent-300' : 'border-line-2 bg-subtle text-muted'}`}>
-            <span className={`h-2 w-2 rounded-full ${campaign.ai_enabled ? 'bg-accent-400 shadow-[0_0_0_3px_rgba(99,102,241,.16)]' : 'bg-faint'}`} />
-            IA {campaign.ai_enabled ? 'ATIVA' : 'DESATIVADA'}
-          </button>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <CampaignStatusBadge status={campaign.status} />
-          <span
-            onClick={onShowQueue}
-            title="Ver fila de leads desta campanha"
-            className="text-[11px] px-2 py-1 rounded-xl bg-accent-600/20 text-accent-300 hover:bg-accent-600/30 cursor-pointer"
-          >
-            Fila de leads
-          </span>
-          <span
-            onClick={() => setOpen((o) => !o)}
-            className={`text-[11px] px-2 py-1 rounded-xl cursor-pointer ${open ? 'bg-subtle hover:bg-subtle-2 text-secondary' : 'bg-accent-600/20 text-accent-300 hover:bg-accent-600/30'}`}
-          >
-            {open ? 'Fechar' : 'Montar sequência'}
-          </span>
-          <button
-            onClick={onDelete}
-            title="Excluir campanha"
-            className="p-1.5 rounded-xl text-faint hover:text-rose-400 hover:bg-rose-500/10 transition"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={onDelete}
+              title="Excluir campanha"
+              className="p-2 rounded-xl text-faint hover:text-rose-400 hover:bg-rose-500/10 transition"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-3">
-        <span className="text-[11px] px-2 py-0.5 rounded-full bg-subtle text-secondary">{campaign.lead_count} leads</span>
-        <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">{campaign.success_count} sucessos</span>
-        <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300">{campaign.fail_count} falhas</span>
-        {runActive > 0 && (
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">{runActive} em fila</span>
-        )}
+      <div className="px-4 pt-3 grid gap-2 sm:grid-cols-2">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-panel/40 px-3 py-2.5">
+          <div className="min-w-0">
+            <div className={`text-[11px] font-semibold ${campaign.ai_enabled ? 'text-accent-300' : 'text-muted'}`}>
+              IA {campaign.ai_enabled ? 'ATIVADA' : 'DESATIVADA'}
+            </div>
+            <div className="text-[10px] text-faint">Respostas automáticas</div>
+          </div>
+          <Switch checked={!!campaign.ai_enabled} onChange={onSetAi} label="Alternar IA" />
+        </div>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-panel/40 px-3 py-2.5">
+          <div className="min-w-0">
+            <div className={`text-[11px] font-semibold ${intelligent ? 'text-accent-300' : 'text-muted'}`}>
+              MODO {intelligent ? 'INTELIGENTE' : 'TRADICIONAL'}
+            </div>
+            <div className="text-[10px] text-faint">{intelligent ? 'Abordagem inicial + IA' : 'Sequência completa'}</div>
+          </div>
+          <Switch
+            checked={intelligent}
+            onChange={(value) => onSetAiMode(value ? 'intelligent' : 'traditional', value ? initialMessage.trim() || null : null)}
+            label="Alternar modo"
+          />
+        </div>
       </div>
 
-      <label className="mb-3 block text-[11px] text-muted">
-        Base de conhecimento da campanha:
-        <select
-          className="mt-1 w-full text-xs"
-          value={campaign.knowledge_base_id ?? ''}
-          onChange={(event) => onSetKnowledgeBase(event.target.value || null)}
-        >
-          <option value="">Sem base vinculada</option>
-          {knowledgeFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-        </select>
-      </label>
-
-      <div className="mb-3 rounded-lg border border-line bg-panel/40 p-3">
-        <button type="button" className="flex w-full items-center justify-between text-left text-[11px] text-muted" onClick={() => setPersonaOpen((value) => !value)}>
-          <span>Persona da IA: <strong className="text-secondary">{persona.tone} · {persona.formality}</strong></span>
-          <span className="text-accent-300">{personaOpen ? 'Fechar' : 'Configurar'}</span>
-        </button>
-        {personaOpen && <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <label className="text-[11px] text-muted">Tom<select value={persona.tone} onChange={(event) => setPersona({ ...persona, tone: event.target.value as CampaignPersona['tone'] })}><option value="amigavel">Amigável</option><option value="consultivo">Consultivo</option><option value="direto">Direto</option><option value="premium">Premium</option></select></label>
-          <label className="text-[11px] text-muted">Formalidade<select value={persona.formality} onChange={(event) => setPersona({ ...persona, formality: event.target.value as CampaignPersona['formality'] })}><option value="informal">Informal</option><option value="neutro">Neutro</option><option value="formal">Formal</option></select></label>
-          <label className="text-[11px] text-muted">Tamanho das respostas<select value={persona.verbosity} onChange={(event) => setPersona({ ...persona, verbosity: event.target.value as CampaignPersona['verbosity'] })}><option value="curta">Curta</option><option value="equilibrada">Equilibrada</option><option value="detalhada">Detalhada</option></select></label>
-          <label className="text-[11px] text-muted">Emojis<select value={persona.emojis} onChange={(event) => setPersona({ ...persona, emojis: event.target.value as CampaignPersona['emojis'] })}><option value="nenhum">Nenhum</option><option value="moderado">Moderado</option><option value="livre">Livre</option></select></label>
-          <label className="text-[11px] text-muted sm:col-span-2">Estilo adicional<input value={persona.style} maxLength={240} onChange={(event) => setPersona({ ...persona, style: event.target.value })} placeholder="Ex.: faça perguntas curtas e use exemplos práticos" /></label>
-          <div className="flex justify-end sm:col-span-2"><Button type="button" onClick={() => { onSetPersona(persona); setPersonaOpen(false) }}>Salvar persona</Button></div>
-        </div>}
+      <div className="px-4 py-3 flex flex-wrap gap-2">
+        <Button size="sm" variant="secondary" onClick={() => setSeqOpen(true)}>Montar sequência</Button>
+        <Button size="sm" variant="secondary" onClick={onShowQueue}>Fila de leads</Button>
+        <Button size="sm" variant="secondary" onClick={() => setKbOpen(true)}>Base de conhecimento</Button>
+        <Button size="sm" variant="secondary" onClick={() => setHandoffOpen(true)}>Responsável</Button>
+        <Button size="sm" variant="secondary" onClick={() => setApproachOpen(true)}>Configurar abordagem</Button>
       </div>
 
-      <div className="mb-3 rounded-lg border border-line bg-panel/40 p-3">
-        <label className="block text-[11px] text-muted">Modo de disparo
-          <select className="mt-1 w-full text-xs" value={aiMode} onChange={(event) => setAiMode(event.target.value as 'traditional' | 'intelligent')}>
-            <option value="traditional">Tradicional — sequência completa</option>
-            <option value="intelligent">Inteligente — abordagem inicial + IA</option>
-          </select>
-        </label>
-        {aiMode === 'intelligent' && <div className="mt-2 space-y-2"><label className="block text-[11px] text-muted">Mensagem de abordagem inicial<textarea rows={2} maxLength={1000} value={initialMessage} onChange={(event) => setInitialMessage(event.target.value)} placeholder="Olá, {nome}! Posso te fazer uma pergunta rápida?" /></label><div className="flex justify-end"><Button type="button" onClick={() => onSetAiMode(aiMode, initialMessage.trim() || null)}>Salvar modo</Button></div></div>}
-        {aiMode === 'traditional' && campaign.ai_mode === 'intelligent' && <div className="mt-2 flex justify-end"><Button type="button" onClick={() => onSetAiMode('traditional', null)}>Salvar modo tradicional</Button></div>}
-      </div>
-
-      <div className="mb-3 rounded-lg border border-line bg-panel/40 p-3">
-        <button type="button" className="flex w-full items-center justify-between text-left text-[11px] text-muted" onClick={() => setHandoffOpen((value) => !value)}>
-          <span>Responsável pelo fechamento: <strong className="text-secondary">{handoff.name || 'não configurado'}</strong></span>
-          <span className="text-accent-300">{handoffOpen ? 'Fechar' : 'Configurar'}</span>
-        </button>
-        {handoffOpen && <div className="mt-3 space-y-2">
-          <div className="grid gap-2 sm:grid-cols-2"><label className="text-[11px] text-muted">Nome<input value={handoff.name} maxLength={120} onChange={(event) => setHandoff({ ...handoff, name: event.target.value })} placeholder="Ex.: Wesley" /></label><label className="text-[11px] text-muted">Telefone<input value={handoff.phone} maxLength={40} onChange={(event) => setHandoff({ ...handoff, phone: event.target.value })} placeholder="Ex.: +55..." /></label></div>
-          <label className="block text-[11px] text-muted">Instruções de encaminhamento<textarea rows={2} maxLength={300} value={handoff.instructions} onChange={(event) => setHandoff({ ...handoff, instructions: event.target.value })} placeholder="Quando e como apresentar o responsável" /></label>
-          <div className="flex justify-end"><Button type="button" onClick={() => { onSetHandoff(handoff); setHandoffOpen(false) }}>Salvar responsável</Button></div>
-        </div>}
-      </div>
-
-      <div className="mb-3 space-y-2">
-        <label className="text-[11px] text-muted block">Conexões WhatsApp (round-robin por lead):</label>
+      <div className="px-4 pb-3">
         <div className="flex flex-wrap gap-2">
           {activeConnections.map((connection) => {
             const checked = (campaign.connection_ids ?? []).includes(connection.id)
             return (
-              <label key={connection.id} className="flex items-center gap-1.5 rounded border border-line-2 px-2 py-1 text-[11px] text-secondary cursor-pointer">
+              <label key={connection.id} className="flex items-center gap-1.5 rounded-lg border border-line-2 px-2 py-1 text-[11px] text-secondary cursor-pointer hover:border-accent-500/40 transition">
                 <input type="checkbox" checked={checked} onChange={() => onSetConnections(checked ? (campaign.connection_ids ?? []).filter((id) => id !== connection.id) : [...(campaign.connection_ids ?? []), connection.id])} />
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                {connection.display_name ?? connection.whatsapp_name ?? connection.phone_number ?? connection.instance_name}
+                <span className="max-w-28 truncate">{connection.display_name ?? connection.whatsapp_name ?? connection.phone_number ?? connection.instance_name}</span>
               </label>
             )
           })}
@@ -839,65 +824,77 @@ function CampaignCard({
 
       <CampaignStatusBanner status={campaign.status} scheduledAt={campaign.scheduled_at} />
 
-      {campaign.status === 'pronta' && (
-        <div className="space-y-2 mb-3">
-          <Button className="w-full" onClick={onFire}>
-            ▶ Iniciar campanha agora
-          </Button>
-          <Button className="w-full" onClick={onSchedule}>
-            📅 Agendar início
-          </Button>
-        </div>
-      )}
-      {campaign.status === 'agendada' && (
-        <div className="space-y-2 mb-3">
-          <Button className="w-full" onClick={onSchedule}>
-            📅 Reagendar início
-          </Button>
-          <Button className="w-full" variant="danger" onClick={onCancelSchedule}>
-            ✕ Cancelar agendamento
-          </Button>
-        </div>
-      )}
-      {campaign.status === 'em_progresso' && (
-        <Button className="w-full" onClick={onPause}>
-          ⏸ Pausar campanha
-        </Button>
-      )}
-      {campaign.status === 'pausada' && (
-        <Button className="w-full" onClick={onResume}>
-          ▶ Retomar campanha
-        </Button>
-      )}
-      {campaign.status === 'waiting_connection' && (
-        <Button className="w-full" onClick={onResume}>
-          ▶ Retomar agora (conexão disponível)
-        </Button>
-      )}
+      <div className="px-4 pb-4 pt-1 space-y-2">
+        {campaign.status === 'pronta' && (<>
+          <Button className="w-full" onClick={onFire}>▶ Iniciar campanha agora</Button>
+          <Button className="w-full" variant="secondary" onClick={onSchedule}>📅 Agendar início</Button>
+        </>)}
+        {campaign.status === 'agendada' && (<>
+          <Button className="w-full" variant="secondary" onClick={onSchedule}>📅 Reagendar início</Button>
+          <Button className="w-full" variant="danger" onClick={onCancelSchedule}>✕ Cancelar agendamento</Button>
+        </>)}
+        {campaign.status === 'em_progresso' && <Button className="w-full" variant="secondary" onClick={onPause}>⏸ Pausar campanha</Button>}
+        {campaign.status === 'pausada' && <Button className="w-full" onClick={onResume}>▶ Retomar campanha</Button>}
+        {campaign.status === 'waiting_connection' && <Button className="w-full" onClick={onResume}>▶ Retomar agora (conexão disponível)</Button>}
+      </div>
 
-      {!open ? (
-        <ol className="space-y-1.5">
-          {messages.map((m, i) => (
-            <li key={m.id} className="text-xs flex items-center gap-2 text-secondary">
-              <span className="w-5 h-5 shrink-0 rounded-full bg-subtle flex items-center justify-center text-[10px] text-muted">
-                {i + 1}
-              </span>
-              <KindBadge kind={m.kind} />
-              <span className="truncate flex-1">{m.text || (m.media_url ? 'Mídia' : '...')}</span>
-              {m.delay_seconds > 0 && (
-                <span className="text-[10px] text-faint shrink-0">+{m.delay_seconds}s</span>
-              )}
-            </li>
-          ))}
-          {messages.length === 0 && (
-            <li className="text-xs text-slate-600">
-              Sem mensagens — monte a sequência no painel da campanha.
-            </li>
+      <Modal open={seqOpen} onClose={() => setSeqOpen(false)} title="Montar sequência" subtitle={campaign.name} size="lg">
+        <SequenceEditor campaign={campaign} messages={messages} onSaved={() => { setSeqOpen(false); onChanged() }} />
+      </Modal>
+
+      <Modal open={kbOpen} onClose={() => setKbOpen(false)} title="Base de conhecimento" subtitle={campaign.name}>
+        <div className="space-y-4">
+          <p className="text-xs text-muted">A IA usa o conteúdo desta pasta como base para responder e qualificar os leads.</p>
+          <select value={kbId} onChange={(event) => setKbId(event.target.value)}>
+            <option value="">Sem base vinculada</option>
+            {knowledgeFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+          </select>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setKbOpen(false)}>Cancelar</Button>
+            <Button type="button" onClick={() => { onSetKnowledgeBase(kbId || null); setKbOpen(false) }}>Vincular</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={handoffOpen} onClose={() => setHandoffOpen(false)} title="Responsável pelo fechamento" subtitle={campaign.name}>
+        <div className="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-xs text-muted">Nome<input value={handoff.name} maxLength={120} onChange={(event) => setHandoff({ ...handoff, name: event.target.value })} placeholder="Ex.: Wesley" /></label>
+            <label className="text-xs text-muted">Telefone<input value={handoff.phone} maxLength={40} onChange={(event) => setHandoff({ ...handoff, phone: event.target.value })} placeholder="Ex.: +55..." /></label>
+          </div>
+          <label className="block text-xs text-muted">Instruções de encaminhamento<textarea rows={3} maxLength={300} value={handoff.instructions} onChange={(event) => setHandoff({ ...handoff, instructions: event.target.value })} placeholder="Quando e como apresentar o responsável" /></label>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setHandoffOpen(false)}>Cancelar</Button>
+            <Button type="button" onClick={() => { onSetHandoff(handoff); setHandoffOpen(false) }}>Salvar responsável</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={approachOpen} onClose={() => setApproachOpen(false)} title="Configurar abordagem" subtitle={campaign.name}>
+        <div className="space-y-4">
+          {intelligent && (
+            <label className="block text-xs text-muted">
+              Mensagem de abordagem inicial
+              <textarea rows={3} maxLength={1000} value={initialMessage} onChange={(event) => setInitialMessage(event.target.value)} placeholder="Olá, {nome}! Posso te fazer uma pergunta rápida?" />
+              <span className="text-[11px] text-faint">Use {'{nome}'} para inserir o nome do lead automaticamente.</span>
+            </label>
           )}
-        </ol>
-      ) : (
-        <SequenceEditor campaign={campaign} messages={messages} onSaved={onChanged} />
-      )}
+          <div className="rounded-xl border border-line bg-panel/40 p-3 space-y-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Persona da IA</div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="text-[11px] text-muted">Tom<select value={persona.tone} onChange={(event) => setPersona({ ...persona, tone: event.target.value as CampaignPersona['tone'] })}><option value="amigavel">Amigável</option><option value="consultivo">Consultivo</option><option value="direto">Direto</option><option value="premium">Premium</option></select></label>
+              <label className="text-[11px] text-muted">Formalidade<select value={persona.formality} onChange={(event) => setPersona({ ...persona, formality: event.target.value as CampaignPersona['formality'] })}><option value="informal">Informal</option><option value="neutro">Neutro</option><option value="formal">Formal</option></select></label>
+              <label className="text-[11px] text-muted">Tamanho das respostas<select value={persona.verbosity} onChange={(event) => setPersona({ ...persona, verbosity: event.target.value as CampaignPersona['verbosity'] })}><option value="curta">Curta</option><option value="equilibrada">Equilibrada</option><option value="detalhada">Detalhada</option></select></label>
+              <label className="text-[11px] text-muted">Emojis<select value={persona.emojis} onChange={(event) => setPersona({ ...persona, emojis: event.target.value as CampaignPersona['emojis'] })}><option value="nenhum">Nenhum</option><option value="moderado">Moderado</option><option value="livre">Livre</option></select></label>
+              <label className="text-[11px] text-muted sm:col-span-2">Estilo adicional<input value={persona.style} maxLength={240} onChange={(event) => setPersona({ ...persona, style: event.target.value })} placeholder="Ex.: faça perguntas curtas e use exemplos práticos" /></label>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setApproachOpen(false)}>Cancelar</Button>
+            <Button type="button" onClick={() => { if (intelligent) onSetAiMode('intelligent', initialMessage.trim() || null); else onSetAiMode('traditional', null); onSetPersona(persona); setApproachOpen(false) }}>Salvar abordagem</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -1337,21 +1334,4 @@ const FAIL_REASON_LABEL: Record<string, string> = {
   sem_telefone: 'Lead sem telefone',
   send_failed: 'Falha de envio (retries esgotados)',
   lead_nao_encontrado: 'Lead não encontrado',
-}
-
-const KIND_META: Record<QueueMessage['kind'], { label: string; cls: string }> = {
-  text: { label: 'Texto', cls: 'bg-sky-500/15 text-sky-300' },
-  audio: { label: 'Áudio', cls: 'bg-amber-500/15 text-amber-300' },
-  video: { label: 'Vídeo', cls: 'bg-rose-500/15 text-rose-300' },
-  image: { label: 'Imagem', cls: 'bg-emerald-500/15 text-emerald-300' },
-  document: { label: 'Doc', cls: 'bg-violet-500/15 text-violet-300' },
-}
-
-function KindBadge({ kind }: { kind: QueueMessage['kind'] }) {
-  const meta = KIND_META[kind]
-  return (
-    <span className={`${meta.cls} px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0`}>
-      {meta.label}
-    </span>
-  )
 }

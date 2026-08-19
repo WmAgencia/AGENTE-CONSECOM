@@ -24,8 +24,26 @@ document.querySelectorAll<HTMLButtonElement>('.site').forEach((btn) => {
 document.getElementById('openHere')?.addEventListener('click', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (!tab?.id) return
-  await chrome.tabs.sendMessage(tab.id, { type: 'consecom:open' }).catch(() => { /* ignore */ })
-  window.close()
+  const status = document.getElementById('status')
+  try {
+    // Garante que o content script esteja ativo nesta aba (funciona inclusive
+    // se a aba estava aberta antes da instalação/recarga da extensão).
+    const res = await chrome.runtime.sendMessage({
+      type: 'consecom:ensure',
+      tabId: tab.id,
+      url: tab.url,
+    })
+    if (res?.ok) {
+      await chrome.tabs.sendMessage(tab.id, { type: 'consecom:open' }).catch(() => {})
+      window.close()
+      return
+    }
+  } catch {
+    /* cai no fallback abaixo */
+  }
+  if (status) {
+    status.textContent = 'Abra o Google Maps para ativar aqui.'
+  }
 })
 
 void seedAutoConfig().then(() => refreshStatus())

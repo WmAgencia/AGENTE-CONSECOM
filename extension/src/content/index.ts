@@ -1409,6 +1409,11 @@ export class MapsScanner {
 }
 
 const start = () => {
+  // Guard contra injeção duplicada (ex.: manifest + injeção dinâmica do
+  // background após instalar/recarregar a extensão com o Maps já aberto).
+  if (document.documentElement.dataset.vyntraContent === '1') return
+  document.documentElement.dataset.vyntraContent = '1'
+
   const host = window.location.hostname
   const href = window.location.href
   const isMaps = /(^|\.)google\.(com|com\.br|[a-z.]+)\/maps\//.test(href) || host.startsWith('maps.google')
