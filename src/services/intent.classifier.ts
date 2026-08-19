@@ -204,6 +204,17 @@ const RESPONDER_DEPOIS = [
   'falo com voce amanha',
   'falo com voce depois',
   'mais tarde',
+  'nao posso responder agora',
+  'nao posso agora',
+  'agora nao posso',
+  'estou ocupado agora',
+  'me manda depois',
+  'me mande depois',
+  'manda depois',
+  'pode mandar depois',
+  'me chama mais tarde hoje',
+  'depois eu falo com voce',
+  'depois eu falo',
 ];
 
 // --- Falar com humano / pessoa real ------------------------------------------

@@ -11,6 +11,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..');
 const envPath = resolve(root, '.env.local');
 
+const PLACEHOLDER_VALUES = new Set(['', 'test_key', 'test-key', 'mock', 'undefined', 'null']);
+
 export function loadDotenvLocalIfPresent(): void {
   if (!existsSync(envPath)) return;
   const raw = readFileSync(envPath, 'utf8');
@@ -21,7 +23,10 @@ export function loadDotenvLocalIfPresent(): void {
     if (eq <= 0) continue;
     const key = trimmed.slice(0, eq).trim();
     const value = trimmed.slice(eq + 1).trim();
-    if (key && process.env[key] === undefined) {
+    // Só preenche quando a chave ainda não existe OU o valor ambiente é um
+    // placeholder de teste (ex.: NVIDIA_API_KEY=test_key herdado do shell)
+    // — nesses casos o .env.local (chave real) deve prevalecer.
+    if (key && (process.env[key] === undefined || PLACEHOLDER_VALUES.has(process.env[key]?.trim() ?? ''))) {
       process.env[key] = value;
     }
   }

@@ -69,7 +69,9 @@ export const SUPPORTED_VARIABLES: Array<{ token: string; label: string; descript
 function stringValue(lead: TemplateLead, field: Field): string {
   const v = lead[field];
   if (v == null) return '';
-  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
+  // 0 (avaliação 0.0, 0 avaliações) é tratado como ausente: sem dado real o
+  // campo cai para o fallback vazio em vez de mostrar "0" na mensagem.
+  if (typeof v === 'number') return Number.isFinite(v) && v !== 0 ? String(v) : '';
   return String(v).trim();
 }
 

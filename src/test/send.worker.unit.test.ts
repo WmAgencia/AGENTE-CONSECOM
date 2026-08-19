@@ -199,6 +199,13 @@ async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit)
   if (url.includes('/rest/v1/agent_settings')) return jsonRes([])
   if (url.includes('/rest/v1/consecom_conversations')) return jsonRes([])
 
+  if (url.includes('/instance/connectionState/')) {
+    const instance = decodeURIComponent(url.split('/instance/connectionState/')[1].split('?')[0])
+    const conn = [...store.connections.values()].find((c) => c.instance_name === instance)
+    const state = conn?.status === 'connected' ? 'open' : 'close'
+    return jsonRes({ instance: { state } })
+  }
+
   if (url.includes('/message/sendMedia/')) {
     const to = String(body?.number ?? '')
     const kind = String(body?.mediatype ?? 'media')
@@ -742,6 +749,7 @@ test('39) TODAS as conexões caem => status waiting_connection (fila preservada)
   // Uma conexão volta: o worker retoma sozinho (waiting_connection -> em_progresso)
   // e o disparo continua normalmente.
   store.connections.get('conn-a')!.status = 'connected'
+  w.invalidateInstanceCache('instA')
   await w.tick()
   assert.equal(store.campaigns.get('c1')!.status, 'em_progresso', 'retomada automática')
   assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
@@ -770,6 +778,7 @@ test('41/33) conexão cai no MEIO da sequência => lead NÃO aborta, troca para 
 
   // conexão do lead ativo cai; a outra segue de pé.
   store.connections.get('conn-a')!.status = 'disconnected'
+  w.invalidateInstanceCache('instA')
   makeDue(l1.id)
   await w.tick()
   // lead continua: reatribuído p/ instB, na MESMA posição, sem abortar.
@@ -822,6 +831,7 @@ test('40) envio falha com a conexão CAÍDA => reatribuído para conexão viva, 
   store.failSend.clear()
   store.killOnFail.clear()
   store.connections.get('conn-b')!.status = 'connected'
+  w.invalidateInstanceCache('instB')
   makeDue(l1.id)
   await w.tick()
   assert.deepEqual(store.sent.map((s) => `${s.to}|${s.text}`), ['5511999990001|M1'])
@@ -904,6 +914,7 @@ test('42c) lead migra de conexão no MEIO da sequência SEM reiniciar nem duplic
 
   // instA cai no meio da sequência.
   store.connections.get('conn-a')!.status = 'disconnected'
+  w.invalidateInstanceCache('instA')
   makeDue(l1.id)
   await w.tick() // reatribui (ainda não envia M2)
   assert.equal(store.runs.get(`run-${l1.id}`)!.connection_instance, 'instB')
@@ -1020,7 +1031,8 @@ test('46) queda durante a sequência troca também o nome, sem duplicar prefixo'
   await w.tick()
   assert.equal(store.sent[0]?.text, '*Ana*\nM1')
 
-  store.connections.get('conn-a')!.status = 'disconnected'
+store.connections.get('conn-a')!.status = 'disconnected'
+  w.invalidateInstanceCache('instA')
   makeDue(l1.id)
   await w.tick()
   makeDue(l1.id)

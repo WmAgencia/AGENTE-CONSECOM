@@ -571,6 +571,13 @@ if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
             }
           : undefined;
 const campaignKnowledge = await resolveCampaignKnowledge(campaignInfo?.campaignId);
+      // Regra 5: se a conexão que atende É o próprio responsável pelo
+      // fechamento da base, a IA não transfere — ela assume o papel.
+      const connectionIsResponsible = Boolean(
+        connectionIdentity &&
+          campaignKnowledge?.closer &&
+          closerMatchesConnection(connectionIdentity, campaignKnowledge.closer),
+      );
       const agentResult = await runAgentLoop({
         task: msg.text,
         conversationId,
@@ -589,6 +596,7 @@ const campaignKnowledge = await resolveCampaignKnowledge(campaignInfo?.campaignI
         leadContext,
         strategyDirective,
         connectionIdentity,
+        connectionIsResponsible,
       });
       log.info(
         {
@@ -601,12 +609,30 @@ const campaignKnowledge = await resolveCampaignKnowledge(campaignInfo?.campaignI
         '[AI] Agente respondeu',
       );
 
-      // --- Intenção: marker da IA (fonte principal) com fallback heurístico.
+// --- Intenção: marker da IA (fonte principal) com fallback heurístico.
        const followUp = parseFollowUpMarker(agentResult.result);
        let intent = parseIntentMarker(agentResult.result);
         if (!intent) intent = classifyIntentHeuristic(msg.text)?.intent ?? 'ambiguo';
         const cleanReply = stripIntentMarker(stripFollowUpMarker(agentResult.result));
         log.info({ messageKeyId: msg.messageKeyId, intent }, '[IA] Intenção detectada');
+        // Regra de segurança (Regra 5): intenções críticas detectadas pela
+        // heurística com confiança ALTA não podem ser sobrescritas por um
+        // marker do modelo que as contradiga. O modelo já marcou 'reuniao'
+        // para "quero falar com humano", 'informacao' para "sem interesse" e
+        // 'encerrar' para "me manda depois" — todas moveriam o lead errado
+        // (handoff / parada de campanha / follow-up).
+        {
+          const heuristic = classifyIntentHeuristic(msg.text);
+          if (
+            heuristic?.confidence === 'high' &&
+            (heuristic.intent === 'humano' ||
+              heuristic.intent === 'sem_interesse' ||
+              heuristic.intent === 'responder_depois')
+          ) {
+            intent = heuristic.intent;
+            log.info({ messageKeyId: msg.messageKeyId, heuristic: heuristic.intent }, '[IA] heurística crítica sobrescreveu marker contraditório');
+          }
+        }
         if (intent === 'humano') {
           await updateLeadNeedsAttention(lead.id, true).catch(() => {});
           log.info({ leadId: lead.id }, '[HANDOFF] Lead solicitou atendimento humano');
@@ -859,6 +885,26 @@ async function resolveCampaignKnowledge(campaignId: string | null | undefined): 
   } catch {
     return null;
   }
+}
+
+/**
+ * Regra 5 — "a conexão É o responsável": true quando a identidade da conexão
+ * que atende bate com o responsável pelo fechamento configurado na base
+ * (closer_name/closer_phone). Nesse caso a IA não transfere para "um
+ * responsável": ela É a pessoa.
+ */
+export function closerMatchesConnection(
+  identity: { connection_id: string; connection_name: string; connection_phone: string | null },
+  closer: CampaignHandoff,
+): boolean {
+  const phoneMatch =
+    identity.connection_phone && closer.phone
+      ? identity.connection_phone.replace(/\D/g, '') === closer.phone.replace(/\D/g, '')
+      : false;
+  const nameMatch =
+    closer.name &&
+    identity.connection_name.toLowerCase().trim() === closer.name.toLowerCase().trim();
+  return phoneMatch || Boolean(nameMatch);
 }
 
 function maskFrom(jid: string): string {

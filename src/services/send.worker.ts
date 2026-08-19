@@ -938,6 +938,11 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
       // deve penalizar o lead. Só falhas com a conexão de pé (número inválido,
       // recusa, banimento) contabilizam tentativa e podem abortar.
       if (sendInstance) {
+        // Uma falha de envio é sinal para REVALIDAR a conexão: o cache de
+        // estado (TTL) pode ainda dizer "connected" de um instante antes do
+        // envio. Invalidamos antes de decidir para não classificar falha de
+        // infraestrutura como falha do lead.
+        this.liveInstanceState.delete(sendInstance);
         const connAlive = await this.isInstanceAvailable(sendInstance);
         if (!connAlive) {
           this.onConnectionDown(sendInstance);

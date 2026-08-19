@@ -1,6 +1,7 @@
 /**
- * Integration tests for the public chat API (POST /api/chat) using real
- * GLM-5.2 via NVIDIA. No mocks: every agent call reaches the live model and
+ * Integration tests for the public chat API (POST /api/chat) using the real
+ * model configured via AGENT_MODEL (default: meta/llama-3.1-8b-instruct)
+ * through NVIDIA. No mocks: every agent call reaches the live model and
  * demands NVIDIA_API_KEY (already present in the environment).
  *
  * Persistence uses the in-process conversation store (Postgres when
@@ -23,6 +24,10 @@ import type { ChatResponse } from '../types.js';
 
 const AUTH = { Authorization: 'Bearer chat-test-key-123' };
 const GLM_TIMEOUT = 120_000;
+// Modelo efetivo: AGENT_MODEL do ambiente (Railway/.env.local) com o default
+// legado como fallback. Os asserts de modelo acompanham a configuração real
+// em vez de um valor fixo.
+const EXPECTED_MODEL = process.env.AGENT_MODEL ?? 'meta/llama-3.1-8b-instruct';
 
 let app: FastifyInstance;
 
@@ -68,7 +73,7 @@ test('B) GET /api/status reports NVIDIA key + model', async () => {
   };
   assert.equal(body.status, 'operational');
   assert.equal(body.nvidiaApiKeyConfigured, true);
-  assert.equal(body.model, 'meta/llama-3.1-8b-instruct');
+  assert.equal(body.model, EXPECTED_MODEL);
 });
 
 // C) Chat (new conversation) + auth enforcement
@@ -104,7 +109,7 @@ test('C) /api/chat enforces auth and answers a new conversation', {
   assert.equal(status, 200);
   const b = body as ChatResponse;
   assert.equal(b.conversationId, 'teste-001');
-  assert.equal(b.model, 'meta/llama-3.1-8b-instruct');
+  assert.equal(b.model, EXPECTED_MODEL);
   assert.equal(typeof b.latencyMs, 'number');
   assert.ok(b.response && b.response.trim().length > 0, 'response is empty');
 });

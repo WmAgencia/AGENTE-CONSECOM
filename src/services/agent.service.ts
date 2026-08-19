@@ -32,6 +32,14 @@ import {
 
 const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1';
 
+/**
+ * Resposta de segurança usada quando o modelo termina sem conteúdo utilizável
+ * (ex.: content: null por esgotamento de tokens de raciocínio). Nunca enviamos
+ * placeholders técnicos para o lead no WhatsApp.
+ */
+const SAFE_FALLBACK_REPLY =
+  'Desculpe, estou com uma instabilidade momentânea aqui. Pode me repetir, por favor?';
+
 type Role = 'system' | 'user' | 'assistant' | 'tool';
 
 export interface CampaignPersona {
@@ -137,8 +145,14 @@ interface RunAgentLoopInput {
   knowledgeBase?: string;
   /** Persona controlada da campanha. */
   campaignPersona?: CampaignPersona;
-  /** Responsável humano pelo fechamento/handoff desta campanha. */
+/** Responsável humano pelo fechamento/handoff desta campanha. */
   campaignHandoff?: CampaignHandoff;
+  /**
+   * True quando a CONEXÃO que atende é a própria pessoa responsável pelo
+   * fechamento (Regra 5): a IA não deve transferir/encaminhar para "um
+   * responsável" — ela É o responsável. Usado pelo webhook.
+   */
+  connectionIsResponsible?: boolean;
   /** Sobrescreve AGENT_ENABLE_TOOLS (ex: simulação de fluxo = false). */
   enableTools?: boolean;
   /**
@@ -184,8 +198,9 @@ export function buildSystemPrompt(opts: {
   strategyDirective?: string;
   connectionIdentity?: { connection_id: string; connection_name: string; connection_phone: string | null };
   knowledgeBase?: string;
-  campaignPersona?: CampaignPersona;
+campaignPersona?: CampaignPersona;
   campaignHandoff?: CampaignHandoff;
+  connectionIsResponsible?: boolean;
   injectIntentMarker?: boolean;
 }): string {
   const agoraBrasilia = new Date(Date.now() - 3 * 3600_000);
@@ -249,7 +264,16 @@ const base = [
       '=== FIM DA PERSONA DA CAMPANHA ===',
     );
   }
-  if (opts.campaignHandoff) {
+  if (opts.connectionIsResponsible) {
+    // Regra 5: a conexão que atende É o responsável pelo fechamento. Em vez
+    // de transferir, a IA assume o papel e sinaliza quando precisar de
+    // atenção humana (needs_attention + notify).
+    base.push(
+      '=== VOCÊ É O RESPONSÁVEL PELO FECHAMENTO ===',
+      'Nesta conexão você NÃO deve transferir o atendimento: você é a própria pessoa responsável pelo fechamento desta conversa. Quando o lead pedir um humano, atendimento humano ou uma pessoa para falar, você é essa pessoa — continue atendendo você mesmo(a), sinalize com <!--INTENT:humano--> para o operador acompanhar e siga conduzindo a conversa até a decisão.',
+      '=== FIM DO RESPONSÁVEL ===',
+    );
+  } else if (opts.campaignHandoff) {
     const handoff = opts.campaignHandoff;
     base.push(
       '=== RESPONSÁVEL PELO FECHAMENTO / HANDOFF ===',
@@ -437,7 +461,8 @@ export async function runAgentLoop(
           connectionIdentity: input.connectionIdentity,
           knowledgeBase: input.knowledgeBase,
           campaignPersona: input.campaignPersona,
-          campaignHandoff: input.campaignHandoff,
+campaignHandoff: input.campaignHandoff,
+          connectionIsResponsible: input.connectionIsResponsible,
           injectIntentMarker: source === 'whatsapp',
         }),
   });
@@ -449,6 +474,7 @@ export async function runAgentLoop(
   let iterations = 0;
   let toolCallsTotal = 0;
   let finalAssistantContent = '';
+  let maxTokensBumped = false;
 
   for (let i = 0; i < env.AGENT_MAX_ITERATIONS; i++) {
     iterations = i + 1;
@@ -473,7 +499,8 @@ export async function runAgentLoop(
             connectionIdentity: input.connectionIdentity,
             knowledgeBase: input.knowledgeBase,
             campaignPersona: input.campaignPersona,
-            campaignHandoff: input.campaignHandoff,
+campaignHandoff: input.campaignHandoff,
+            connectionIsResponsible: input.connectionIsResponsible,
             injectIntentMarker: source === 'whatsapp',
           });
     }
@@ -644,10 +671,31 @@ export async function runAgentLoop(
     }
 
     if (!toolCalls || toolCalls.length === 0) {
-      // Terminal assistant turn
+      // Modelos de raciocínio (ex.: gpt-oss) às vezes consomem todos os tokens
+      // de saída no raciocínio e devolvem content: null — o lead NUNCA pode
+      // receber um placeholder. Com iterações restantes, repetimos pedindo uma
+      // resposta textual (com mais tokens, já que o limite foi o vilão).
+      if (!content && i < env.AGENT_MAX_ITERATIONS - 1) {
+        log.warn(
+          { iteration: i, conversationId: input.conversationId },
+          'agent: resposta vazia (content: null) — forçando resposta textual',
+        );
+        if (!maxTokensBumped) {
+          maxTokensBumped = true;
+          body.max_tokens = Math.min(env.AGENT_MAX_TOKENS * 2, 4096);
+        }
+        messageLog.push({ role: 'assistant', content: content || '' });
+        messageLog.push({
+          role: 'user',
+          content:
+            'Sua última resposta veio VAZIA (sem texto e sem chamada de ferramenta). ' +
+            'Responda agora ao usuário diretamente em texto, em português, sem chamar ferramentas.',
+        });
+        continue;
+      }
+      // Turno final do assistente (conteúdo real ou fallback seguro).
       finalAssistantContent =
-        content ||
-        '[no content returned by the model]';
+        content || SAFE_FALLBACK_REPLY;
 
       // Anti-promise guard: the model sometimes replies "vou verificar... um
       // momento" without actually calling a tool, ending the turn before the
@@ -754,8 +802,7 @@ export async function runAgentLoop(
   }
 
   if (!finalAssistantContent) {
-    finalAssistantContent =
-      '[agent stopped: max iterations reached without a final answer]';
+    finalAssistantContent = SAFE_FALLBACK_REPLY;
   }
 
   const latencyMs = Date.now() - start;
