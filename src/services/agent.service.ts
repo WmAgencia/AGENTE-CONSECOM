@@ -131,6 +131,8 @@ interface RunAgentLoopInput {
   instance?: string;
   /** Telefone E.164 do lead que está conversando (para envio de mídia da KB). */
   leadPhone?: string;
+  /** ID do lead no banco (passado aos tools para registrar envios no histórico). */
+  leadId?: string;
   /** Contexto do lead (nome/nicho/telefone) para personalizar a resposta. */
   leadContext?: string;
   /** Estratégia de abordagem vinculada ao lead (estilo a seguir). */
@@ -616,6 +618,7 @@ campaignHandoff: input.campaignHandoff,
           deadlineMs: Date.now() + env.AGENT_TOOL_TIMEOUT_MS,
           instance: input.instance,
           leadPhone: input.leadPhone,
+          leadId: input.leadId,
           history: toolCallHistory(messageLog),
         };
 
@@ -751,6 +754,7 @@ campaignHandoff: input.campaignHandoff,
         deadlineMs: Date.now() + env.AGENT_TOOL_TIMEOUT_MS,
         instance: input.instance,
         leadPhone: input.leadPhone,
+        leadId: input.leadId,
         history: toolCallHistory(messageLog),
       };
 

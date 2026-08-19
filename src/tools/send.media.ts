@@ -14,7 +14,8 @@
  */
 import type { ToolBase } from './registry.js';
 import { getSupabaseProspeccaoConfig, hasEvolutionConfig } from '../config/env.js';
-import { isEvolutionMockMode, sendMedia, type MediaKind } from '../services/evolution.service.js';
+import { isEvolutionMockMode, sendMedia, sendVoiceNote, type MediaKind } from '../services/evolution.service.js';
+import { appendConversationTurn } from '../services/supabase.leads.js';
 
 function guessKind(url: string): MediaKind {
   const m = url.toLowerCase().match(/\.(\w+)(\?|$)/);
@@ -124,15 +125,45 @@ export function createSendMediaTool(): ToolBase {
       const kind = guessKind(url);
       const caption = typeof args.caption === 'string' && args.caption.trim() ? args.caption.trim() : `[${kind}]`;
       try {
-        const res = await sendMedia({
-          to: leadPhone,
-          kind,
-          media: url,
-          caption,
-          mimetype: guessMimetype(url, kind),
-          filename: basename(url),
-          instance: ctx.instance,
-        });
+        // ÁUDIO: tenta enviar como MENSAGEM DE VOZ NATIVA (voice note/PTT) via
+        // /message/sendWhatsAppAudio. Se a build da Evolution não expuser a rota
+        // (routeNotFound / 404), cai no fallback sendMedia (áudio como arquivo)
+        // para não quebrar o envio existente.
+        let res;
+        let sentAsVoiceNote = false;
+        if (kind === 'audio') {
+          const voice = await sendVoiceNote({ to: leadPhone, audio: url, instance: ctx.instance });
+          if (voice.ok) {
+            res = voice;
+            sentAsVoiceNote = true;
+          } else if (voice.routeNotFound) {
+            res = await sendMedia({
+              to: leadPhone,
+              kind,
+              media: url,
+              caption,
+              mimetype: guessMimetype(url, kind),
+              filename: basename(url),
+              instance: ctx.instance,
+            });
+          } else {
+            return {
+              ok: false,
+              output: `Falha ao enviar o áudio: ${voice.error ?? 'unknown error'}`,
+              error: 'io_error',
+            };
+          }
+        } else {
+          res = await sendMedia({
+            to: leadPhone,
+            kind,
+            media: url,
+            caption,
+            mimetype: guessMimetype(url, kind),
+            filename: basename(url),
+            instance: ctx.instance,
+          });
+        }
         if (!res.ok) {
           return {
             ok: false,
@@ -140,7 +171,20 @@ export function createSendMediaTool(): ToolBase {
             error: 'io_error',
           };
         }
-        return { ok: true, output: 'Mídia enviada para o lead com sucesso.' };
+        if (ctx.leadId) {
+          const label = sentAsVoiceNote ? 'mensagem de voz' : 'arquivo';
+          void appendConversationTurn(
+            ctx.leadId,
+            'assistant',
+            `[Mídia da Base de Conhecimento enviada: ${label} ${kind}]`,
+          ).catch(() => {});
+        }
+        return {
+          ok: true,
+          output: sentAsVoiceNote
+            ? 'Áudio enviado para o lead como mensagem de voz (voice note).'
+            : 'Mídia enviada para o lead com sucesso.',
+        };
       } catch (err) {
         return {
           ok: false,

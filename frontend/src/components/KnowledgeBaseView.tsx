@@ -7,7 +7,7 @@ import {
   ClipboardPaste,
   Copy,
   ExternalLink,
-  File,
+  File as FileIcon,
   FileText,
   Film,
   Folder,
@@ -15,18 +15,22 @@ import {
   Image,
   Info,
   Link as LinkIcon,
+  Loader2,
   Mic,
   MoreHorizontal,
   Pencil,
   Plus,
+  RotateCcw,
   Scissors,
   Search,
+  Square,
   SquarePlay,
   Trash2,
   Upload,
   X,
 } from 'lucide-react'
 import { supabase, type KbFile, type KbFolder } from '../lib/supabase'
+import { validateAudioFile } from '../lib/storage'
 import { Button, Modal } from './ui'
 import { uploadMedia } from '../lib/storage'
 
@@ -46,6 +50,7 @@ type EditorState = {
   source_url: string
   uploading: boolean
   uploadError: string | null
+  fileMeta: { name: string; size: number; duration: number } | null
 }
 
 type UploadItem = {
@@ -66,8 +71,6 @@ const KIND_LABEL: Record<Kind, string> = {
   audio: 'Áudio',
   youtube: 'YouTube',
 }
-
-const MEDIA_KINDS: Kind[] = ['documento', 'audio', 'video', 'imagem']
 
 const CONTENT_PLACEHOLDER: Record<Kind, string> = {
   texto: 'Cole aqui informações confirmadas sobre o produto, serviço, preços, objeções...',
@@ -161,13 +164,14 @@ const EMPTY_EDITOR: EditorState = {
   source_url: '',
   uploading: false,
   uploadError: null,
+  fileMeta: null,
 }
 
 const NEW_MENU: Array<{ kind: Kind; label: string; icon: ReactNode }> = [
   { kind: 'texto', label: 'Texto', icon: <FileText size={14} /> },
   { kind: 'readme', label: 'README', icon: <FileText size={14} /> },
   { kind: 'link', label: 'Link', icon: <LinkIcon size={14} /> },
-  { kind: 'documento', label: 'Documento', icon: <File size={14} /> },
+  { kind: 'documento', label: 'Documento', icon: <FileIcon size={14} /> },
   { kind: 'audio', label: 'Áudio', icon: <Mic size={14} /> },
   { kind: 'video', label: 'Vídeo', icon: <Film size={14} /> },
   { kind: 'imagem', label: 'Imagem', icon: <Image size={14} /> },
@@ -178,7 +182,7 @@ function fileIcon(kind: Kind, size = 22) {
   if (kind === 'link') return <LinkIcon size={size} className="text-sky-300" />
   if (kind === 'youtube') return <SquarePlay size={size} className="text-rose-300" />
   if (kind === 'readme') return <FileText size={size} className="text-amber-300" />
-  if (kind === 'documento') return <File size={size} className="text-indigo-300" />
+  if (kind === 'documento') return <FileIcon size={size} className="text-indigo-300" />
   if (kind === 'audio') return <Mic size={size} className="text-emerald-300" />
   if (kind === 'video') return <Film size={size} className="text-fuchsia-300" />
   if (kind === 'imagem') return <Image size={size} className="text-lime-300" />
@@ -283,9 +287,24 @@ export function KnowledgeBaseView() {
   const [clipboard, setClipboard] = useState<{ mode: 'copy' | 'cut'; type: 'file' | 'folder'; id: string; name: string } | null>(null)
   const [clipSource, setClipSource] = useState<{ type: 'file' | 'folder'; id: string; name: string } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [editorDrag, setEditorDrag] = useState(false)
+  const [editorProgress, setEditorProgress] = useState(0)
+  const [audioSource, setAudioSource] = useState<'upload' | 'record'>('upload')
+  const [recState, setRecState] = useState<'idle' | 'requesting' | 'recording'>('idle')
+  const [recSeconds, setRecSeconds] = useState(0)
+  const [recordedSeconds, setRecordedSeconds] = useState(0)
+  const [recordedUrl, setRecordedUrl] = useState<string | null>(null)
+  const [recordedFile, setRecordedFile] = useState<File | null>(null)
+  const [recordedError, setRecordedError] = useState<string | null>(null)
   const dragRef = useRef<{ type: 'file' | 'folder'; id: string } | null>(null)
   const cancelledRef = useRef<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const editorFileInputRef = useRef<HTMLInputElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const recChunksRef = useRef<Blob[]>([])
+  const recTimerRef = useRef(0)
+  const recordedUrlRef = useRef<string | null>(null)
   const noticeTimerRef = useRef(0)
   const clipboardRef = useRef(clipboard)
   clipboardRef.current = clipboard
@@ -420,6 +439,7 @@ export function KnowledgeBaseView() {
       source_url: file.source_url ?? '',
       uploading: false,
       uploadError: null,
+      fileMeta: null,
     })
   }
 
@@ -439,7 +459,7 @@ export function KnowledgeBaseView() {
       : await supabase.from('kb_files').insert(payload)
     if (result.error) setError(result.error.message)
     else {
-      setEditor(null)
+      closeEditor()
       await load()
     }
   }
@@ -621,16 +641,208 @@ export function KnowledgeBaseView() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  async function uploadEditorFile(file: File) {
+  function measureAudioDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const audio = new Audio()
+    audio.preload = 'metadata'
+    const done = (value: number) => { URL.revokeObjectURL(url); resolve(value) }
+    audio.onloadedmetadata = () => done(Number.isFinite(audio.duration) ? audio.duration : 0)
+    audio.onerror = () => done(0)
+    audio.src = url
+  })
+}
+
+function formatDuration(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds || 0))
+  const m = Math.floor(safe / 60)
+  const s = safe % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+async function uploadEditorFile(file: File) {
     if (!editor) return
-    setEditor({ ...editor, uploading: true, uploadError: null })
+    const meta = file.type.toLowerCase().startsWith('audio/')
+      ? { name: file.name, size: file.size, duration: await measureAudioDuration(file) }
+      : { name: file.name, size: file.size, duration: 0 }
+    setEditorProgress(0)
+    const timer = window.setInterval(() => {
+      setEditorProgress((percent) => Math.min(percent + Math.round(Math.random() * 9) + 4, 92))
+    }, 300)
+    setEditor({ ...editor, uploading: true, uploadError: null, fileMeta: meta })
     const { url, error: uploadError } = await uploadMedia(file)
+    window.clearInterval(timer)
+    if (uploadError) {
+      setEditor({ ...editor, uploading: false, uploadError, fileMeta: meta })
+      return
+    }
+    setEditorProgress(100)
+    setEditor({ ...editor, source_url: url, uploading: false, uploadError: null, fileMeta: meta })
+  }
+
+  function validateEditorFile(file: File, kind: Kind): string | null {
+    if (kind === 'audio') return validateAudioFile(file)
+    if (kind === 'video') {
+      if (!file.type.toLowerCase().startsWith('video/')) return 'O arquivo precisa ser um vídeo.'
+      return null
+    }
+    if (kind === 'imagem') {
+      if (!file.type.toLowerCase().startsWith('image/')) return 'O arquivo precisa ser uma imagem.'
+      return null
+    }
+    if (kind === 'documento') {
+      const ext = (file.name.split('.').pop() ?? '').toLowerCase()
+      const ok = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv'].includes(ext)
+        || ['pdf', 'document', 'sheet', 'presentation', 'text/plain', 'text/csv'].some((m) => file.type.toLowerCase().includes(m))
+      if (!ok) return 'Formato de documento não suportado. Use PDF, DOCX, XLSX, PPTX, TXT ou CSV.'
+      return null
+    }
+    return null
+  }
+
+  function handleEditorFile(file: File) {
+    if (!editor) return
+    const error = validateEditorFile(file, editor.kind)
+    if (error) {
+      setEditor({ ...editor, uploadError: error })
+      return
+    }
+    void uploadEditorFile(file)
+  }
+
+  function pickEditorFile() {
+    if (!editor || !editorFileInputRef.current) return
+    editorFileInputRef.current.multiple = false
+    editorFileInputRef.current.accept = editor.kind === 'audio' ? 'audio/*,.ogg,.opus' : editor.kind === 'video' ? 'video/*' : editor.kind === 'imagem' ? 'image/*' : ''
+    editorFileInputRef.current.onchange = (event) => {
+      const target = event.target as HTMLInputElement
+      const file = target.files?.[0]
+      target.value = ''
+      if (file) handleEditorFile(file)
+    }
+    editorFileInputRef.current.click()
+  }
+
+  function removeEditorFile() {
+    if (!editor) return
+    setEditor({ ...editor, source_url: '', fileMeta: null, uploadError: null })
+  }
+
+  async function startRecording() {
+    if (!editor || editor.kind !== 'audio') return
+    setRecState('requesting')
+    setRecordedError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : ''
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+      mediaRecorderRef.current = recorder
+      recChunksRef.current = []
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) recChunksRef.current.push(event.data)
+      }
+      recorder.onstop = () => {
+        const type = mime || 'audio/webm'
+        const blob = new Blob(recChunksRef.current, { type })
+        const file = new File([blob], `gravacao-${Date.now()}.webm`, { type })
+        setRecordedFile(file)
+        setRecordedSeconds(recSeconds)
+        const url = URL.createObjectURL(file)
+        if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current)
+        recordedUrlRef.current = url
+        setRecordedUrl(url)
+        setRecState('idle')
+        window.clearInterval(recTimerRef.current)
+        setRecSeconds(0)
+      }
+      recorder.start()
+      setRecSeconds(0)
+      setRecState('recording')
+      window.clearInterval(recTimerRef.current)
+      recTimerRef.current = window.setInterval(() => setRecSeconds((seconds) => seconds + 1), 1000)
+    } catch (err) {
+      setRecState('idle')
+      setRecordedError('Não foi possível acessar o microfone. Verifique a permissão no navegador e tente novamente.')
+    }
+  }
+
+  function stopRecording() {
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') recorder.stop()
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+  }
+
+  function cancelRecording() {
+    stopRecording()
+    mediaRecorderRef.current = null
+    window.clearInterval(recTimerRef.current)
+    setRecSeconds(0)
+    setRecordedSeconds(0)
+    setRecState('idle')
+    if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current)
+    recordedUrlRef.current = null
+    setRecordedUrl(null)
+    setRecordedFile(null)
+    setRecordedError(null)
+  }
+
+  async function saveRecording() {
+    if (!editor || !recordedFile) return
+    setEditorProgress(0)
+    const timer = window.setInterval(() => {
+      setEditorProgress((percent) => Math.min(percent + Math.round(Math.random() * 9) + 4, 92))
+    }, 300)
+    setEditor({ ...editor, uploading: true, uploadError: null, fileMeta: { name: recordedFile.name, size: recordedFile.size, duration: recordedSeconds } })
+    const { url, error: uploadError } = await uploadMedia(recordedFile)
+    window.clearInterval(timer)
     if (uploadError) {
       setEditor({ ...editor, uploading: false, uploadError })
       return
     }
-    setEditor({ ...editor, source_url: url, uploading: false, uploadError: null })
+    if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current)
+    recordedUrlRef.current = null
+    setRecordedUrl(null)
+    setRecordedFile(null)
+    setRecordedSeconds(0)
+    setAudioSource('upload')
+    setEditorProgress(100)
+    setEditor({ ...editor, source_url: url, uploading: false, uploadError: null, fileMeta: { name: recordedFile.name, size: recordedFile.size, duration: recordedSeconds } })
   }
+
+  function closeEditor() {
+    stopRecording()
+    mediaRecorderRef.current = null
+    window.clearInterval(recTimerRef.current)
+    setRecSeconds(0)
+    setRecordedSeconds(0)
+    setRecState('idle')
+    if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current)
+    recordedUrlRef.current = null
+    setRecordedUrl(null)
+    setRecordedFile(null)
+    setRecordedError(null)
+    setEditorDrag(false)
+    setEditorProgress(0)
+    setAudioSource('upload')
+    setEditor(null)
+  }
+
+  useEffect(() => {
+    return () => {
+      mediaRecorderRef.current?.stop()
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      window.clearInterval(recTimerRef.current)
+      if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current)
+    }
+  }, [])
 
   function triggerUpload() {
     setMenu(null)
@@ -686,13 +898,13 @@ export function KnowledgeBaseView() {
   }
 
   function handleEditorPaste(event: React.ClipboardEvent) {
-    if (!editor || !MEDIA_KINDS.includes(editor.kind)) return
+    if (!editor || editor.kind !== 'imagem') return
     const items = Array.from(event.clipboardData?.items ?? [])
     const imageItem = items.find((item) => item.type.startsWith('image/'))
     const file = imageItem?.getAsFile()
     if (file) {
       event.preventDefault()
-      void uploadEditorFile(file)
+      handleEditorFile(file)
     }
   }
 
@@ -892,6 +1104,7 @@ export function KnowledgeBaseView() {
       </div>
 
       <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => { if (event.target.files) void uploadFiles(event.target.files); event.target.value = '' }} />
+      <input ref={editorFileInputRef} type="file" className="hidden" />
 
       {menu && (
         <div className="fixed z-50 w-52 rounded-xl border border-line bg-panel p-1 shadow-2xl" style={{ left: Math.min(menu.x, window.innerWidth - 216), top: Math.min(menu.y, window.innerHeight - 260) }} onClick={(event) => event.stopPropagation()}>
@@ -945,7 +1158,7 @@ export function KnowledgeBaseView() {
         </form>
       </Modal>
 
-      <Modal open={!!editor} onClose={() => setEditor(null)} title={editor?.file ? 'Editar arquivo' : 'Novo arquivo'} subtitle={editor ? `Tipo: ${KIND_LABEL[editor.kind]}` : undefined} size="lg">
+      <Modal open={!!editor} onClose={closeEditor} title={editor?.file ? 'Editar arquivo' : 'Novo arquivo'} subtitle={editor ? `Tipo: ${KIND_LABEL[editor.kind]}` : undefined} size="lg">
         {editor && <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void saveFile() }} onPaste={handleEditorPaste}>
           <div>
             <label className="mb-1.5 block text-sm font-semibold text-fg">Nome</label>
@@ -968,18 +1181,110 @@ export function KnowledgeBaseView() {
             </div>
           )}
 
-          {MEDIA_KINDS.includes(editor.kind) && (
-            <div className="space-y-3 rounded-xl border border-line bg-subtle p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="secondary" size="sm" icon={<Upload size={14} />} disabled={editor.uploading} onClick={() => { if (fileInputRef.current) { fileInputRef.current.multiple = false; fileInputRef.current.onchange = (event) => { const target = event.target as HTMLInputElement; if (target.files?.[0]) void uploadEditorFile(target.files[0]); target.value = '' } ; fileInputRef.current.click() } }}>{editor.uploading ? 'Enviando...' : 'Enviar arquivo'}</Button>
-                <span className="text-[11px] text-faint">ou cole uma imagem com Ctrl+V</span>
+          {editor.kind === 'audio' && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-1 rounded-xl bg-subtle p-1">
+                <button type="button" onClick={() => setAudioSource('upload')} className={audioSource === 'upload' ? 'flex-1 rounded-lg bg-panel px-3 py-1.5 text-xs font-semibold text-fg shadow-sm' : 'flex-1 rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:text-fg'}>Enviar arquivo</button>
+                <button type="button" onClick={() => setAudioSource('record')} className={audioSource === 'record' ? 'flex-1 rounded-lg bg-panel px-3 py-1.5 text-xs font-semibold text-fg shadow-sm' : 'flex-1 rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:text-fg'}>Gravar áudio</button>
               </div>
+              {audioSource === 'upload' ? (
+                <>
+                  <div className={`relative rounded-xl border-2 border-dashed p-4 text-center transition-colors ${editorDrag ? 'border-accent-500 bg-accent-500/5' : 'border-line-strong hover:border-accent-500/50'} ${editor.uploading ? 'pointer-events-none opacity-60' : ''}`}
+                    onDragOver={(event) => { event.preventDefault(); setEditorDrag(true) }}
+                    onDragLeave={() => setEditorDrag(false)}
+                    onDrop={(event) => { event.preventDefault(); setEditorDrag(false); const file = event.dataTransfer.files?.[0]; if (file) handleEditorFile(file) }}>
+                    <div className="flex flex-col items-center gap-2 py-2">
+                      {editor.uploading ? <Loader2 size={26} className="animate-spin text-accent-400" /> : <Mic size={26} className="text-muted" />}
+                      <p className="text-sm font-medium text-fg">{editor.uploading ? 'Enviando áudio...' : 'Arraste o arquivo aqui'}</p>
+                      <p className="text-xs text-muted">ou</p>
+                      <Button type="button" variant="secondary" size="sm" icon={<Upload size={14} />} disabled={editor.uploading} onClick={pickEditorFile}>Clique para selecionar</Button>
+                      <p className="text-[11px] text-faint">MP3, OGG, WAV, M4A, AAC, AMR ou WebM · até 64 MB</p>
+                      {editor.uploading && <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-subtle"><div className="h-full rounded-full bg-accent-500 transition-all duration-300" style={{ width: `${editorProgress}%` }} /></div>}
+                    </div>
+                  </div>
+                  {editor.source_url && (
+                    <div className="space-y-2 rounded-xl border border-line bg-panel p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Mic size={16} className="shrink-0 text-emerald-300" />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-fg">{editor.fileMeta?.name || editor.name || 'Áudio'}</p>
+                            {editor.fileMeta && <p className="text-[11px] text-muted">{formatDuration(editor.fileMeta.duration)} · {formatBytes(editor.fileMeta.size)}</p>}
+                          </div>
+                        </div>
+                        <button type="button" onClick={removeEditorFile} title="Remover áudio" className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-subtle hover:text-rose-300"><X size={15} /></button>
+                      </div>
+                      <audio controls src={editor.source_url} preload="metadata" className="w-full" />
+                    </div>
+                  )}
+                  <div>
+                    <label className={FIELD_LABEL}>Ou informe uma URL (opcional)</label>
+                    <input className={FIELD} value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3 rounded-xl border border-line bg-subtle p-4 text-center">
+                  {recState === 'recording' ? (
+                    <>
+                      <div className="flex items-center justify-center gap-3">
+                        <span className="relative flex h-4 w-4"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75"></span><span className="relative inline-flex h-4 w-4 rounded-full bg-rose-500"></span></span>
+                        <span className="font-mono text-xl font-semibold text-fg">{formatDuration(recSeconds)}</span>
+                      </div>
+                      <Button type="button" variant="danger" size="sm" icon={<Square size={14} />} onClick={stopRecording}>Parar gravação</Button>
+                    </>
+                  ) : recordedUrl ? (
+                    <>
+                      <Mic size={26} className="mx-auto text-emerald-300" />
+                      <p className="text-sm font-medium text-fg">Gravação pronta</p>
+                      <audio controls src={recordedUrl} className="mx-auto w-full max-w-sm" />
+                      <p className="text-[11px] text-faint">{formatDuration(recordedSeconds)} · pronto para usar</p>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        <Button type="button" variant="secondary" size="sm" icon={<RotateCcw size={14} />} onClick={cancelRecording}>Gravar novamente</Button>
+                        <Button type="button" size="sm" icon={<Check size={14} />} disabled={editor.uploading} onClick={() => void saveRecording()}>{editor.uploading ? 'Enviando...' : 'Usar este áudio'}</Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Mic size={26} className="mx-auto text-muted" />
+                      <p className="text-sm font-medium text-fg">Gravar áudio</p>
+                      <p className="text-xs text-muted">O navegador vai pedir permissão para usar o microfone.</p>
+                      <Button type="button" size="sm" icon={<Mic size={14} />} disabled={recState === 'requesting'} onClick={() => void startRecording()}>{recState === 'requesting' ? 'Solicitando acesso...' : 'Iniciar gravação'}</Button>
+                    </>
+                  )}
+                  {recordedError && <p className="text-xs text-rose-300">{recordedError}</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {(editor.kind === 'video' || editor.kind === 'imagem' || editor.kind === 'documento') && (
+            <div className="space-y-3">
+              <div className={`relative rounded-xl border-2 border-dashed p-4 text-center transition-colors ${editorDrag ? 'border-accent-500 bg-accent-500/5' : 'border-line-strong hover:border-accent-500/50'} ${editor.uploading ? 'pointer-events-none opacity-60' : ''}`}
+                onDragOver={(event) => { event.preventDefault(); setEditorDrag(true) }}
+                onDragLeave={() => setEditorDrag(false)}
+                onDrop={(event) => { event.preventDefault(); setEditorDrag(false); const file = event.dataTransfer.files?.[0]; if (file) handleEditorFile(file) }}>
+                <div className="flex flex-col items-center gap-2 py-2">
+                  {editor.uploading ? <Loader2 size={26} className="animate-spin text-accent-400" /> : <Upload size={26} className="text-muted" />}
+                  <p className="text-sm font-medium text-fg">{editor.uploading ? 'Enviando...' : 'Arraste o arquivo aqui'}</p>
+                  <p className="text-xs text-muted">ou</p>
+                  <Button type="button" variant="secondary" size="sm" icon={<Upload size={14} />} disabled={editor.uploading} onClick={pickEditorFile}>Clique para selecionar</Button>
+                  <p className="text-[11px] text-faint">{editor.kind === 'video' ? 'MP4, MOV, WebM etc. · até 65 MB' : editor.kind === 'imagem' ? 'JPG, PNG, GIF ou WebP' : 'PDF, DOCX, XLSX, PPTX, TXT ou CSV'}</p>
+                  {editor.uploading && <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-subtle"><div className="h-full rounded-full bg-accent-500 transition-all duration-300" style={{ width: `${editorProgress}%` }} /></div>}
+                </div>
+              </div>
+              {editor.kind === 'imagem' && editor.source_url && (
+                <div className="space-y-2 rounded-xl border border-line bg-panel p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-medium text-fg">{editor.fileMeta?.name ?? 'Imagem'}</p>
+                    <button type="button" onClick={removeEditorFile} title="Remover imagem" className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-subtle hover:text-rose-300"><X size={15} /></button>
+                  </div>
+                  <img src={editor.source_url} alt="Prévia" className="max-h-52 w-full rounded-lg object-contain bg-subtle" />
+                </div>
+              )}
               <div>
-                <label className={FIELD_LABEL}>URL manual (opcional)</label>
+                <label className={FIELD_LABEL}>Ou informe uma URL (opcional)</label>
                 <input className={FIELD} value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." />
               </div>
-              {editor.uploading && <p className="text-xs text-muted">Enviando arquivo...</p>}
-              {editor.uploadError && <p className="text-xs text-rose-300">{editor.uploadError}</p>}
             </div>
           )}
 
@@ -1018,7 +1323,7 @@ export function KnowledgeBaseView() {
             </div>
           )}
 
-          <div className="flex justify-end gap-2 border-t border-line pt-4"><Button type="button" variant="secondary" onClick={() => setEditor(null)}>Cancelar</Button><Button type="submit" icon={<Check size={14} />}>Salvar</Button></div>
+          <div className="flex justify-end gap-2 border-t border-line pt-4"><Button type="button" variant="secondary" onClick={closeEditor}>Cancelar</Button><Button type="submit" icon={<Check size={14} />}>Salvar</Button></div>
         </form>}
       </Modal>
 
@@ -1044,6 +1349,7 @@ export function KnowledgeBaseView() {
               {parsed.whenToUse && <div><p className="mb-1 text-xs font-medium text-muted">Quando utilizar</p><p className="text-fg">{parsed.whenToUse}</p></div>}
             </>
           })()}
+          {details.kind === 'audio' && details.source_url && <div><audio controls src={details.source_url} preload="metadata" className="w-full" /></div>}
           {details.content && <div><p className="mb-1 text-xs font-medium text-muted">Conteúdo</p><p className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-subtle p-3 text-fg">{details.content}</p></div>}
           {details.source_url && <div><p className="mb-1 text-xs font-medium text-muted">Link</p><a href={details.source_url} target="_blank" rel="noreferrer" className="break-all text-accent-300 hover:text-accent-200">{details.source_url}</a></div>}
           <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 text-xs text-muted">

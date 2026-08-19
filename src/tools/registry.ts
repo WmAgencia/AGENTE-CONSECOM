@@ -45,6 +45,8 @@ export interface ToolCallContext {
   instance?: string;
   /** Telefone E.164 do lead que está conversando (para envio de mídia da KB). */
   leadPhone?: string;
+  /** ID do lead no banco (usado para registrar envios de mídia no histórico). */
+  leadId?: string;
   /**
    * Recent conversation turns (older first, up to the current inbound message).
    * Tools that mutate commercial state (marcar_reuniao, finalizar_sem_interesse)

@@ -595,6 +595,7 @@ const campaignKnowledge = await resolveCampaignKnowledge(campaignInfo?.campaignI
         campaignHandoff: campaignInfo?.campaignHandoff ?? campaignKnowledge?.closer ?? undefined,
         instance: msg.instance,
         leadPhone: fromJid.split('@')[0],
+        leadId: lead.id,
         leadContext,
         strategyDirective,
         connectionIdentity,

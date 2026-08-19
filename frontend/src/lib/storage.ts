@@ -5,6 +5,41 @@ export const VIDEO_BUCKET = 'consecom-video'
 export const MAX_VIDEO_BYTES = 65 * 1024 * 1024
 export const VIDEO_TOO_LARGE_MESSAGE = 'Vídeo muito grande. O tamanho máximo permitido é 65 MB.'
 
+export const MAX_AUDIO_BYTES = 64 * 1024 * 1024
+export const AUDIO_TOO_LARGE_MESSAGE = 'Áudio muito grande. O tamanho máximo permitido é 64 MB.'
+export const AUDIO_INVALID_FORMAT_MESSAGE = 'Formato de áudio não suportado. Use MP3, OGG, WAV, M4A, AAC, AMR ou WebM.'
+
+const AUDIO_MIME_TYPES = [
+  'audio/mpeg',
+  'audio/ogg',
+  'audio/opus',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/wave',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/aac',
+  'audio/aacp',
+  'audio/webm',
+  'audio/amr',
+  'audio/x-ms-wma',
+]
+
+const AUDIO_EXTENSIONS = ['mp3', 'ogg', 'opus', 'oga', 'wav', 'm4a', 'aac', 'webm', 'amr', 'wma', 'mp4']
+
+export function isAudioFile(file: File): boolean {
+  const mime = file.type.toLowerCase()
+  if (AUDIO_MIME_TYPES.includes(mime)) return true
+  const ext = (file.name.split('.').pop() ?? '').toLowerCase()
+  return AUDIO_EXTENSIONS.includes(ext)
+}
+
+export function validateAudioFile(file: File): string | null {
+  if (!isAudioFile(file)) return AUDIO_INVALID_FORMAT_MESSAGE
+  if (file.size > MAX_AUDIO_BYTES) return AUDIO_TOO_LARGE_MESSAGE
+  return null
+}
+
 /** Tempo máximo de upload antes de reportar erro (evita travamento infinito). */
 const DEFAULT_UPLOAD_TIMEOUT_MS = 60_000
 const VIDEO_UPLOAD_TIMEOUT_MS = 5 * 60_000

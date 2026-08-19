@@ -45,6 +45,14 @@ export interface SendTextResult {
    * sessao morta so perde tempo).
    */
   connectionClosed?: boolean;
+  /**
+   * Sinal de ROTA INDISPONIVEL (HTTP 404). Algumas builds da Evolution
+   * (ex.: "evolution_exchange" v2.3.7) não expõem a rota de voice note
+   * `/message/sendWhatsAppAudio/{instance}`. O chamador pode então cair no
+   * fallback (sendMedia com mediatype audio = arquivo de áudio) sem quebrar
+   * o envio existente.
+   */
+  routeNotFound?: boolean;
 }
 
 export function isEvolutionMockMode(): boolean {
@@ -501,4 +509,108 @@ export async function sendMedia(params: SendMediaParams): Promise<SendTextResult
     }
   }
   return { ok: false, status: 0, error: lastError ?? 'sendMedia failed' };
+}
+
+export interface SendVoiceNoteParams {
+  /** Destination JID (e.g. "5511999999999@s.whatsapp.net") or bare number. */
+  to: string;
+  /**
+   * URL pública do arquivo de áudio (ou base64 sem prefixo `data:`).
+   * A Evolution baixa o arquivo e transcode para OGG/Opus (voice note PTT)
+   * quando a build expõe `/message/sendWhatsAppAudio`.
+   */
+  audio: string;
+  /** Optional Evolution instance name (defaults to EVOLUTION_INSTANCE_NAME). */
+  instance?: string;
+}
+
+/**
+ * Envia um áudio como MENSAGEM DE VOZ NATIVA do WhatsApp (voice note / PTT),
+ * usando o endpoint `/message/sendWhatsAppAudio/{instance}` da Evolution.
+ * Visualmente o destinatário vê o áudio como um "áudio gravado" (com waveform),
+ * NÃO como arquivo/documento encaminhado.
+ *
+ * LIMITAÇÃO DA BUILD ATUAL (v2.3.7 "evolution_exchange"): a rota pode não
+ * existir (HTTP 404) — nessas builds o `routeNotFound` é marcado e o chamador
+ * deve cair no fallback (sendMedia com mediatype 'audio', que envia o áudio
+ * como arquivo). Para habilitar voice notes de verdade, a build da Evolution
+ * precisa expor `/message/sendWhatsAppAudio`; a transcodificação para
+ * OGG/Opus com waveform é feita pela própria Evolution nesse fluxo.
+ */
+export async function sendVoiceNote(params: SendVoiceNoteParams): Promise<SendTextResult> {
+  const log = getLogger();
+  const { to, audio } = params;
+  if (!to || !audio) {
+    return { ok: false, status: 0, error: 'to and audio are required' };
+  }
+  if (isEvolutionMockMode()) {
+    log.info({ to: maskJid(to) }, 'evolution: sendVoiceNote (mock mode)');
+    return {
+      ok: true,
+      status: 200,
+      mock: true,
+      messageId: `mock-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    };
+  }
+
+  const cfg = getEvolutionConfig();
+  const sendInstance = params.instance || cfg.instance;
+  const endpoint = `${cfg.apiUrl}/message/sendWhatsAppAudio/${encodeURIComponent(sendInstance)}`;
+  const body = {
+    number: stripJidSuffix(to),
+    audio,
+  };
+
+  const maxRetries = getEnv().EVOLUTION_SENDTEXT_MAX_RETRIES;
+  let lastError: string | undefined;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: cfg.apiKey },
+        body: JSON.stringify(body),
+      });
+      const raw = await response.text();
+      if (isConnectionClosed(response.status, raw)) {
+        log.warn({ status: response.status, to: maskJid(to), endpoint }, 'evolution: sendVoiceNote — sessão WhatsApp morta (Connection Closed)');
+        return { ok: false, status: response.status, error: 'connection_closed', connectionClosed: true };
+      }
+      // 404 = rota de voice note não existe nesta build. Sinaliza o fallback.
+      if (response.status === 404) {
+        log.warn({ status: 404, to: maskJid(to), endpoint }, 'evolution: sendVoiceNote — rota indisponível nesta build (404)');
+        return { ok: false, status: 404, error: 'route_not_found', routeNotFound: true };
+      }
+      if (response.status >= 500 || response.status === 429) {
+        log.warn({ status: response.status, attempt, endpoint }, 'evolution: sendVoiceNote transient error');
+        if (attempt < maxRetries) {
+          const backoffMs = Math.min(8000, 500 * Math.pow(2, attempt - 1));
+          await sleep(backoffMs);
+          continue;
+        }
+        return { ok: false, status: response.status, error: `Evolution API returned status ${response.status}` };
+      }
+      if (!response.ok) {
+        return { ok: false, status: response.status, error: `Evolution API returned status ${response.status}: ${raw.slice(0, 200)}` };
+      }
+      let parsed: { key?: { id?: string } } = {};
+      try {
+        parsed = JSON.parse(raw) as { key?: { id?: string } };
+      } catch {
+        // ignore
+      }
+      const messageId = parsed.key?.id;
+      log.info({ status: response.status, to: maskJid(to), messageId, attempt }, 'evolution: sendVoiceNote delivered (PTT)');
+      return { ok: true, status: response.status, messageId };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown send error';
+      log.warn({ errMessage: message, attempt, endpoint }, 'evolution: sendVoiceNote network failure (retryable)');
+      lastError = message;
+      if (attempt < maxRetries) {
+        const backoffMs = Math.min(8000, 500 * Math.pow(2, attempt - 1));
+        await sleep(backoffMs);
+        continue;
+      }
+    }
+  }
+  return { ok: false, status: 0, error: lastError ?? 'sendVoiceNote failed' };
 }
