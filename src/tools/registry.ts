@@ -67,6 +67,31 @@ export type ToolExecutor = (
   ctx: ToolCallContext,
 ) => Promise<ToolResult>;
 
+function parameterTypeMatches(value: unknown, type: ToolParameterProperty['type']): boolean {
+  if (type === 'string') return typeof value === 'string';
+  if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
+  if (type === 'boolean') return typeof value === 'boolean';
+  if (type === 'array') return Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function validateToolArgs(schema: ToolParameterProperty, args: Record<string, unknown>): string | null {
+  for (const key of schema.required ?? []) {
+    if (args[key] === undefined || args[key] === null || args[key] === '') return `Missing required argument: ${key}`;
+  }
+  for (const [key, property] of Object.entries(schema.properties ?? {})) {
+    const value = args[key];
+    if (value === undefined || value === null) continue;
+    if (!parameterTypeMatches(value, property.type)) return `Invalid type for argument: ${key}`;
+    if (property.enum && typeof value === 'string' && !property.enum.includes(value)) return `Invalid value for argument: ${key}`;
+    if (property.type === 'object' && property.properties && typeof value === 'object' && value !== null) {
+      const nestedError = validateToolArgs(property, value as Record<string, unknown>);
+      if (nestedError) return `${key}.${nestedError}`;
+    }
+  }
+  return null;
+}
+
 export interface ToolBase {
   definition: ToolDefinition;
   permission: ToolPermission;
@@ -167,6 +192,14 @@ export class ToolRegistry {
         ok: false,
         output: `Permission denied for ${tool.permission} (${name}).`,
         error: 'permission_denied',
+      };
+    }
+    const validationError = validateToolArgs(tool.definition.parameters, args);
+    if (validationError) {
+      return {
+        ok: false,
+        output: validationError,
+        error: 'invalid_args',
       };
     }
     try {

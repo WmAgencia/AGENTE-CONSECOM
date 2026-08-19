@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, type Lead, type LeadStatus, type ConversationMessage, type FollowUp } from '../lib/supabase'
-import { followUpsApi } from '../lib/api'
+import { api, followUpsApi } from '../lib/api'
 import { Button } from './ui'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL as string | undefined
@@ -89,6 +89,10 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
   const [followUpSaving, setFollowUpSaving] = useState(false)
   const [leadFollowUps, setLeadFollowUps] = useState<FollowUp[]>([])
   const [editingFollowUpId, setEditingFollowUpId] = useState<string | null>(null)
+  const [correctionOpen, setCorrectionOpen] = useState(false)
+  const [correction, setCorrection] = useState('')
+  const [correctionSaving, setCorrectionSaving] = useState(false)
+  const [correctionSaved, setCorrectionSaved] = useState(false)
   const scrollerRef = useRef<HTMLDivElement>(null)
 
   const loadMessages = useCallback(async () => {
@@ -207,6 +211,28 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
     }
   }
 
+  async function saveCorrection() {
+    if (!correction.trim() || correctionSaving) return
+    setCorrectionSaving(true)
+    setError(null)
+    try {
+      const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant')
+      await api.post('/api/ai/correction', {
+        leadId: lead.id,
+        correction: correction.trim(),
+        originalResponse: lastAssistant?.content,
+      })
+      setCorrection('')
+      setCorrectionSaved(true)
+      setCorrectionOpen(false)
+      window.setTimeout(() => setCorrectionSaved(false), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar a correção.')
+    } finally {
+      setCorrectionSaving(false)
+    }
+  }
+
   const name = lead.name || 'Sem nome'
   const lastUser = useMemo(() => {
     let last: string | null = null
@@ -256,7 +282,22 @@ export function LeadChat({ lead, onClose }: { lead: Lead; onClose: () => void })
           >
             ↩ Responder depois
           </button>
+          <button
+            onClick={() => setCorrectionOpen((open) => !open)}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-medium bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
+          >
+            Resposta incorreta
+          </button>
         </div>
+
+        {correctionOpen && (
+          <div className="px-4 py-3 bg-rose-500/5 border-b border-line space-y-2">
+            <div className="text-xs font-semibold text-secondary">Como a IA deveria responder?</div>
+            <textarea value={correction} onChange={(event) => setCorrection(event.target.value)} rows={3} maxLength={2000} placeholder="Descreva a resposta correta e o que deve ser aprendido..." className="w-full rounded-xl bg-field border border-line-2 px-2 py-1.5 text-xs text-fg" />
+            <Button onClick={() => void saveCorrection()} disabled={correctionSaving || !correction.trim()} loading={correctionSaving}>{correctionSaving ? 'Salvando...' : 'Salvar correção'}</Button>
+          </div>
+        )}
+        {correctionSaved && <div className="px-4 py-2 bg-emerald-500/10 border-b border-line text-xs text-emerald-300">Correção salva como aprendizado para a IA.</div>}
 
         {followUpOpen && (
           <div className="px-4 py-3 bg-subtle border-b border-line space-y-2">

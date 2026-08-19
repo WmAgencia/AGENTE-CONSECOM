@@ -20,6 +20,7 @@ import { extractBearerToken } from '../utils/auth.js';
 import { runAgentLoop } from '../services/agent.service.js';
 import { classifyIntentHeuristic, planInbound } from '../services/intent.classifier.js';
 import { scoreInboundMessage } from '../services/scoring.js';
+import { captureLearning } from '../services/agent.learning.js';
 import {
   loadAgentDirectives,
 } from '../services/supabase.leads.js';
@@ -68,6 +69,12 @@ const aiTrainingSchema = z.object({
       profile: z.string().max(500).default('dono de pequeno negócio, cético e sem pressa'),
     })
     .optional(),
+});
+
+const aiCorrectionSchema = z.object({
+  leadId: z.string().uuid(),
+  correction: z.string().min(3).max(2000),
+  originalResponse: z.string().max(4000).optional(),
 });
 
 async function resolveSupabaseUser(
@@ -376,6 +383,21 @@ export function registerAiRoutes(app: FastifyInstance): void {
         statusCode: 502,
       });
     }
+  });
+
+  app.post('/api/ai/correction', async (req, reply) => {
+    const token = extractBearerToken(
+      typeof req.headers['authorization'] === 'string' ? req.headers['authorization'] : undefined,
+    );
+    const user = await resolveSupabaseUser(token);
+    if (!user) return reply.status(401).send({ error: 'unauthorized', statusCode: 401 });
+    const parsed = aiCorrectionSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'validation_error', statusCode: 400 });
+    const { leadId, correction, originalResponse } = parsed.data;
+    const lesson = `Resposta corrigida pelo operador: ${correction}${originalResponse ? ` | Resposta anterior: ${originalResponse.slice(0, 1200)}` : ''}`;
+    await captureLearning('rejeicao', leadId, { lessonOverride: lesson });
+    touchActivity('correction');
+    return reply.send({ ok: true, message: 'Correção salva como aprendizado.' });
   });
 
   log.info('ai: routes registered');
