@@ -97,8 +97,24 @@ export interface Campaign {
   owner_user_id?: string | null
   ai_enabled?: boolean
   knowledge_base_id?: string | null
+  ai_persona?: CampaignPersona | null
+  ai_handoff?: CampaignHandoff | null
   position?: number | null
   created_at: string
+}
+
+export interface CampaignPersona {
+  tone: 'amigavel' | 'consultivo' | 'direto' | 'premium'
+  formality: 'informal' | 'neutro' | 'formal'
+  verbosity: 'curta' | 'equilibrada' | 'detalhada'
+  emojis: 'nenhum' | 'moderado' | 'livre'
+  style: string
+}
+
+export interface CampaignHandoff {
+  name: string
+  phone: string
+  instructions: string
 }
 
 export interface KbFolder {

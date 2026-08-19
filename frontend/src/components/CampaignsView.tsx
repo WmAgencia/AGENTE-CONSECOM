@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Badge } from './ui'
-import { supabase, type Campaign, type KbFolder, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
+import { supabase, type Campaign, type CampaignHandoff, type CampaignPersona, type KbFolder, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
 import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDateTime } from '../lib/month'
@@ -213,6 +213,18 @@ export function CampaignsView() {
     else await load()
   }
 
+  async function setCampaignPersona(c: Campaign, ai_persona: CampaignPersona) {
+    const { error } = await supabase.from('campaigns').update({ ai_persona }).eq('id', c.id)
+    if (error) setLoadError(error.message)
+    else await load()
+  }
+
+  async function setCampaignHandoff(c: Campaign, ai_handoff: CampaignHandoff) {
+    const { error } = await supabase.from('campaigns').update({ ai_handoff }).eq('id', c.id)
+    if (error) setLoadError(error.message)
+    else await load()
+  }
+
 async function setCampaignAi(c: Campaign, enabled: boolean) {
     setCampaigns((items) => items.map((item) => item.id === c.id ? { ...item, ai_enabled: enabled } : item))
     const { error } = await supabase.from('campaigns').update({ ai_enabled: enabled }).eq('id', c.id)
@@ -384,6 +396,8 @@ async function fireCampaign(c: Campaign) {
                            onSetAi={(enabled) => void setCampaignAi(c, enabled)}
                            knowledgeFolders={knowledgeFolders}
                            onSetKnowledgeBase={(id) => void setCampaignKnowledgeBase(c, id)}
+                           onSetPersona={(persona) => void setCampaignPersona(c, persona)}
+                           onSetHandoff={(handoff) => void setCampaignHandoff(c, handoff)}
                           onShowQueue={() => setQueueFor(c)}
                           onFire={() => void fireCampaign(c)}
                           onPause={() => void pauseCampaign(c)}
@@ -665,6 +679,8 @@ function CampaignCard({
   onSetAi,
   knowledgeFolders,
   onSetKnowledgeBase,
+  onSetPersona,
+  onSetHandoff,
 }: {
   campaign: Campaign
   messages: QueueMessage[]
@@ -682,8 +698,14 @@ function CampaignCard({
   onSetAi: (enabled: boolean) => void
   knowledgeFolders: KbFolder[]
   onSetKnowledgeBase: (id: string | null) => void
+  onSetPersona: (persona: CampaignPersona) => void
+  onSetHandoff: (handoff: CampaignHandoff) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [personaOpen, setPersonaOpen] = useState(false)
+  const [persona, setPersona] = useState<CampaignPersona>(campaign.ai_persona ?? { tone: 'consultivo', formality: 'neutro', verbosity: 'equilibrada', emojis: 'moderado', style: '' })
+  const [handoffOpen, setHandoffOpen] = useState(false)
+  const [handoff, setHandoff] = useState<CampaignHandoff>(campaign.ai_handoff ?? { name: '', phone: '', instructions: '' })
   const activeConnections = connections.filter((c) => c.status === 'connected')
   const runActive = runs.filter((r) => r.status === 'pending' || r.status === 'running').length
   return (
@@ -744,6 +766,33 @@ function CampaignCard({
           {knowledgeFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
         </select>
       </label>
+
+      <div className="mb-3 rounded-lg border border-line bg-panel/40 p-3">
+        <button type="button" className="flex w-full items-center justify-between text-left text-[11px] text-muted" onClick={() => setPersonaOpen((value) => !value)}>
+          <span>Persona da IA: <strong className="text-secondary">{persona.tone} · {persona.formality}</strong></span>
+          <span className="text-accent-300">{personaOpen ? 'Fechar' : 'Configurar'}</span>
+        </button>
+        {personaOpen && <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className="text-[11px] text-muted">Tom<select value={persona.tone} onChange={(event) => setPersona({ ...persona, tone: event.target.value as CampaignPersona['tone'] })}><option value="amigavel">Amigável</option><option value="consultivo">Consultivo</option><option value="direto">Direto</option><option value="premium">Premium</option></select></label>
+          <label className="text-[11px] text-muted">Formalidade<select value={persona.formality} onChange={(event) => setPersona({ ...persona, formality: event.target.value as CampaignPersona['formality'] })}><option value="informal">Informal</option><option value="neutro">Neutro</option><option value="formal">Formal</option></select></label>
+          <label className="text-[11px] text-muted">Tamanho das respostas<select value={persona.verbosity} onChange={(event) => setPersona({ ...persona, verbosity: event.target.value as CampaignPersona['verbosity'] })}><option value="curta">Curta</option><option value="equilibrada">Equilibrada</option><option value="detalhada">Detalhada</option></select></label>
+          <label className="text-[11px] text-muted">Emojis<select value={persona.emojis} onChange={(event) => setPersona({ ...persona, emojis: event.target.value as CampaignPersona['emojis'] })}><option value="nenhum">Nenhum</option><option value="moderado">Moderado</option><option value="livre">Livre</option></select></label>
+          <label className="text-[11px] text-muted sm:col-span-2">Estilo adicional<input value={persona.style} maxLength={240} onChange={(event) => setPersona({ ...persona, style: event.target.value })} placeholder="Ex.: faça perguntas curtas e use exemplos práticos" /></label>
+          <div className="flex justify-end sm:col-span-2"><Button type="button" onClick={() => { onSetPersona(persona); setPersonaOpen(false) }}>Salvar persona</Button></div>
+        </div>}
+      </div>
+
+      <div className="mb-3 rounded-lg border border-line bg-panel/40 p-3">
+        <button type="button" className="flex w-full items-center justify-between text-left text-[11px] text-muted" onClick={() => setHandoffOpen((value) => !value)}>
+          <span>Responsável pelo fechamento: <strong className="text-secondary">{handoff.name || 'não configurado'}</strong></span>
+          <span className="text-accent-300">{handoffOpen ? 'Fechar' : 'Configurar'}</span>
+        </button>
+        {handoffOpen && <div className="mt-3 space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2"><label className="text-[11px] text-muted">Nome<input value={handoff.name} maxLength={120} onChange={(event) => setHandoff({ ...handoff, name: event.target.value })} placeholder="Ex.: Wesley" /></label><label className="text-[11px] text-muted">Telefone<input value={handoff.phone} maxLength={40} onChange={(event) => setHandoff({ ...handoff, phone: event.target.value })} placeholder="Ex.: +55..." /></label></div>
+          <label className="block text-[11px] text-muted">Instruções de encaminhamento<textarea rows={2} maxLength={300} value={handoff.instructions} onChange={(event) => setHandoff({ ...handoff, instructions: event.target.value })} placeholder="Quando e como apresentar o responsável" /></label>
+          <div className="flex justify-end"><Button type="button" onClick={() => { onSetHandoff(handoff); setHandoffOpen(false) }}>Salvar responsável</Button></div>
+        </div>}
+      </div>
 
       <div className="mb-3 space-y-2">
         <label className="text-[11px] text-muted block">Conexões WhatsApp (round-robin por lead):</label>

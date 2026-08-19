@@ -943,6 +943,8 @@ CREATE INDEX IF NOT EXISTS kb_files_folder_idx ON public.kb_files (folder_id);
 
 ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS knowledge_base_id UUID
   REFERENCES public.kb_folders (id) ON DELETE SET NULL;
+ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS ai_persona JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.campaigns ADD COLUMN IF NOT EXISTS ai_handoff JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 ALTER TABLE public.kb_folders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_files    ENABLE ROW LEVEL SECURITY;

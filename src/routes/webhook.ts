@@ -31,7 +31,7 @@ import { getEnv, getWebhookSecret, getSupabaseProspeccaoConfig } from '../config
 import { getLogger } from '../utils/logger.js';
 import { extractQrFromEvolution, isValidQrDataUri } from '../utils/qr.js';
 import { reconcileConnectionOnConnect } from '../services/instance.rotation.js';
-import { runAgentLoop } from '../services/agent.service.js';
+import { runAgentLoop, sanitizeCampaignHandoff, sanitizeCampaignPersona, type CampaignHandoff, type CampaignPersona } from '../services/agent.service.js';
 import {
   loadLearningsForPrompt,
   captureLearning,
@@ -579,6 +579,8 @@ if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
         learnings: (await loadLearningsForPrompt()) ?? undefined,
         commercialMemory: (await loadCommercialMemoryForPrompt(memoryOwnerId)) ?? undefined,
         knowledgeBase: await resolveCampaignKnowledge(campaignInfo?.campaignId),
+        campaignPersona: campaignInfo?.campaignPersona ?? undefined,
+        campaignHandoff: campaignInfo?.campaignHandoff ?? undefined,
         instance: msg.instance,
         leadContext,
         strategyDirective,
@@ -739,7 +741,7 @@ if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
  */
 async function loadLeadCampaignStatus(
   leadId: string,
-): Promise<{ campaignId: string | null; runStatus: string | null; campaignStatus: string | null; aiEnabled: boolean } | null> {
+): Promise<{ campaignId: string | null; runStatus: string | null; campaignStatus: string | null; aiEnabled: boolean; campaignPersona: CampaignPersona | null; campaignHandoff: CampaignHandoff | null } | null> {
   const cfg = getSupabaseProspeccaoConfig();
   if (!cfg.url || !cfg.serviceRoleKey) return null;
   const headers = {
@@ -758,16 +760,16 @@ async function loadLeadCampaignStatus(
     let campaignStatus: string | null = null;
     if (row.campaign_id) {
       const c = await fetch(
-      `${cfg.url}/rest/v1/campaigns?select=status,ai_enabled&id=eq.${encodeURIComponent(row.campaign_id)}&limit=1`,
+        `${cfg.url}/rest/v1/campaigns?select=status,ai_enabled,ai_persona,ai_handoff&id=eq.${encodeURIComponent(row.campaign_id)}&limit=1`,
         { headers },
       );
       if (c.ok) {
-        const cs = (await c.json()) as Array<{ status: string; ai_enabled?: boolean | null }>;
+        const cs = (await c.json()) as Array<{ status: string; ai_enabled?: boolean | null; ai_persona?: unknown; ai_handoff?: unknown }>;
         campaignStatus = cs[0]?.status ?? null;
-        return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: cs[0]?.ai_enabled !== false };
+        return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: cs[0]?.ai_enabled !== false, campaignPersona: sanitizeCampaignPersona(cs[0]?.ai_persona) ?? null, campaignHandoff: sanitizeCampaignHandoff(cs[0]?.ai_handoff) ?? null };
       }
     }
-return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: true };
+return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: true, campaignPersona: null, campaignHandoff: null };
   } catch {
     return null;
   }

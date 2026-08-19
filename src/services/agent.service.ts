@@ -34,6 +34,53 @@ const NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1';
 
 type Role = 'system' | 'user' | 'assistant' | 'tool';
 
+export interface CampaignPersona {
+  tone: 'amigavel' | 'consultivo' | 'direto' | 'premium';
+  formality: 'informal' | 'neutro' | 'formal';
+  verbosity: 'curta' | 'equilibrada' | 'detalhada';
+  emojis: 'nenhum' | 'moderado' | 'livre';
+  style: string;
+}
+
+export interface CampaignHandoff {
+  name: string;
+  phone: string;
+  instructions: string;
+}
+
+const PERSONA_DEFAULTS: CampaignPersona = {
+  tone: 'consultivo',
+  formality: 'neutro',
+  verbosity: 'equilibrada',
+  emojis: 'moderado',
+  style: '',
+};
+
+/** Aceita somente os valores controlados da configuração da campanha. */
+export function sanitizeCampaignPersona(value: unknown): CampaignPersona | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const oneOf = <T extends string>(candidate: unknown, allowed: readonly T[], fallback: T): T =>
+    typeof candidate === 'string' && allowed.includes(candidate as T) ? candidate as T : fallback;
+  const style = typeof raw.style === 'string' ? raw.style.trim().slice(0, 240) : '';
+  return {
+    tone: oneOf(raw.tone, ['amigavel', 'consultivo', 'direto', 'premium'], PERSONA_DEFAULTS.tone),
+    formality: oneOf(raw.formality, ['informal', 'neutro', 'formal'], PERSONA_DEFAULTS.formality),
+    verbosity: oneOf(raw.verbosity, ['curta', 'equilibrada', 'detalhada'], PERSONA_DEFAULTS.verbosity),
+    emojis: oneOf(raw.emojis, ['nenhum', 'moderado', 'livre'], PERSONA_DEFAULTS.emojis),
+    style,
+  };
+}
+
+export function sanitizeCampaignHandoff(value: unknown): CampaignHandoff | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  const name = typeof raw.name === 'string' ? raw.name.trim().slice(0, 120) : '';
+  const phone = typeof raw.phone === 'string' ? raw.phone.trim().slice(0, 40) : '';
+  const instructions = typeof raw.instructions === 'string' ? raw.instructions.trim().slice(0, 300) : '';
+  return name || phone || instructions ? { name, phone, instructions } : undefined;
+}
+
 interface ChatMessage {
   role: Role;
   content: string;
@@ -86,6 +133,10 @@ interface RunAgentLoopInput {
   };
   /** Base de Conhecimento da campanha (contexto factual do produto/serviço). */
   knowledgeBase?: string;
+  /** Persona controlada da campanha. */
+  campaignPersona?: CampaignPersona;
+  /** Responsável humano pelo fechamento/handoff desta campanha. */
+  campaignHandoff?: CampaignHandoff;
   /** Sobrescreve AGENT_ENABLE_TOOLS (ex: simulação de fluxo = false). */
   enableTools?: boolean;
   /**
@@ -131,6 +182,8 @@ export function buildSystemPrompt(opts: {
   strategyDirective?: string;
   connectionIdentity?: { connection_id: string; connection_name: string; connection_phone: string | null };
   knowledgeBase?: string;
+  campaignPersona?: CampaignPersona;
+  campaignHandoff?: CampaignHandoff;
   injectIntentMarker?: boolean;
 }): string {
   const agoraBrasilia = new Date(Date.now() - 3 * 3600_000);
@@ -183,6 +236,26 @@ const base = [
       '=== FIM DA IDENTIDADE ===',
     ].filter(Boolean) as string[];
     base.push(...identityLines);
+  }
+  if (opts.campaignPersona) {
+    const persona = opts.campaignPersona;
+    base.push(
+      '=== PERSONA DA CAMPANHA (regras obrigatórias de comunicação) ===',
+      `Tom: ${persona.tone}. Formalidade: ${persona.formality}. Verbosidade: ${persona.verbosity}. Emojis: ${persona.emojis}.`,
+      persona.style ? `Estilo adicional configurado: ${persona.style}` : '',
+      'Mantenha esta persona sem sacrificar clareza, honestidade, segurança ou o objetivo comercial.',
+      '=== FIM DA PERSONA DA CAMPANHA ===',
+    );
+  }
+  if (opts.campaignHandoff) {
+    const handoff = opts.campaignHandoff;
+    base.push(
+      '=== RESPONSÁVEL PELO FECHAMENTO / HANDOFF ===',
+      `Responsável: ${handoff.name || 'não informado'}. Telefone: ${handoff.phone || 'não informado'}.`,
+      handoff.instructions ? `Instruções: ${handoff.instructions}` : '',
+      'Quando o lead pedir uma pessoa, demonstrar intenção clara de compra ou exigir negociação/condição não confirmada, reconheça a necessidade e encaminhe ao responsável. Não invente que a transferência ocorreu se nenhuma ferramenta confirmar isso.',
+      '=== FIM DO RESPONSÁVEL PELO FECHAMENTO ===',
+    );
   }
   if (opts.strategyDirective) {
     base.push(
@@ -361,6 +434,8 @@ export async function runAgentLoop(
           strategyDirective: input.strategyDirective,
           connectionIdentity: input.connectionIdentity,
           knowledgeBase: input.knowledgeBase,
+          campaignPersona: input.campaignPersona,
+          campaignHandoff: input.campaignHandoff,
           injectIntentMarker: source === 'whatsapp',
         }),
   });
@@ -395,6 +470,8 @@ export async function runAgentLoop(
             strategyDirective: input.strategyDirective,
             connectionIdentity: input.connectionIdentity,
             knowledgeBase: input.knowledgeBase,
+            campaignPersona: input.campaignPersona,
+            campaignHandoff: input.campaignHandoff,
             injectIntentMarker: source === 'whatsapp',
           });
     }
