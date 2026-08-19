@@ -3,7 +3,7 @@
 // que o content script esteja ativo no Google Maps (inclusive após instalar/
 // recarregar a extensão com o Maps já aberto, ou após navegação SPA).
 import { seedAutoConfig } from '../shared/config'
-import contentScriptUrl from '../content/index?script&module'
+import contentScriptUrl from '../content/index?script&iife'
 
 // O .zip personalizado baixado do painel vem com `auto-config.json` contendo
 // a extensionKey + ownerUserId. Semeia o chrome.storage para a extensão já
