@@ -59,6 +59,8 @@ interface Campaign {
   success_count: number
   fail_count: number
   connection_ids?: string[] | null
+  ai_mode?: 'traditional' | 'intelligent' | null
+  ai_initial_message?: string | null
 }
 interface Connection {
   id: string
@@ -1071,10 +1073,51 @@ test('48) retomar preserva posição durante sequência com múltiplas conexões
   await runTicks(w, 3)
   assert.deepEqual(store.sent.map((m) => m.text), ['M1'])
 
-  store.campaigns.get('c1')!.status = 'em_progresso'
+store.campaigns.get('c1')!.status = 'em_progresso'
   makeDue(l1.id)
   await w.tick()
   assert.deepEqual(store.sent.map((m) => m.text), ['M1', 'M2'])
   assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 2)
   assert.equal(store.runs.get(`run-${l2.id}`)!.status, 'pending')
+})
+
+test('MI1) Modo Inteligente: só a abordagem inicial é enviada — sequência tradicional NÃO roda', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  // A campanha tem mensagens tradicionais salvas E o modo inteligente ligado:
+  // mesmo assim NENHUMA mensagem da sequência pode ser disparada depois da
+  // abordagem (a IA assume a conversa a partir da resposta do lead).
+  resetBoard(
+    [
+      { text: 'M1' },
+      { text: 'M2' },
+      { text: 'M3' },
+    ],
+    0,
+    l1,
+  )
+  store.campaigns.get('c1')!.ai_mode = 'intelligent'
+  store.campaigns.get('c1')!.ai_initial_message = 'Bom dia! É o número do João?'
+
+  const w = await newWorker()
+  await w.tick() // posição 0 -> abordagem única
+  assert.deepEqual(store.sent.map((m) => m.text), ['Bom dia! É o número do João?'])
+  assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'done', 'run conclui logo após a abordagem')
+  assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 1)
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado', 'lead liberado para a resposta da IA')
+
+  // Ticks seguintes: nenhuma M2/M3 da sequência pode sair.
+  makeDue(l1.id)
+  await runTicks(w, 3)
+  assert.deepEqual(store.sent.map((m) => m.text), ['Bom dia! É o número do João?'])
+})
+
+test('MI2) Modo Inteligente sem abordagem configurada = nenhum envio da sequência tradicional', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  resetBoard(2, 0, l1)
+  store.campaigns.get('c1')!.ai_mode = 'intelligent'
+  store.campaigns.get('c1')!.ai_initial_message = null
+
+  const w = await newWorker()
+  await w.tick()
+  assert.equal(store.sent.length, 0, 'sem abordagem definida, o modo inteligente não dispara nada')
 })

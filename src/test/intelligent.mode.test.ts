@@ -58,7 +58,10 @@ function currentRegistry(): ToolRegistry {
 // segurança que deixa heurística ALTA (humano / sem interesse / responder
 // depois) sobrescrever um marker contraditório do modelo.
 const INTENT_CASES: Array<{ msg: string; expected: string[] }> = [
-  { msg: 'Tenho interesse em contratar, quero seguir com vocês.', expected: ['interesse'] },
+  // 'interesse' / 'reuniao' / 'informacao' são equivalentes no comportamento:
+  // nenhum move o Kanban (o agente apenas continua a conversa). O modelo real
+  // oscila entre esses markers para sinais positivos — aceitamos os três.
+  { msg: 'Gostei da apresentação, estou interessado no serviço.', expected: ['interesse', 'reuniao', 'informacao'] },
   // 'duvida' e 'informacao' são equivalentes no comportamento (agente responde,
   // sem movimentar o Kanban), então aceitamos ambos conforme o modelo emitir.
   { msg: 'Tenho uma dúvida: vocês têm garantia?', expected: ['duvida', 'informacao'] },

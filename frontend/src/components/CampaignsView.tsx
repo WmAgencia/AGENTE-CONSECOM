@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Badge, Modal } from './ui'
 import { supabase, type Campaign, type CampaignPersona, type KbFolder, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
+import { SUPPORTED_VARIABLES, renderTemplate, unresolvedVariables } from '../lib/template'
 import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
 import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDateTime } from '../lib/month'
 import { subscribeConnectionAlerts } from '../lib/connectionAlerts'
@@ -723,8 +724,8 @@ const [seqOpen, setSeqOpen] = useState(false)
   const [kbId, setKbId] = useState(campaign.knowledge_base_id ?? '')
   const [closer, setCloser] = useState<{ name: string; phone: string; instructions: string }>({ name: '', phone: '', instructions: '' })
 const [approachOpen, setApproachOpen] = useState(false)
-  const [persona, setPersona] = useState<CampaignPersona>(campaign.ai_persona ?? { tone: 'consultivo', formality: 'neutro', verbosity: 'equilibrada', emojis: 'moderado', style: '' })
-  const [initialMessage, setInitialMessage] = useState(campaign.ai_initial_message ?? '')
+  const [persona] = useState<CampaignPersona>(campaign.ai_persona ?? { tone: 'consultivo', formality: 'neutro', verbosity: 'equilibrada', emojis: 'moderado', style: '' })
+  const [initialMessage] = useState(campaign.ai_initial_message ?? '')
 
   // Carrega o responsável da base selecionada (o dado vive na KB, não na campanha).
   useEffect(() => {
@@ -811,10 +812,15 @@ const [approachOpen, setApproachOpen] = useState(false)
       </div>
 
       <div className="px-4 py-3 flex flex-wrap gap-2">
-        <Button size="sm" variant="secondary" onClick={() => setSeqOpen(true)}>Montar sequência</Button>
+        {/* Modo inteligente: NÃO existe sequência — apenas a abordagem inicial.
+            Modo tradicional: montar sequência (comportamento existente intacto). */}
+        {intelligent ? (
+          <Button size="sm" variant="secondary" onClick={() => setApproachOpen(true)}>Configurar abordagem</Button>
+        ) : (
+          <Button size="sm" variant="secondary" onClick={() => setSeqOpen(true)}>Montar sequência</Button>
+        )}
         <Button size="sm" variant="secondary" onClick={onShowQueue}>Fila de leads</Button>
         <Button size="sm" variant="secondary" onClick={() => setKbOpen(true)}>Base de conhecimento</Button>
-        <Button size="sm" variant="secondary" onClick={() => setApproachOpen(true)}>Configurar abordagem</Button>
       </div>
 
       <div className="px-4 pb-3">
@@ -884,31 +890,128 @@ const [approachOpen, setApproachOpen] = useState(false)
         </div>
       </Modal>
 
-      <Modal open={approachOpen} onClose={() => setApproachOpen(false)} title="Configurar abordagem" subtitle={campaign.name}>
-        <div className="space-y-4">
-          {intelligent && (
-            <label className="block text-xs text-muted">
-              Mensagem de abordagem inicial
-              <textarea rows={3} maxLength={1000} value={initialMessage} onChange={(event) => setInitialMessage(event.target.value)} placeholder="Olá, {nome}! Posso te fazer uma pergunta rápida?" />
-              <span className="text-[11px] text-faint">Use {'{nome}'} para inserir o nome do lead automaticamente.</span>
-            </label>
-          )}
-          <div className="rounded-xl border border-line bg-panel/40 p-3 space-y-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Persona da IA</div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <label className="text-[11px] text-muted">Tom<select value={persona.tone} onChange={(event) => setPersona({ ...persona, tone: event.target.value as CampaignPersona['tone'] })}><option value="amigavel">Amigável</option><option value="consultivo">Consultivo</option><option value="direto">Direto</option><option value="premium">Premium</option></select></label>
-              <label className="text-[11px] text-muted">Formalidade<select value={persona.formality} onChange={(event) => setPersona({ ...persona, formality: event.target.value as CampaignPersona['formality'] })}><option value="informal">Informal</option><option value="neutro">Neutro</option><option value="formal">Formal</option></select></label>
-              <label className="text-[11px] text-muted">Tamanho das respostas<select value={persona.verbosity} onChange={(event) => setPersona({ ...persona, verbosity: event.target.value as CampaignPersona['verbosity'] })}><option value="curta">Curta</option><option value="equilibrada">Equilibrada</option><option value="detalhada">Detalhada</option></select></label>
-              <label className="text-[11px] text-muted">Emojis<select value={persona.emojis} onChange={(event) => setPersona({ ...persona, emojis: event.target.value as CampaignPersona['emojis'] })}><option value="nenhum">Nenhum</option><option value="moderado">Moderado</option><option value="livre">Livre</option></select></label>
-              <label className="text-[11px] text-muted sm:col-span-2">Estilo adicional<input value={persona.style} maxLength={240} onChange={(event) => setPersona({ ...persona, style: event.target.value })} placeholder="Ex.: faça perguntas curtas e use exemplos práticos" /></label>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setApproachOpen(false)}>Cancelar</Button>
-            <Button type="button" onClick={() => { if (intelligent) onSetAiMode('intelligent', initialMessage.trim() || null); else onSetAiMode('traditional', null); onSetPersona(persona); setApproachOpen(false) }}>Salvar abordagem</Button>
+      <Modal open={approachOpen} onClose={() => setApproachOpen(false)} title="Configurar abordagem" subtitle={campaign.name} size="lg">
+        <ApproachEditor
+          intelligent={intelligent}
+          initialMessage={initialMessage}
+          persona={persona}
+          onSave={({ message, persona: nextPersona }) => {
+            onSetAiMode(intelligent ? 'intelligent' : 'traditional', intelligent ? message.trim() || null : null)
+            onSetPersona(nextPersona)
+            setApproachOpen(false)
+          }}
+          onCancel={() => setApproachOpen(false)}
+        />
+      </Modal>
+    </div>
+  )
+}
+
+/**
+ * "Configurar abordagem" — a versão enxuta do editor de sequência usada no
+ * Modo Inteligente. Mantém a MESMA linguagem visual do "Montar sequência"
+ * (cabeçalhos de seção, textarea, inserção de variáveis e preview), porém com
+ * conteúdo simplificado: uma única mensagem de abordagem. Depois dela a IA
+ * assume a conversa — não existe sequência neste modo.
+ */
+function ApproachEditor({
+  intelligent,
+  initialMessage,
+  persona,
+  onSave,
+  onCancel,
+}: {
+  intelligent: boolean
+  initialMessage: string
+  persona: CampaignPersona
+  onSave: (value: { message: string; persona: CampaignPersona }) => void
+  onCancel: () => void
+}) {
+  const [text, setText] = useState(initialMessage)
+  const [localPersona, setLocalPersona] = useState<CampaignPersona>(persona)
+
+  const unresolved = unresolvedVariables(text)
+  const preview = renderTemplate(text)
+
+  function insertVariable(token: string) {
+    const value = `{${token}}`
+    if (text.includes(value)) return
+    setText(text ? `${text} ${value}` : value)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Abordagem inicial (a única mensagem do Modo Inteligente) */}
+      <div>
+        <div className="text-xs uppercase tracking-wide text-muted mb-2">
+          Abordagem inicial (1 mensagem)
+        </div>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={4}
+          maxLength={1000}
+          placeholder="Bom dia! É o número do João?"
+          className="w-full bg-field border border-line-2 rounded-xl px-3 py-2 text-sm outline-none focus:border-accent-500"
+        />
+        <p className="text-[11px] text-faint mt-1">
+          {intelligent
+            ? 'Esta é a única mensagem predefinida. Depois da resposta do lead, a IA assume a conversa.'
+            : 'Salvo apenas para quando o modo inteligente for ativado.'}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <div>
+          <div className="text-[11px] text-faint mb-1">Inserir variável</div>
+          <div className="flex flex-wrap gap-1.5">
+            {SUPPORTED_VARIABLES.map((v) => (
+              <button
+                key={v.token}
+                type="button"
+                onClick={() => insertVariable(v.token)}
+                title={v.description}
+                className="text-[11px] px-2 py-1 rounded-md border border-line-2 bg-subtle text-secondary hover:border-accent-500 hover:text-fg transition"
+              >
+                {'{' + v.token + '}'}
+              </button>
+            ))}
           </div>
         </div>
-      </Modal>
+        <div>
+          <div className="text-[11px] text-faint mb-1">
+            Preview (com dados de exemplo)
+          </div>
+          <div className="rounded-xl border border-line-2 bg-subtle-2 px-3 py-2 text-sm text-secondary whitespace-pre-wrap break-words">
+            {preview || <span className="text-slate-600">—</span>}
+          </div>
+          {unresolved.length > 0 && (
+            <p className="text-[11px] text-amber-400 mt-1">
+              Variáveis não reconhecidas (ficam literais no envio):{' '}
+              {unresolved.map((u) => `{${u}}`).join(', ')}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Persona da IA (configuração complementar) */}
+      <div className="rounded-xl border border-line-2 bg-subtle p-4 space-y-3">
+        <div className="text-xs uppercase tracking-wide text-muted">
+          Persona da IA
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-[11px] text-muted">Tom<select value={localPersona.tone} onChange={(event) => setLocalPersona({ ...localPersona, tone: event.target.value as CampaignPersona['tone'] })}><option value="amigavel">Amigável</option><option value="consultivo">Consultivo</option><option value="direto">Direto</option><option value="premium">Premium</option></select></label>
+          <label className="text-[11px] text-muted">Formalidade<select value={localPersona.formality} onChange={(event) => setLocalPersona({ ...localPersona, formality: event.target.value as CampaignPersona['formality'] })}><option value="informal">Informal</option><option value="neutro">Neutro</option><option value="formal">Formal</option></select></label>
+          <label className="text-[11px] text-muted">Tamanho das respostas<select value={localPersona.verbosity} onChange={(event) => setLocalPersona({ ...localPersona, verbosity: event.target.value as CampaignPersona['verbosity'] })}><option value="curta">Curta</option><option value="equilibrada">Equilibrada</option><option value="detalhada">Detalhada</option></select></label>
+          <label className="text-[11px] text-muted">Emojis<select value={localPersona.emojis} onChange={(event) => setLocalPersona({ ...localPersona, emojis: event.target.value as CampaignPersona['emojis'] })}><option value="nenhum">Nenhum</option><option value="moderado">Moderado</option><option value="livre">Livre</option></select></label>
+          <label className="text-[11px] text-muted sm:col-span-2">Estilo adicional<input value={localPersona.style} maxLength={240} onChange={(event) => setLocalPersona({ ...localPersona, style: event.target.value })} placeholder="Ex.: faça perguntas curtas e use exemplos práticos" /></label>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={onCancel}>Cancelar</Button>
+        <Button type="button" onClick={() => onSave({ message: text, persona: localPersona })}>Salvar abordagem</Button>
+      </div>
     </div>
   )
 }

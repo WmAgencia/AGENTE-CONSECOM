@@ -753,9 +753,13 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
       this.onConnectionBack(sendInstance);
     }
 
-    const position = run.current_position;
+const position = run.current_position;
     const aiMode = await this.getCampaignAiMode(run.campaign_id);
-    const intelligentInitial = aiMode.mode === 'intelligent' && position === 0 && aiMode.initialMessage
+    // Modo inteligente: a sequência tradicional NÃO existe. A única mensagem é
+    // a abordagem inicial (posição 0). Sem abordagem configurada, nada é
+    // enviado — a campanha NUNCA cai na sequência tradicional por fallback.
+    const intelligent = aiMode.mode === 'intelligent';
+    const intelligentInitial = intelligent && position === 0 && aiMode.initialMessage
       ? {
           id: `ai-initial-${run.campaign_id}`,
           campaign_id: run.campaign_id,
@@ -767,13 +771,13 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
           delay_seconds: 0,
         }
       : null;
-    const next = msgs[position] ?? intelligentInitial;
+    const next = intelligent ? intelligentInitial : (msgs[position] ?? null);
     if (!next) {
       await this.patchSendRun(run.id, { status: 'done', current_position: position });
       await this.updateLeadStatus(run.lead_id, 'enviado');
       log.info(
-        { runId: run.id, leadId: run.lead_id },
-        '[CAMPAIGN] run done — todas as mensagens da sequência enviadas',
+        { runId: run.id, leadId: run.lead_id, intelligent },
+        '[CAMPAIGN] run done — modo inteligente não possui sequência tradicional',
       );
       return;
     }
