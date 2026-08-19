@@ -6,7 +6,7 @@ import { Button } from './ui'
 const BACKEND = import.meta.env.VITE_BACKEND_URL as string | undefined
 const API = BACKEND ?? 'https://consecom-backend-production.up.railway.app'
 
-export const EXTENSION_VERSION = '1.22.0'
+export const EXTENSION_VERSION = '1.23.0'
 
 export function ExtensionView() {
   const [backendVersion, setBackendVersion] = useState<string | null>(null)
