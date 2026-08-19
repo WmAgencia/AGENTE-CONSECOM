@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Badge } from './ui'
-import { supabase, type Campaign, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
+import { supabase, type Campaign, type KbFolder, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
 import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDateTime } from '../lib/month'
@@ -56,6 +56,7 @@ export function CampaignsView() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [sessionUser, setSessionUser] = useState('')
+  const [knowledgeFolders, setKnowledgeFolders] = useState<KbFolder[]>([])
 
   useEffect(() => {
     campaignSchedule.getConfig().then((r) => setScheduleConfig(r.config)).catch(() => {})
@@ -90,6 +91,12 @@ export function CampaignsView() {
 
   useEffect(() => {
     load()
+  }, [])
+
+  useEffect(() => {
+    void supabase.from('kb_folders').select('*').order('name').then(({ data }) => {
+      setKnowledgeFolders((data ?? []) as KbFolder[])
+    })
   }, [])
 
   // atualização em tempo real da fila de envio
@@ -198,6 +205,12 @@ export function CampaignsView() {
     for (const p of positions) {
       await supabase.from('campaigns').update({ position: p.position }).eq('id', p.id)
     }
+  }
+
+  async function setCampaignKnowledgeBase(c: Campaign, knowledge_base_id: string | null) {
+    const { error } = await supabase.from('campaigns').update({ knowledge_base_id }).eq('id', c.id)
+    if (error) setLoadError(error.message)
+    else await load()
   }
 
 async function setCampaignAi(c: Campaign, enabled: boolean) {
@@ -368,7 +381,9 @@ async function fireCampaign(c: Campaign) {
                           runs={runsByCampaign[c.id] ?? []}
                           onChanged={load}
                           onSetConnections={(ids) => void setCampaignConnections(c, ids)}
-                          onSetAi={(enabled) => void setCampaignAi(c, enabled)}
+                           onSetAi={(enabled) => void setCampaignAi(c, enabled)}
+                           knowledgeFolders={knowledgeFolders}
+                           onSetKnowledgeBase={(id) => void setCampaignKnowledgeBase(c, id)}
                           onShowQueue={() => setQueueFor(c)}
                           onFire={() => void fireCampaign(c)}
                           onPause={() => void pauseCampaign(c)}
@@ -648,6 +663,8 @@ function CampaignCard({
   onCancelSchedule,
   onDelete,
   onSetAi,
+  knowledgeFolders,
+  onSetKnowledgeBase,
 }: {
   campaign: Campaign
   messages: QueueMessage[]
@@ -663,6 +680,8 @@ function CampaignCard({
   onCancelSchedule: () => void
   onDelete: () => void
   onSetAi: (enabled: boolean) => void
+  knowledgeFolders: KbFolder[]
+  onSetKnowledgeBase: (id: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
   const activeConnections = connections.filter((c) => c.status === 'connected')
@@ -713,6 +732,18 @@ function CampaignCard({
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300">{runActive} em fila</span>
         )}
       </div>
+
+      <label className="mb-3 block text-[11px] text-muted">
+        Base de conhecimento da campanha:
+        <select
+          className="mt-1 w-full text-xs"
+          value={campaign.knowledge_base_id ?? ''}
+          onChange={(event) => onSetKnowledgeBase(event.target.value || null)}
+        >
+          <option value="">Sem base vinculada</option>
+          {knowledgeFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+        </select>
+      </label>
 
       <div className="mb-3 space-y-2">
         <label className="text-[11px] text-muted block">Conexões WhatsApp (round-robin por lead):</label>

@@ -96,8 +96,29 @@ export interface Campaign {
   connection_ids?: string[] | null
   owner_user_id?: string | null
   ai_enabled?: boolean
+  knowledge_base_id?: string | null
   position?: number | null
   created_at: string
+}
+
+export interface KbFolder {
+  id: string
+  name: string
+  parent_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface KbFile {
+  id: string
+  name: string
+  kind: 'texto' | 'readme' | 'link' | 'documento' | 'video' | 'imagem' | 'audio' | 'youtube'
+  content: string | null
+  source_url: string | null
+  usage_count: number
+  folder_id: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface CaptureSession {

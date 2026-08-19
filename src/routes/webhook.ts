@@ -74,6 +74,11 @@ import {
   planInbound,
 } from '../services/intent.classifier.js';
 import { scoreInboundMessage } from '../services/scoring.js';
+import {
+  loadCampaignKnowledge,
+  buildKnowledgeContext,
+  incrementKbFileUsage,
+} from '../services/kb.service.js';
 import { blockIfSequenceActive, isLeadSequenceActive } from '../services/campaign.gate.js';
 import { InboundMessageDebouncer } from '../services/inbound.message.debouncer.js';
 import { parseFollowUpMarker, stripFollowUpMarker } from '../services/followup.parser.js';
@@ -573,6 +578,7 @@ if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
         directives: (await loadAgentDirectives()) ?? undefined,
         learnings: (await loadLearningsForPrompt()) ?? undefined,
         commercialMemory: (await loadCommercialMemoryForPrompt(memoryOwnerId)) ?? undefined,
+        knowledgeBase: await resolveCampaignKnowledge(campaignInfo?.campaignId),
         instance: msg.instance,
         leadContext,
         strategyDirective,
@@ -811,9 +817,27 @@ async function classifyInboundWithoutAi(leadId: string, text: string): Promise<v
   if (shouldActivateConversation(fresh?.status)) {
     const sequence = await loadLeadSequenceCompleteness(leadId).catch(() => null);
     if (sequence === null || isSequenceComplete(sequence)) {
-      await updateLeadStatus(leadId, 'conversando');
+await updateLeadStatus(leadId, 'conversando');
       log.info({ leadId }, '[AI][OFF] Lead movido para Conversando (sequência concluída)');
     }
+  }
+}
+
+/**
+ * Carrega e formata a Base de Conhecimento da campanha para o prompt do agente.
+ * Conta os usos (best-effort) e devolve undefined quando não há base.
+ */
+async function resolveCampaignKnowledge(campaignId: string | null | undefined): Promise<string | undefined> {
+  if (!campaignId) return undefined;
+  try {
+    const kb = await loadCampaignKnowledge(campaignId);
+    if (!kb || kb.files.length === 0) return undefined;
+    for (const file of kb.files) {
+      void incrementKbFileUsage(file.id).catch(() => {});
+    }
+    return buildKnowledgeContext(kb.files);
+  } catch {
+    return undefined;
   }
 }
 

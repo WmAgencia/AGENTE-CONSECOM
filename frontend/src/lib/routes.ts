@@ -20,6 +20,7 @@ export type Tab =
   | 'dashboard'
   | 'kanban'
   | 'campanhas'
+  | 'base-conhecimento'
   | 'agenda'
   | 'leads'
   | 'importados'
@@ -46,6 +47,7 @@ export const TAB_PATHS: Record<Tab, string> = {
   dashboard: '/dashboard',
   kanban: '/kanban',
   campanhas: '/campanhas',
+  'base-conhecimento': '/base-conhecimento',
   agenda: '/agenda',
   leads: '/leads',
   importados: '/importados',
@@ -65,6 +67,7 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: TAB_PATHS.dashboard },
   { key: 'kanban', label: 'Kanban', icon: SquareKanban, path: TAB_PATHS.kanban },
   { key: 'campanhas', label: 'Campanhas', icon: Megaphone, path: TAB_PATHS.campanhas },
+  { key: 'base-conhecimento', label: 'Base de Conhecimento', icon: ContactRound, path: TAB_PATHS['base-conhecimento'] },
   { key: 'agenda', label: 'Agenda', icon: CalendarDays, path: TAB_PATHS.agenda },
   { key: 'leads', label: 'Histórico de Leads', icon: Users, path: TAB_PATHS.leads },
   { key: 'importados', label: 'Importados', icon: Users, path: TAB_PATHS.importados },

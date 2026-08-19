@@ -7,6 +7,7 @@ import { LandingPage } from './components/LandingPage'
 import { Button } from './components/ui'
 import { KanbanBoard } from './components/KanbanBoard'
 import { CampaignsView } from './components/CampaignsView'
+import { KnowledgeBaseView } from './components/KnowledgeBaseView'
 import { LeadsView } from './components/LeadsView'
 import { ImportedLeadsView } from './components/ImportedLeadsView'
 import { DashboardView } from './components/DashboardView'
@@ -195,6 +196,7 @@ function Shell({ leads, activeLeads, importedLeads, campaigns, onMeeting, onClos
           <Route path="/prospeccao-manual" element={<ManualProspection />} />
           <Route path="/importados" element={<ImportedLeadsView leads={importedLeads} campaigns={campaigns} onChanged={onLeadsChanged} />} />
           <Route path="/campanhas" element={<CampaignsView />} />
+          <Route path="/base-conhecimento" element={<KnowledgeBaseView />} />
           <Route path="/agenda" element={<div className="h-full overflow-auto"><AgendaView /><div className="max-w-6xl mx-auto px-4 pb-6"><FollowUpsCalendarPanel /></div></div>} />
           <Route path="/dashboard" element={<DashboardView leads={leads} />} />
           <Route path="/agente" element={<AgentConfig />} />
