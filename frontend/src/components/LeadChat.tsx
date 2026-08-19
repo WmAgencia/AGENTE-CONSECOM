@@ -10,6 +10,8 @@ const STATUS_LABEL: Record<LeadStatus, string> = {
   novo: 'Novo',
   na_fila: 'Na fila',
   enviado: 'Enviado',
+  ia: 'IA',
+  necessita_humano: 'Necessita de humano',
   conversando: 'Conversando',
   sem_interesse: 'Sem interesse',
   remarketing: 'Remarketing',

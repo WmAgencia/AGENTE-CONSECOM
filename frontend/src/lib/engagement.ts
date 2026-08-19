@@ -90,6 +90,8 @@ const STATUS_INTEREST: Record<LeadStatus, number> = {
   novo: 20,
   na_fila: 20,
   enviado: 30,
+  ia: 60,
+  necessita_humano: 65,
   conversando: 55,
   remarketing: 45,
   sem_interesse: 10,
