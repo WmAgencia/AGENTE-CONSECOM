@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Badge, Modal } from './ui'
-import { supabase, type Campaign, type CampaignHandoff, type CampaignPersona, type KbFolder, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
+import { supabase, type Campaign, type CampaignPersona, type KbFolder, type QueueMessage, type SendRun, type WhatsAppConnection } from '../lib/supabase'
 import { SequenceEditor } from './SequenceEditor'
 import { campaignSchedule, type CampaignCalendarItem, type CampaignScheduleConfig } from '../lib/campaigns'
 import { buildMonthCells, monthTitle, addMonths, DAY_SHORT, saLocalDay, saLocalTime, humanDateTime } from '../lib/month'
@@ -219,13 +219,7 @@ export function CampaignsView() {
     else await load()
   }
 
-  async function setCampaignHandoff(c: Campaign, ai_handoff: CampaignHandoff) {
-    const { error } = await supabase.from('campaigns').update({ ai_handoff }).eq('id', c.id)
-    if (error) setLoadError(error.message)
-    else await load()
-  }
-
-  async function setCampaignAiMode(c: Campaign, ai_mode: 'traditional' | 'intelligent', ai_initial_message: string | null) {
+async function setCampaignAiMode(c: Campaign, ai_mode: 'traditional' | 'intelligent', ai_initial_message: string | null) {
     const { error } = await supabase.from('campaigns').update({ ai_mode, ai_initial_message }).eq('id', c.id)
     if (error) setLoadError(error.message)
     else await load()
@@ -402,8 +396,7 @@ async function fireCampaign(c: Campaign) {
                            onSetAi={(enabled) => void setCampaignAi(c, enabled)}
                            knowledgeFolders={knowledgeFolders}
                            onSetKnowledgeBase={(id) => void setCampaignKnowledgeBase(c, id)}
-                           onSetPersona={(persona) => void setCampaignPersona(c, persona)}
-                           onSetHandoff={(handoff) => void setCampaignHandoff(c, handoff)}
+onSetPersona={(persona) => void setCampaignPersona(c, persona)}
                            onSetAiMode={(mode, message) => void setCampaignAiMode(c, mode, message)}
                           onShowQueue={() => setQueueFor(c)}
                           onFire={() => void fireCampaign(c)}
@@ -703,8 +696,7 @@ function CampaignCard({
   onSetAi,
   knowledgeFolders,
   onSetKnowledgeBase,
-  onSetPersona,
-  onSetHandoff,
+onSetPersona,
   onSetAiMode,
 }: {
   campaign: Campaign
@@ -724,17 +716,41 @@ function CampaignCard({
   knowledgeFolders: KbFolder[]
   onSetKnowledgeBase: (id: string | null) => void
   onSetPersona: (persona: CampaignPersona) => void
-  onSetHandoff: (handoff: CampaignHandoff) => void
   onSetAiMode: (mode: 'traditional' | 'intelligent', message: string | null) => void
 }) {
 const [seqOpen, setSeqOpen] = useState(false)
   const [kbOpen, setKbOpen] = useState(false)
   const [kbId, setKbId] = useState(campaign.knowledge_base_id ?? '')
-  const [handoffOpen, setHandoffOpen] = useState(false)
-  const [handoff, setHandoff] = useState<CampaignHandoff>(campaign.ai_handoff ?? { name: '', phone: '', instructions: '' })
-  const [approachOpen, setApproachOpen] = useState(false)
+  const [closer, setCloser] = useState<{ name: string; phone: string; instructions: string }>({ name: '', phone: '', instructions: '' })
+const [approachOpen, setApproachOpen] = useState(false)
   const [persona, setPersona] = useState<CampaignPersona>(campaign.ai_persona ?? { tone: 'consultivo', formality: 'neutro', verbosity: 'equilibrada', emojis: 'moderado', style: '' })
   const [initialMessage, setInitialMessage] = useState(campaign.ai_initial_message ?? '')
+
+  // Carrega o responsável da base selecionada (o dado vive na KB, não na campanha).
+  useEffect(() => {
+    const folder = knowledgeFolders.find((f) => f.id === kbId)
+    setCloser({
+      name: folder?.closer_name ?? '',
+      phone: folder?.closer_phone ?? '',
+      instructions: folder?.closer_instructions ?? '',
+    })
+  }, [kbId, knowledgeFolders])
+
+  async function saveKnowledgeBase() {
+    const folder = knowledgeFolders.find((f) => f.id === kbId)
+    if (folder) {
+      await supabase
+        .from('kb_folders')
+        .update({
+          closer_name: closer.name.trim() || null,
+          closer_phone: closer.phone.trim() || null,
+          closer_instructions: closer.instructions.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', folder.id)
+    }
+    onSetKnowledgeBase(kbId || null)
+  }
   const activeConnections = connections.filter((c) => c.status === 'connected')
   const runActive = runs.filter((r) => r.status === 'pending' || r.status === 'running').length
   const intelligent = campaign.ai_mode === 'intelligent'
@@ -798,7 +814,6 @@ const [seqOpen, setSeqOpen] = useState(false)
         <Button size="sm" variant="secondary" onClick={() => setSeqOpen(true)}>Montar sequência</Button>
         <Button size="sm" variant="secondary" onClick={onShowQueue}>Fila de leads</Button>
         <Button size="sm" variant="secondary" onClick={() => setKbOpen(true)}>Base de conhecimento</Button>
-        <Button size="sm" variant="secondary" onClick={() => setHandoffOpen(true)}>Responsável</Button>
         <Button size="sm" variant="secondary" onClick={() => setApproachOpen(true)}>Configurar abordagem</Button>
       </div>
 
@@ -844,28 +859,27 @@ const [seqOpen, setSeqOpen] = useState(false)
 
       <Modal open={kbOpen} onClose={() => setKbOpen(false)} title="Base de conhecimento" subtitle={campaign.name}>
         <div className="space-y-4">
-          <p className="text-xs text-muted">A IA usa o conteúdo desta pasta como base para responder e qualificar os leads.</p>
-          <select value={kbId} onChange={(event) => setKbId(event.target.value)}>
-            <option value="">Sem base vinculada</option>
-            {knowledgeFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-          </select>
+          <p className="text-xs text-muted">A IA usa o conteúdo desta pasta como base para responder e qualificar os leads. O responsável configurado aqui é apresentado ao lead quando a conversa precisa de uma pessoa.</p>
+          <label className="block text-xs text-muted">
+            Base vinculada
+            <select value={kbId} onChange={(event) => setKbId(event.target.value)}>
+              <option value="">Sem base vinculada</option>
+              {knowledgeFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+            </select>
+          </label>
+          {kbId && (
+            <div className="space-y-3 rounded-xl border border-line bg-panel/40 p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Responsável pelo fechamento (da base)</div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs text-muted">Nome<input value={closer.name} maxLength={120} onChange={(event) => setCloser({ ...closer, name: event.target.value })} placeholder="Ex.: Wesley" /></label>
+                <label className="text-xs text-muted">Telefone<input value={closer.phone} maxLength={40} onChange={(event) => setCloser({ ...closer, phone: event.target.value })} placeholder="Ex.: +55..." /></label>
+              </div>
+              <label className="block text-xs text-muted">Instruções de encaminhamento<textarea rows={3} maxLength={300} value={closer.instructions} onChange={(event) => setCloser({ ...closer, instructions: event.target.value })} placeholder="Quando e como apresentar o responsável" /></label>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setKbOpen(false)}>Cancelar</Button>
-            <Button type="button" onClick={() => { onSetKnowledgeBase(kbId || null); setKbOpen(false) }}>Vincular</Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal open={handoffOpen} onClose={() => setHandoffOpen(false)} title="Responsável pelo fechamento" subtitle={campaign.name}>
-        <div className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="text-xs text-muted">Nome<input value={handoff.name} maxLength={120} onChange={(event) => setHandoff({ ...handoff, name: event.target.value })} placeholder="Ex.: Wesley" /></label>
-            <label className="text-xs text-muted">Telefone<input value={handoff.phone} maxLength={40} onChange={(event) => setHandoff({ ...handoff, phone: event.target.value })} placeholder="Ex.: +55..." /></label>
-          </div>
-          <label className="block text-xs text-muted">Instruções de encaminhamento<textarea rows={3} maxLength={300} value={handoff.instructions} onChange={(event) => setHandoff({ ...handoff, instructions: event.target.value })} placeholder="Quando e como apresentar o responsável" /></label>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setHandoffOpen(false)}>Cancelar</Button>
-            <Button type="button" onClick={() => { onSetHandoff(handoff); setHandoffOpen(false) }}>Salvar responsável</Button>
+            <Button type="button" onClick={() => { void saveKnowledgeBase(); setKbOpen(false) }}>Vincular</Button>
           </div>
         </div>
       </Modal>

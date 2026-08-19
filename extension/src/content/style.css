@@ -363,6 +363,48 @@
 }
 .cs-list::-webkit-scrollbar { width: 5px; }
 .cs-list::-webkit-scrollbar-thumb { background: var(--vy-line-strong); border-radius: 999px; }
+.cs-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 2px 0;
+}
+.cs-select-all .cs-btn {
+  padding: 4px 8px;
+  font-size: 10px;
+}
+.cs-import-errors {
+  border-top: 1px solid var(--vy-line-strong);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--vy-warn, #f59e0b) 8%, var(--vy-panel));
+}
+.cs-import-errors__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--vy-warn, #f59e0b);
+  margin-bottom: 6px;
+}
+.cs-import-errors__list {
+  max-height: 110px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cs-import-errors__row {
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--vy-ink-muted);
+  word-break: break-word;
+}
+.cs-import-errors__more {
+  opacity: 0.7;
+}
 
 /* Card de lead */
 .cs-card,

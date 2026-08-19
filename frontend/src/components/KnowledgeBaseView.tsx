@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Check,
   ChevronRight,
+  ClipboardPaste,
   Copy,
   ExternalLink,
   File,
@@ -18,6 +19,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Scissors,
   Search,
   SquarePlay,
   Trash2,
@@ -62,6 +64,19 @@ const KIND_LABEL: Record<Kind, string> = {
   imagem: 'Imagem',
   audio: 'Áudio',
   youtube: 'YouTube',
+}
+
+const MEDIA_KINDS: Kind[] = ['documento', 'audio', 'video', 'imagem']
+
+const CONTENT_PLACEHOLDER: Record<Kind, string> = {
+  texto: 'Cole aqui informações confirmadas sobre o produto, serviço, preços, objeções...',
+  readme: 'Conteúdo em Markdown...',
+  link: 'Anotações sobre o link (o que é, para que serve, quando usar)...',
+  youtube: 'Anotações sobre o vídeo (o que mostra, quando enviar)...',
+  documento: 'Descrição do documento (opcional)...',
+  audio: 'Transcrição ou resumo do áudio...',
+  video: 'Descrição do vídeo...',
+  imagem: 'Descrição da imagem...',
 }
 
 const README_PROMPT = `Crie um README comercial para esta Base de Conhecimento.
@@ -173,9 +188,29 @@ export function KnowledgeBaseView() {
   const [details, setDetails] = useState<KbFile | null>(null)
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [clipboard, setClipboard] = useState<{ mode: 'copy' | 'cut'; type: 'file' | 'folder'; id: string; name: string } | null>(null)
+  const [clipSource, setClipSource] = useState<{ type: 'file' | 'folder'; id: string; name: string } | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const dragRef = useRef<{ type: 'file' | 'folder'; id: string } | null>(null)
   const cancelledRef = useRef<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const noticeTimerRef = useRef(0)
+  const clipboardRef = useRef(clipboard)
+  clipboardRef.current = clipboard
+  const clipSourceRef = useRef(clipSource)
+  clipSourceRef.current = clipSource
+  const currentFolderRef = useRef(currentFolder)
+  currentFolderRef.current = currentFolder
+  const foldersRef = useRef(folders)
+  foldersRef.current = folders
+  const filesRef = useRef(files)
+  filesRef.current = files
+
+  function flashNotice(message: string) {
+    setNotice(message)
+    window.clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 2500)
+  }
 
   async function load() {
     setLoading(true)
@@ -389,6 +424,112 @@ export function KnowledgeBaseView() {
     await load()
   }
 
+  function copyItem(type: 'file' | 'folder', id: string, name: string) {
+    setClipSource({ type, id, name })
+    setClipboard({ mode: 'copy', type, id, name })
+    flashNotice(`Copiado: ${name} — pressione Ctrl+V para colar.`)
+  }
+
+  function cutItem(type: 'file' | 'folder', id: string, name: string) {
+    setClipSource({ type, id, name })
+    setClipboard({ mode: 'cut', type, id, name })
+    flashNotice(`Recortado: ${name} — pressione Ctrl+V para colar.`)
+  }
+
+  function clearClipboard() {
+    setClipboard(null)
+  }
+
+  async function duplicateFolderRecursive(
+    sourceId: string,
+    parentId: string | null,
+    foldersNow: KbFolder[],
+    filesNow: KbFile[],
+  ): Promise<void> {
+    const folder = foldersNow.find((f) => f.id === sourceId)
+    if (!folder) return
+    const { data: inserted, error } = await supabase.from('kb_folders').insert({ name: `${folder.name} (cópia)`, parent_id: parentId }).select('id')
+    if (error || !inserted?.[0]) return
+    const newId = inserted[0].id
+    for (const child of foldersNow.filter((f) => f.parent_id === sourceId)) {
+      await duplicateFolderRecursive(child.id, newId, foldersNow, filesNow)
+    }
+    for (const file of filesNow.filter((f) => f.folder_id === sourceId)) {
+      await supabase.from('kb_files').insert({ name: file.name, kind: file.kind, content: file.content, source_url: file.source_url, folder_id: newId })
+    }
+  }
+
+  async function pasteClipboard() {
+    const clip = clipboardRef.current
+    if (!clip) return
+    setClipboard(null)
+    const targetFolder = currentFolderRef.current
+    const foldersNow = foldersRef.current
+    const filesNow = filesRef.current
+    const descOf = (folderId: string): Set<string> => {
+      const result = new Set<string>()
+      const walk = (id: string) => {
+        for (const folder of foldersNow) {
+          if (folder.parent_id === id && !result.has(folder.id)) {
+            result.add(folder.id)
+            walk(folder.id)
+          }
+        }
+      }
+      walk(folderId)
+      return result
+    }
+    try {
+      if (clip.mode === 'cut') {
+        if (clip.type === 'folder') {
+          if (targetFolder === clip.id || descOf(clip.id).has(targetFolder ?? '')) {
+            setError('Não é possível mover uma pasta para dentro dela mesma.')
+            return
+          }
+          await supabase.from('kb_folders').update({ parent_id: targetFolder, updated_at: new Date().toISOString() }).eq('id', clip.id)
+        } else {
+          await supabase.from('kb_files').update({ folder_id: targetFolder, updated_at: new Date().toISOString() }).eq('id', clip.id)
+        }
+        flashNotice(`Movido: ${clip.name}`)
+      } else {
+        if (clip.type === 'file') {
+          const file = filesNow.find((f) => f.id === clip.id)
+          if (file) {
+            await supabase.from('kb_files').insert({ name: `${file.name} (cópia)`, kind: file.kind, content: file.content, source_url: file.source_url, folder_id: targetFolder })
+          }
+        } else {
+          await duplicateFolderRecursive(clip.id, targetFolder, foldersNow, filesNow)
+        }
+        flashNotice(`Duplicado: ${clip.name}`)
+      }
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível colar.')
+    }
+  }
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+      if (!(event.ctrlKey || event.metaKey)) return
+      const key = event.key.toLowerCase()
+      const src = clipSourceRef.current
+      if (key === 'c' && src) {
+        setClipboard({ mode: 'copy', ...src })
+        flashNotice(`Copiado: ${src.name}`)
+      } else if (key === 'x' && src) {
+        setClipboard({ mode: 'cut', ...src })
+        flashNotice(`Recortado: ${src.name}`)
+      } else if (key === 'v' && clipboardRef.current) {
+        event.preventDefault()
+        void pasteClipboard()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   async function uploadEditorFile(file: File) {
     if (!editor) return
     setEditor({ ...editor, uploading: true, uploadError: null })
@@ -450,8 +591,18 @@ export function KnowledgeBaseView() {
   async function copyReadmePrompt() {
     setMenu(null)
     await navigator.clipboard.writeText(README_PROMPT)
-    setError('Prompt de README copiado para a área de transferência.')
-    window.setTimeout(() => setError(null), 2500)
+    flashNotice('Prompt de README copiado para a área de transferência.')
+  }
+
+  function handleEditorPaste(event: React.ClipboardEvent) {
+    if (!editor || !MEDIA_KINDS.includes(editor.kind)) return
+    const items = Array.from(event.clipboardData?.items ?? [])
+    const imageItem = items.find((item) => item.type.startsWith('image/'))
+    const file = imageItem?.getAsFile()
+    if (file) {
+      event.preventDefault()
+      void uploadEditorFile(file)
+    }
   }
 
   function openContextMenu(event: React.MouseEvent, target: Menu) {
@@ -459,6 +610,9 @@ export function KnowledgeBaseView() {
     event.stopPropagation()
     setNewMenu(false)
     setMenu(target)
+    // Registra o item do clique para os atalhos Ctrl+C / Ctrl+X.
+    if (target.type === 'folder') setClipSource({ type: 'folder', id: target.folder.id, name: target.folder.name })
+    else if (target.type === 'file') setClipSource({ type: 'file', id: target.file.id, name: target.file.name })
   }
 
   const canDropFolder = (folderId: string): boolean => {
@@ -505,6 +659,25 @@ export function KnowledgeBaseView() {
             </div>
           </div>
         </div>
+
+        {notice && (
+          <div className="rounded-xl bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-300">{notice}</div>
+        )}
+        {clipboard && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent-500/30 bg-accent-500/10 px-4 py-2.5 text-sm">
+            <span className="flex items-center gap-2 text-accent-200">
+              {clipboard.mode === 'cut' ? <Scissors size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
+              <span className="truncate">
+                <strong className="text-fg">{clipboard.name}</strong>
+                {clipboard.mode === 'cut' ? ' — Ctrl+V move para a pasta atual' : ' — Ctrl+V duplica na pasta atual'}
+              </span>
+            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={() => void pasteClipboard()}>Colar aqui</Button>
+              <button type="button" onClick={clearClipboard} className="rounded p-1 text-muted hover:text-fg" title="Cancelar cópia/recorte">✕</button>
+            </div>
+          </div>
+        )}
 
         <div className="rounded-2xl border border-line bg-panel">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
@@ -636,6 +809,8 @@ export function KnowledgeBaseView() {
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => { setCurrentFolder(menu.folder.id); setSearch(''); setMenu(null) }}><Folder size={14} />Abrir</button>
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => { setRenameItem({ type: 'folder', id: menu.folder.id, name: menu.folder.name }); setRenameName(menu.folder.name); setMenu(null) }}><Pencil size={14} />Renomear</button>
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => { setMoveItem({ type: 'folder', id: menu.folder.id, name: menu.folder.name, parent: menu.folder.parent_id }); setMoveTarget(menu.folder.parent_id ?? ''); setMenu(null) }}><FolderPlus size={14} />Mover</button>
+              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => { copyItem('folder', menu.folder.id, menu.folder.name); setMenu(null) }}><Copy size={14} />Copiar</button>
+              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => { cutItem('folder', menu.folder.id, menu.folder.name); setMenu(null) }}><Scissors size={14} />Recortar</button>
               <div className="my-1 border-t border-line" />
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-300 hover:bg-rose-500/10" onClick={() => void deleteFolder(menu.folder)}><Trash2 size={14} />Excluir</button>
             </>
@@ -648,12 +823,14 @@ export function KnowledgeBaseView() {
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => { setRenameItem({ type: 'file', id: menu.file.id, name: menu.file.name }); setRenameName(menu.file.name); setMenu(null) }}><Pencil size={14} />Renomear</button>
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => { setMoveItem({ type: 'file', id: menu.file.id, name: menu.file.name, parent: menu.file.folder_id }); setMoveTarget(menu.file.folder_id ?? ''); setMenu(null) }}><FolderPlus size={14} />Mover</button>
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => void duplicateFile(menu.file)}><Copy size={14} />Duplicar</button>
+              <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => { cutItem('file', menu.file.id, menu.file.name); setMenu(null) }}><Scissors size={14} />Recortar</button>
               <div className="my-1 border-t border-line" />
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-300 hover:bg-rose-500/10" onClick={() => void deleteFile(menu.file)}><Trash2 size={14} />Excluir</button>
             </>
           )}
           {menu.type === 'empty' && (
             <>
+              {clipboard && <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-accent-300 hover:bg-subtle" onClick={() => { setMenu(null); void pasteClipboard() }}><ClipboardPaste size={14} />Colar aqui</button>}
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => setNewFolderOpen(true)}><FolderPlus size={14} />Nova pasta</button>
               {NEW_MENU.map((item) => <button key={item.kind} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-subtle" onClick={() => openNewFile(item.kind)}>{item.icon}Novo {item.label}</button>)}
               <div className="my-1 border-t border-line" />
@@ -678,27 +855,30 @@ export function KnowledgeBaseView() {
       </Modal>
 
       <Modal open={!!editor} onClose={() => setEditor(null)} title={editor?.file ? 'Editar arquivo' : 'Novo arquivo'} size="lg">
-        {editor && <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void saveFile() }}>
+        {editor && <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void saveFile() }} onPaste={handleEditorPaste}>
+          <label className="block text-xs text-muted">
+            <span className="mb-1 block font-semibold text-fg">Nome (visível na base)</span>
+            <input autoFocus className="text-base" value={editor.name} onChange={(event) => setEditor({ ...editor, name: event.target.value })} placeholder="Ex.: Preços de implantação" />
+          </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-muted">Nome<input value={editor.name} onChange={(event) => setEditor({ ...editor, name: event.target.value })} /></label>
             <label className="text-xs text-muted">Tipo<select value={editor.kind} onChange={(event) => setEditor({ ...editor, kind: event.target.value as Kind })}>
               {Object.entries(KIND_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select></label>
+            {(editor.kind === 'link' || editor.kind === 'youtube') && <label className="text-xs text-muted">URL<input value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." /></label>}
+            {MEDIA_KINDS.includes(editor.kind) && <label className="text-xs text-muted">Arquivo ou link manual<input value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." /></label>}
           </div>
           {editor.kind === 'readme' && <label className="block text-xs text-muted">Descrição<textarea rows={2} value={editor.description} onChange={(event) => setEditor({ ...editor, description: event.target.value })} placeholder="Resumo curto do que este README contém (aparece no card e como contexto para a IA)." /></label>}
-          {(editor.kind === 'link' || editor.kind === 'youtube') && <label className="text-xs text-muted">URL<input value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." /></label>}
-          {(editor.kind === 'documento' || editor.kind === 'audio' || editor.kind === 'video' || editor.kind === 'imagem') && (
+          {MEDIA_KINDS.includes(editor.kind) && (
             <div className="space-y-2">
-              <label className="text-xs text-muted">Arquivo ou link</label>
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" variant="secondary" size="sm" icon={<Upload size={14} />} disabled={editor.uploading} onClick={() => { if (fileInputRef.current) { fileInputRef.current.multiple = false; fileInputRef.current.onchange = (event) => { const target = event.target as HTMLInputElement; if (target.files?.[0]) void uploadEditorFile(target.files[0]); target.value = '' } ; fileInputRef.current.click() } }}>{editor.uploading ? 'Enviando...' : 'Enviar arquivo'}</Button>
-                <input value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." className="min-w-0 flex-1" />
+                <span className="text-[11px] text-faint">ou cole uma imagem com Ctrl+V</span>
               </div>
               {editor.uploading && <p className="text-xs text-muted">Enviando arquivo...</p>}
               {editor.uploadError && <p className="text-xs text-rose-300">{editor.uploadError}</p>}
             </div>
           )}
-          <label className="block text-xs text-muted">{editor.kind === 'readme' ? 'Conteúdo (Markdown)' : 'Conteúdo'}<textarea rows={14} value={editor.content} onChange={(event) => setEditor({ ...editor, content: event.target.value })} placeholder="Cole aqui informações confirmadas sobre o produto, serviço, preços, objeções..." /></label>
+          <label className="block text-xs text-muted">{editor.kind === 'readme' ? 'Conteúdo (Markdown)' : 'Conteúdo'}<textarea rows={14} value={editor.content} onChange={(event) => setEditor({ ...editor, content: event.target.value })} placeholder={CONTENT_PLACEHOLDER[editor.kind]} /></label>
           <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditor(null)}>Cancelar</Button><Button type="submit" icon={<Check size={14} />}>Salvar</Button></div>
         </form>}
       </Modal>

@@ -65,12 +65,6 @@ export class MapsScanner {
       this.toggleBalloon(false)
     })
 
-    chrome.runtime.onMessage.addListener((msg) => {
-      if (msg?.type === 'consecom:open' || msg?.type === 'consecom:ping') {
-        this.toggleBalloon(true)
-      }
-    })
-
     // reajusta posição/size quando a viewport mudar
     window.addEventListener('resize', () => {
       if (this.balloon?.classList.contains('open')) this.clampElement(this.balloon)
@@ -1125,6 +1119,11 @@ export class MapsScanner {
     else this.ensureLauncher()
   }
 
+  /** API pública usada pelo listener central (popup "Abrir nesta página"). */
+  openPanel(): void {
+    this.toggleBalloon(true)
+  }
+
   /**
    * Mantém um elemento fixo totalmente dentro da viewport com margem mínima.
    * Se estiver em posição inválida (ex: após resize), reposiciona para a
@@ -1256,7 +1255,7 @@ export class MapsScanner {
     )
   }
 
-  private async doImport(btn: HTMLButtonElement): Promise<void> {
+private async doImport(btn: HTMLButtonElement): Promise<void> {
     this.cfg = this.cfg ?? (await getStoredConfig())
     if (!this.cfg || !this.cfg.extensionKey || !this.cfg.ownerUserId) {
       alert('Baixe novamente a extensão no painel Vyntra para vincular à sua conta.')
@@ -1266,7 +1265,6 @@ export class MapsScanner {
     const leads = this.found
       .filter((f) => !this.used.has(f.key) && this.selected.has(f.key))
       .map((f) => f.lead)
-      .slice(0, 50)
     if (leads.length === 0) {
       alert('Nenhuma empresa nova selecionada para importar.')
       return
@@ -1274,34 +1272,38 @@ export class MapsScanner {
 
     const prev = btn.innerHTML
     btn.disabled = true
-    btn.textContent = 'Importando…'
+    let totalOk = 0
+    let totalFailed = 0
+    let batch = 0
+    let firstError: string | undefined
+    const totalBatches = Math.ceil(leads.length / 50)
     try {
-      let done = 0
-      const res = await importLeads(this.cfg, leads, (d, total) => {
-        done = d
-        btn.textContent = `${d}/${total}…`
-      })
-      console.log('[IMPORT] Resultado completo:', {
-        ok: res.ok,
-        failed: res.failed,
-        firstError: res.firstError,
-        errors: res.errors,
-      })
-      btn.textContent = res.failed === 0 ? '✓' : `${res.ok} ok, ${res.failed} falharam`
+      for (let i = 0; i < leads.length; i += 50) {
+        batch++
+        const chunk = leads.slice(i, i + 50)
+        btn.textContent = `Lote ${batch}/${totalBatches} · ${totalOk} ok`
+        const res = await importLeads(this.cfg, chunk, (d, total) => {
+          btn.textContent = `Lote ${batch}/${totalBatches} · ${d}/${total}…`
+        })
+        totalOk += res.ok
+        totalFailed += res.failed
+        if (res.failed > 0 && res.firstError && !firstError) firstError = res.firstError
+      }
+      console.log('[IMPORT] Resultado completo:', { ok: totalOk, failed: totalFailed, firstError })
+      btn.textContent = totalFailed === 0 ? '✓' : `${totalOk} ok, ${totalFailed} falharam`
 
-      if (res.failed === 0) {
-        showToast(res.ok > 0 ? `✅ ${res.ok} lead(s) importado(s)!` : 'Nenhum lead novo para importar.')
+      if (totalFailed === 0) {
+        showToast(totalOk > 0 ? `✅ ${totalOk} lead(s) importado(s)!` : 'Nenhum lead novo para importar.')
         this.selected.clear()
       } else {
-        showToast(`⚠️ ${res.ok} ok, ${res.failed} falharam${res.firstError ? `: ${res.firstError}` : ''}`, 'warn')
+        showToast(`⚠️ ${totalOk} importado(s), ${totalFailed} com erro${firstError ? `: ${firstError}` : ''}`, 'warn')
       }
       void this.checkUsed()
       this.syncAll()
       setTimeout(() => {
         btn.innerHTML = prev
         btn.disabled = false
-      }, 2000)
-      void done
+      }, 3000)
     } catch (err) {
       btn.textContent = `Erro: ${err}`
       setTimeout(() => {
@@ -1408,10 +1410,26 @@ export class MapsScanner {
   }
 }
 
+export interface VyntraScanner {
+  init(): Promise<void>
+  openPanel(): void
+}
+
+// Estado de runtime do scanner ativo (uma instância por documento).
+let scanner: VyntraScanner | null = null
+let bootFailed = false
+let queuedOpen = false
+let listenerRegistered = false
+
 const start = () => {
   // Guard contra injeção duplicada (ex.: manifest + injeção dinâmica do
   // background após instalar/recarregar a extensão com o Maps já aberto).
-  if (document.documentElement.dataset.vyntraContent === '1') return
+  if (document.documentElement.dataset.vyntraContent === '1') {
+    if (!bootFailed) return
+    // Boot falhou numa tentativa anterior → permite nova injeção
+    // (auto-recuperação após reload/SW restart/instalação).
+    delete document.documentElement.dataset.vyntraContent
+  }
   document.documentElement.dataset.vyntraContent = '1'
 
   const host = window.location.hostname
@@ -1428,26 +1446,57 @@ const start = () => {
   // Site fora da lista → não injeta nada (a extensão fica invisível).
   if (!isMaps && !isAllowedAdapter()) return
 
-  if (typeof document !== 'undefined') {
-    import('./welcome').then(({ detectWelcomeSite, showWelcome }) => {
+  // Listener registrado de forma SÍNCRONA no carregamento: o ping do
+  // background responde imediatamente — não depende do init assíncrono.
+  if (!listenerRegistered) {
+    listenerRegistered = true
+    chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      if (msg?.type === 'consecom:ping') {
+        sendResponse({ ok: !bootFailed })
+        return
+      }
+      if (msg?.type === 'consecom:open') {
+        if (scanner) scanner.openPanel()
+        else queuedOpen = true
+      }
+    })
+  }
+
+  // Welcome (uma vez por sessão) — nunca bloqueia a UI.
+  import('./welcome')
+    .then(({ detectWelcomeSite, showWelcome }) => {
       const site = detectWelcomeSite(host, href)
       if (site && site !== 'global') showWelcome(site)
     })
-  }
-  void import('../shared/leads').then(async ({ getExtensionSites }) => {
-    const sites = await getExtensionSites()
-    if (isMaps) {
-      // Google Maps desligado no Master → extensão não opera aqui.
-      if (sites.maps === false) return
-      const scanner = new MapsScanner()
-      void scanner.init()
-    } else {
-      import('./global').then(({ GlobalScanner }) => {
-        const scanner = new GlobalScanner()
-        void scanner.init()
-      })
+    .catch(() => undefined)
+
+  bootFailed = false
+  const boot = async () => {
+    try {
+      const { getExtensionSites } = await import('../shared/leads')
+      if (isMaps) {
+        // Google Maps desligado no Master → extensão não opera aqui.
+        const sites = await getExtensionSites()
+        if (sites.maps === false) return
+        scanner = new MapsScanner()
+        await scanner.init()
+      } else {
+        const { GlobalScanner } = await import('./global')
+        scanner = new GlobalScanner()
+        await scanner.init()
+      }
+      if (queuedOpen && scanner) {
+        queuedOpen = false
+        scanner.openPanel()
+      }
+    } catch (err) {
+      console.error('[vyntra] boot falhou — nova tentativa será permitida:', err)
+      bootFailed = true
+      scanner = null
+      delete document.documentElement.dataset.vyntraContent
     }
-  })
+  }
+  void boot()
 }
 
 if (typeof window !== 'undefined') start()

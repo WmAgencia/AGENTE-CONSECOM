@@ -177,7 +177,14 @@ export function ManualProspection() {
         setUrlError(typeof msg === 'string' ? msg : 'Não foi possível prospectar a URL.')
         return
       }
-      setPreview((data as { contacts?: UrlContact[] }).contacts ?? [])
+      setPreview(
+        ((data as { contacts?: UrlContact[] }).contacts ?? []).map((c) => ({
+          ...c,
+          // Leads encontrados já vêm selecionados por padrão (a menos que o
+          // backend marque explicitamente selected:false).
+          selected: c.selected !== false,
+        })),
+      )
       setPreviewTitle((data as { title?: string }).title ?? '')
       setPreviewUrl((data as { url?: string }).url ?? trimmed)
     } catch (e) {

@@ -43,6 +43,8 @@ export interface ToolCallContext {
   deadlineMs: number;
   /** Evolution instance name (when known) used to resolve per-user config. */
   instance?: string;
+  /** Telefone E.164 do lead que está conversando (para envio de mídia da KB). */
+  leadPhone?: string;
   /**
    * Recent conversation turns (older first, up to the current inbound message).
    * Tools that mutate commercial state (marcar_reuniao, finalizar_sem_interesse)

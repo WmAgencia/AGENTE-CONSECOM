@@ -121,6 +121,8 @@ interface RunAgentLoopInput {
   commercialMemory?: string;
   /** Evolution instance name (when known) passed to tools for per-user config. */
   instance?: string;
+  /** Telefone E.164 do lead que está conversando (para envio de mídia da KB). */
+  leadPhone?: string;
   /** Contexto do lead (nome/nicho/telefone) para personalizar a resposta. */
   leadContext?: string;
   /** Estratégia de abordagem vinculada ao lead (estilo a seguir). */
@@ -584,6 +586,7 @@ export async function runAgentLoop(
           source,
           deadlineMs: Date.now() + env.AGENT_TOOL_TIMEOUT_MS,
           instance: input.instance,
+          leadPhone: input.leadPhone,
           history: toolCallHistory(messageLog),
         };
 
@@ -697,6 +700,7 @@ export async function runAgentLoop(
         source,
         deadlineMs: Date.now() + env.AGENT_TOOL_TIMEOUT_MS,
         instance: input.instance,
+        leadPhone: input.leadPhone,
         history: toolCallHistory(messageLog),
       };
 

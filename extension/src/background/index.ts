@@ -10,6 +10,24 @@ import contentScriptUrl from '../content/index?script&iife'
 // nascer vinculada à conta do usuário — sem interface de token.
 void seedAutoConfig()
 
+// Settle do navigation preload sem alterar o fluxo padrão de resposta.
+// Sem um handler de fetch, o Chrome dispara navigation preload para as
+// páginas da extensão (ex.: popup) e abandona a promise do preloadResponse —
+// o que gera o warning "service worker navigation preload request was
+// cancelled before preload response". Não chamamos respondWith(): o navegador
+// mantém o comportamento padrão, apenas a promise é aguardada/tratada.
+// Tipo estrutural mínimo (SW globals com @types/chrome não expõem FetchEvent).
+type FetchEvt = Event & {
+  preloadResponse?: Promise<Response>
+  waitUntil(p: Promise<unknown>): void
+}
+self.addEventListener('fetch', (event) => {
+  const fetchEvent = event as unknown as FetchEvt
+  if (fetchEvent.preloadResponse) {
+    fetchEvent.waitUntil(fetchEvent.preloadResponse.catch(() => undefined))
+  }
+})
+
 const API_BASE = 'https://consecom-backend-production.up.railway.app'
 
 const MAPS_HOST_RE = /(^|\.)maps\.google\.(com|[a-z]{2,3}(\.\w{1,2})?)$/
@@ -41,14 +59,16 @@ function isProspectableUrl(url: string): boolean {
 
 /**
  * Garante que o content script esteja rodando na aba. Se a aba é do Google
- * Maps (ou site de adaptador) e ainda não há um scanner, injeta dinamicamente
- * o content script compilado (mesmo arquivo declarado no manifest).
+ * Maps (ou site de adaptador) e ainda não há um scanner ativo, injeta
+ * dinamicamente o content script compilado (mesmo arquivo declarado no
+ * manifest). O ping responde `{ok:false}` quando o scanner falhou ao iniciar,
+ * permitindo nova injeção (auto-recuperação após SW restart/instalação).
  */
 async function ensureInjected(tabId: number, url: string | undefined): Promise<boolean> {
   if (!url || !isProspectableUrl(url)) return false
   try {
-    await chrome.tabs.sendMessage(tabId, { type: 'consecom:ping' })
-    return true
+    const res = await chrome.tabs.sendMessage(tabId, { type: 'consecom:ping' })
+    if (res?.ok === true) return true
   } catch {
     /* não injetado ainda — injeta abaixo */
   }

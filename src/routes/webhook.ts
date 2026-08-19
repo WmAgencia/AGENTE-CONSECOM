@@ -570,6 +570,7 @@ if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
               connection_phone: connection.phone_number,
             }
           : undefined;
+const campaignKnowledge = await resolveCampaignKnowledge(campaignInfo?.campaignId);
       const agentResult = await runAgentLoop({
         task: msg.text,
         conversationId,
@@ -578,10 +579,13 @@ if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
         directives: (await loadAgentDirectives()) ?? undefined,
         learnings: (await loadLearningsForPrompt()) ?? undefined,
         commercialMemory: (await loadCommercialMemoryForPrompt(memoryOwnerId)) ?? undefined,
-        knowledgeBase: await resolveCampaignKnowledge(campaignInfo?.campaignId),
+        // O handoff da campanha (legado/override) tem prioridade; caso contrário
+        // a IA herda o "Responsável pelo fechamento" configurado na base.
+        knowledgeBase: campaignKnowledge?.context,
         campaignPersona: campaignInfo?.campaignPersona ?? undefined,
-        campaignHandoff: campaignInfo?.campaignHandoff ?? undefined,
+        campaignHandoff: campaignInfo?.campaignHandoff ?? campaignKnowledge?.closer ?? undefined,
         instance: msg.instance,
+        leadPhone: fromJid.split('@')[0],
         leadContext,
         strategyDirective,
         connectionIdentity,
@@ -833,17 +837,27 @@ await updateLeadStatus(leadId, 'conversando');
  * Carrega e formata a Base de Conhecimento da campanha para o prompt do agente.
  * Conta os usos (best-effort) e devolve undefined quando não há base.
  */
-async function resolveCampaignKnowledge(campaignId: string | null | undefined): Promise<string | undefined> {
-  if (!campaignId) return undefined;
+async function resolveCampaignKnowledge(campaignId: string | null | undefined): Promise<{ context: string | undefined; closer: CampaignHandoff | null } | null> {
+  if (!campaignId) return null;
   try {
     const kb = await loadCampaignKnowledge(campaignId);
-    if (!kb || kb.files.length === 0) return undefined;
+    if (!kb) return null;
     for (const file of kb.files) {
       void incrementKbFileUsage(file.id).catch(() => {});
     }
-    return buildKnowledgeContext(kb.files);
+    const hasCloser = kb.closer.name || kb.closer.phone || kb.closer.instructions;
+    return {
+      context: kb.files.length === 0 ? undefined : buildKnowledgeContext(kb.files),
+      closer: hasCloser
+        ? {
+            name: kb.closer.name ?? '',
+            phone: kb.closer.phone ?? '',
+            instructions: kb.closer.instructions ?? '',
+          }
+        : null,
+    };
   } catch {
-    return undefined;
+    return null;
   }
 }
 

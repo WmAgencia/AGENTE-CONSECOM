@@ -71,6 +71,10 @@ export class GlobalScanner {
   private filterBtns: HTMLButtonElement[] = []
   private activeFilters = new Set<string>()
   private accountEl: HTMLElement | null = null
+  private selectAllEl: HTMLElement | null = null
+  private importBtnEl: HTMLButtonElement | null = null
+  private importErrorsEl: HTMLElement | null = null
+  private importErrors: Array<{ batch: number; message: string }> = []
 
   async init(): Promise<void> {
     this.cfg = await getStoredConfig()
@@ -96,12 +100,6 @@ export class GlobalScanner {
       if (this.balloon.contains(e.target as Node)) return
       if (this.floatBtn?.contains(e.target as Node)) return
       this.toggleBalloon(false)
-    })
-
-    chrome.runtime.onMessage.addListener((msg) => {
-      if (msg?.type === 'consecom:open' || msg?.type === 'consecom:ping') {
-        this.toggleBalloon(true)
-      }
     })
 
     this.ensureLauncher()
@@ -169,14 +167,18 @@ export class GlobalScanner {
     // Mantém seleção de leads que continuam existindo; preserva nomes editados.
     const prev = new Map(this.contacts.map((c) => [c.key, c]))
     this.contacts = []
+    const newKeys: string[] = []
     for (const c of next) {
       const p = prev.get(c.key)
       if (p && p.name && !this.isDefaultName(p.name)) c.name = p.name
       this.contacts.push(c)
+      // Leads novos (não vistos antes) já vêm selecionados por padrão.
+      if (!p && !this.imported.has(c.key)) newKeys.push(c.key)
     }
     this.selected = new Set(
       Array.from(this.selected).filter((k) => this.contacts.some((c) => c.key === k)),
     )
+    for (const k of newKeys) this.selected.add(k)
     if (this.locEl) this.locEl.textContent = `${this.contacts.length} contato(s) encontrado(s)`
     if (this.balloon?.classList.contains('open')) this.renderList()
     else this.updateCounts()
@@ -328,6 +330,11 @@ export class GlobalScanner {
     } else this.ensureLauncher()
   }
 
+  /** API pública usada pelo listener central (popup "Abrir nesta página"). */
+  openPanel(): void {
+    this.toggleBalloon(true)
+  }
+
   private ensureBalloon(): void {
     if (this.balloon && document.body.contains(this.balloon)) {
       const pos = this.readPosition()
@@ -449,10 +456,25 @@ export class GlobalScanner {
     // Área de leads com scroll
     const leads = document.createElement('div')
     leads.className = 'cs-leads'
+    const selectAll = document.createElement('div')
+    selectAll.className = 'cs-select-all'
+    selectAll.style.display = 'none'
+    this.selectAllEl = selectAll
+    const selBtn = document.createElement('button')
+    selBtn.type = 'button'
+    selBtn.className = 'cs-btn'
+    selBtn.textContent = 'Selecionar todos'
+    selBtn.addEventListener('click', () => this.selectAll())
+    const unselBtn = document.createElement('button')
+    unselBtn.type = 'button'
+    unselBtn.className = 'cs-btn'
+    unselBtn.textContent = 'Desmarcar todos'
+    unselBtn.addEventListener('click', () => this.deselectAll())
+    selectAll.append(selBtn, unselBtn)
     const list = document.createElement('div')
     list.className = 'cs-list'
     this.listEl = list
-    leads.append(list)
+    leads.append(selectAll, list)
 
     // Mini-card CONTA (toggle)
     const account = this.buildAccountCard()
@@ -496,11 +518,60 @@ export class GlobalScanner {
     importBtn.className = 'cs-btn cs-btn--primary'
     importBtn.textContent = 'IMPORTAR LEADS'
     importBtn.addEventListener('click', () => void this.doImport(importBtn))
+    this.importBtnEl = importBtn
     row2.append(excludeBtn, importBtn)
     footer.append(row1, row2)
 
-    balloon.append(header, body, footer)
+    // Painel de erros da importação (mostrado ao terminar com falhas).
+    const importErrors = document.createElement('div')
+    importErrors.className = 'cs-import-errors'
+    importErrors.style.display = 'none'
+    this.importErrorsEl = importErrors
+
+    balloon.append(header, body, footer, importErrors)
     return balloon
+  }
+
+  /** Exibe o resumo + lista de erros da importação dentro do painel. */
+  private renderImportErrors(): void {
+    const el = this.importErrorsEl
+    if (!el) return
+    if (this.importErrors.length === 0) {
+      el.style.display = 'none'
+      return
+    }
+    const totalFailed = this.importErrors.reduce((acc, e) => acc + 1, 0)
+    el.innerHTML = ''
+    const head = document.createElement('div')
+    head.className = 'cs-import-errors__head'
+    const title = document.createElement('span')
+    title.textContent = `⚠️ ${totalFailed} lote(s) com erro na importação`
+    const close = document.createElement('button')
+    close.type = 'button'
+    close.className = 'cs-btn'
+    close.textContent = 'OK'
+    close.addEventListener('click', () => {
+      this.importErrors = []
+      el.style.display = 'none'
+    })
+    head.append(title, close)
+    el.append(head)
+    const list = document.createElement('div')
+    list.className = 'cs-import-errors__list'
+    for (const item of this.importErrors.slice(0, 20)) {
+      const row = document.createElement('div')
+      row.className = 'cs-import-errors__row'
+      row.textContent = `Lote ${item.batch}: ${item.message}`
+      list.append(row)
+    }
+    if (this.importErrors.length > 20) {
+      const more = document.createElement('div')
+      more.className = 'cs-import-errors__row cs-import-errors__more'
+      more.textContent = `+${this.importErrors.length - 20} outro(s)`
+      list.append(more)
+    }
+    el.append(list)
+    el.style.display = 'block'
   }
 
   /** Constrói o mini-card CONTA (mostrado/oculto pelo botão Conta). */
@@ -635,6 +706,9 @@ export class GlobalScanner {
   private renderList(): void {
     if (!this.listEl) return
     this.updateCounts()
+    if (this.selectAllEl) {
+      this.selectAllEl.style.display = this.contacts.length > 0 ? 'flex' : 'none'
+    }
     if (this.contacts.length === 0) {
       this.listEl.innerHTML = ''
       const empty = document.createElement('div')
@@ -732,6 +806,12 @@ export class GlobalScanner {
         `<b>${this.contacts.length}</b> encontrados · <b>${this.selected.size}</b> selecionados` +
         (imp > 0 ? ` · <b>${imp}</b> importados` : '')
     }
+    // Botão de importação reflete a seleção (contagem + desabilitado com 0).
+    if (this.importBtnEl) {
+      const n = this.selected.size
+      this.importBtnEl.disabled = n === 0
+      this.importBtnEl.textContent = n > 0 ? `IMPORTAR ${n} LEAD${n === 1 ? '' : 'S'}` : 'IMPORTAR LEADS'
+    }
   }
 
   /** Busca o saldo de leads do plano e atualiza o badge do painel. */
@@ -764,55 +844,83 @@ export class GlobalScanner {
       showToast('Seu plano de leads está esgotado. Renove/assine um plano no painel Vyntra.', 'warn')
       return
     }
-    const selectedContacts = this.contacts
-      .filter((c) => this.selected.has(c.key) && !this.imported.has(c.key))
-    const leads: ScrapedLead[] = selectedContacts
-      .map((c) => this.contactToLead(c))
-      .slice(0, 50)
+    const selectedContacts = this.contacts.filter((c) => this.selected.has(c.key) && !this.imported.has(c.key))
+    const leads: ScrapedLead[] = selectedContacts.map((c) => this.contactToLead(c))
     if (leads.length === 0) {
-      showToast('Selecione ao menos um contato para importar.', 'warn')
+      showToast(
+        this.selected.size > 0
+          ? 'Os contatos selecionados já foram importados anteriormente.'
+          : 'Selecione ao menos um contato para importar.',
+        'warn',
+      )
       return
     }
 
     this.importing = true
+    this.importErrors = []
     const prev = btn.innerHTML
     btn.disabled = true
+    let totalOk = 0
+    let totalFailed = 0
+    let batch = 0
+    let planExhausted = false
+    const totalBatches = Math.ceil(leads.length / 50)
     try {
-      let done = 0
-      const res = await importLeads(
-        this.cfg,
-        leads,
-        (d, total) => {
-          done = d
-          btn.textContent = `${d}/${total}…`
-        },
-        this.importOptions(),
-      )
-      for (const c of selectedContacts.slice(0, 50)) this.imported.add(c.key)
-      btn.textContent = res.failed === 0 ? '✓' : `${res.ok} ok, ${res.failed} falharam`
+      for (let i = 0; i < leads.length; i += 50) {
+        batch++
+        const chunk = leads.slice(i, i + 50)
+        btn.textContent = `Lote ${batch}/${totalBatches} · ${totalOk} ok`
+        this.selected = new Set(selectedContacts.slice(i, i + 50).map((c) => c.key))
+        this.renderList()
+        const res = await importLeads(
+          this.cfg,
+          chunk,
+          (d, t) => {
+            btn.textContent = `Lote ${batch}/${totalBatches} · ${d}/${t}…`
+          },
+          this.importOptions(),
+        )
+        totalOk += res.ok
+        totalFailed += res.failed
+        if (res.failed > 0 && res.firstError) {
+          this.importErrors.push({ batch, message: res.firstError })
+        }
+        for (const c of selectedContacts.slice(i, i + 50)) this.imported.add(c.key)
+        this.selected.clear()
+        this.renderList()
+        if (res.quotaCut && res.quotaCut > 0) {
+          planExhausted = true
+          showToast(`⚠️ Plano atingiu o limite: ${res.quotaCut} lead(s) não importados. Renove/assine um plano.`, 'warn')
+          break
+        }
+      }
       await this.refreshQuota()
-      if (res.quotaCut && res.quotaCut > 0) {
-        showToast(`⚠️ Plano atingiu o limite: ${res.quotaCut} lead(s) não importados. Renove/assine um plano.`, 'warn')
-      } else if (res.failed === 0) {
-        showToast(res.ok > 0 ? `✅ ${res.ok} lead(s) importado(s)!` : 'Nenhum lead novo para importar.')
+      btn.textContent = planExhausted ? `Parado · ${totalOk} ok` : totalFailed === 0 ? '✓' : `${totalOk} ok, ${totalFailed} falharam`
+      if (planExhausted) {
+        showToast(`⏹ Importação interrompida pelo limite do plano. ${totalOk} lead(s) importado(s).`, 'warn')
+      } else if (totalFailed === 0) {
+        showToast(totalOk > 0 ? `✅ ${totalOk} lead(s) importado(s)!` : 'Nenhum lead novo para importar.')
         this.selected.clear()
       } else {
-        showToast(`⚠️ ${res.ok} ok, ${res.failed} falharam${res.firstError ? `: ${res.firstError}` : ''}`, 'warn')
+        showToast(`⚠️ ${totalOk} importado(s), ${totalFailed} com erro.`, 'warn')
       }
+      this.renderImportErrors()
       this.renderList()
       setTimeout(() => {
         btn.innerHTML = prev
         btn.disabled = false
       }, 3000)
-      void done
     } catch (err) {
       btn.textContent = `Erro: ${err}`
+      showToast(`Erro ao importar: ${err}`, 'warn')
       setTimeout(() => {
         btn.innerHTML = prev
         btn.disabled = false
       }, 3000)
     } finally {
       this.importing = false
+      this.selected.clear()
+      this.renderList()
     }
   }
 
@@ -953,6 +1061,22 @@ export class GlobalScanner {
       rating: null,
       el: null,
     })
+    // Contatos encontrados na prospecção já vêm selecionados por padrão.
+    if (!this.imported.has(wc.key)) this.selected.add(wc.key)
+  }
+
+  /** Seleciona todos os contatos não importados. */
+  private selectAll(): void {
+    for (const c of this.contacts) {
+      if (!this.imported.has(c.key)) this.selected.add(c.key)
+    }
+    this.renderList()
+  }
+
+  /** Desmarca todos os contatos. */
+  private deselectAll(): void {
+    this.selected.clear()
+    this.renderList()
   }
 
   /** Limite máximo de contatos por adaptador. */

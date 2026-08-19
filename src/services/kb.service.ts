@@ -11,6 +11,16 @@ export interface KbFolderRow {
   id: string;
   name: string;
   parent_id: string | null;
+  closer_name: string | null;
+  closer_phone: string | null;
+  closer_instructions: string | null;
+}
+
+/** Responsável pelo fechamento configurado na base (herdado pela campanha). */
+export interface KbCloser {
+  name: string | null;
+  phone: string | null;
+  instructions: string | null;
 }
 
 export interface KbFileRow {
@@ -47,6 +57,35 @@ async function fetchKbFolder(cfg: { url: string; serviceRoleKey: string }, folde
   return rows[0] ?? null;
 }
 
+/**
+ * Lê o "Responsável pelo fechamento" da base (colunas closer_*). Retorna null
+ * quando a coluna ainda não existe no banco (migration pendente) — o contexto
+ * da KB continua funcionando sem o responsável.
+ */
+async function fetchKbCloser(cfg: { url: string; serviceRoleKey: string }, folderId: string): Promise<KbCloser | null> {
+  try {
+    const r = await fetch(
+      `${cfg.url}/rest/v1/kb_folders?select=closer_name,closer_phone,closer_instructions&id=eq.${encodeURIComponent(folderId)}&limit=1`,
+      { headers: KB_API_HEADERS(cfg) },
+    );
+    if (!r.ok) return null;
+    const rows = (await r.json()) as Array<{
+      closer_name: string | null;
+      closer_phone: string | null;
+      closer_instructions: string | null;
+    }>;
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      name: row.closer_name ?? null,
+      phone: row.closer_phone ?? null,
+      instructions: row.closer_instructions ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchKbChildrenFolders(cfg: { url: string; serviceRoleKey: string }, parentId: string | null): Promise<KbFolderRow[]> {
   const filter = parentId
     ? `parent_id=eq.${encodeURIComponent(parentId)}`
@@ -77,7 +116,7 @@ async function fetchKbFilesInFolder(cfg: { url: string; serviceRoleKey: string }
  */
 export async function loadCampaignKnowledge(
   campaignId: string | null | undefined,
-): Promise<{ rootId: string; files: KnowledgeFile[] } | null> {
+): Promise<{ rootId: string; files: KnowledgeFile[]; closer: KbCloser } | null> {
   const cfg = getSupabaseProspeccaoConfig();
   if (!cfg.url || !cfg.serviceRoleKey || !campaignId) return null;
 
@@ -127,7 +166,12 @@ export async function loadCampaignKnowledge(
   }
   await walk(rootId, root.name);
 
-  return { rootId, files };
+  const closer = await fetchKbCloser(cfg, rootId);
+  return {
+    rootId,
+    files,
+    closer: closer ?? { name: null, phone: null, instructions: null },
+  };
 }
 
 /**

@@ -26,6 +26,7 @@ import { createConsultarDisponibilidadeTool } from './consultar.disponibilidade.
 import { createNotifyAdminGroupTool } from './notify.admin.js';
 import { createFinalizeProspectingTool } from './finalizar.sem.interesse.js';
 import { createRegistrarInsightTool } from './registrar.insight.js';
+import { createSendMediaTool } from './send.media.js';
 import { getEnv } from '../config/env.js';
 
 let buildCalled = false;
@@ -69,6 +70,7 @@ export function buildDefaultRegistry(): ToolRegistry {
   const notifyAdminGroup = createNotifyAdminGroupTool();
   const finalizeProspecting = createFinalizeProspectingTool();
   const registrarInsight = createRegistrarInsightTool();
+  const sendMediaTool = createSendMediaTool();
 
   const all = [
     { name: fileRead.definition.name, tool: fileRead },
@@ -79,6 +81,7 @@ export function buildDefaultRegistry(): ToolRegistry {
     { name: notifyAdminGroup.definition.name, tool: notifyAdminGroup },
     { name: finalizeProspecting.definition.name, tool: finalizeProspecting },
     { name: registrarInsight.definition.name, tool: registrarInsight },
+    { name: sendMediaTool.definition.name, tool: sendMediaTool },
   ];
 
   for (const { name, tool } of all) {

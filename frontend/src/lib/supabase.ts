@@ -123,6 +123,9 @@ export interface KbFolder {
   id: string
   name: string
   parent_id: string | null
+  closer_name: string | null
+  closer_phone: string | null
+  closer_instructions: string | null
   created_at: string
   updated_at: string
 }
