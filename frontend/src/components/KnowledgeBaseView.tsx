@@ -41,6 +41,7 @@ type EditorState = {
   name: string
   kind: Kind
   description: string
+  whenToUse: string
   content: string
   source_url: string
   uploading: boolean
@@ -79,28 +80,83 @@ const CONTENT_PLACEHOLDER: Record<Kind, string> = {
   imagem: 'Descrição da imagem...',
 }
 
-const README_PROMPT = `Crie um README comercial para esta Base de Conhecimento.
+const README_PROMPT = `Você será meu entrevistador para construir uma Base de Conhecimento completa para uma inteligência artificial comercial.
 
-Organize o conteúdo em Markdown com estas seções:
-1. O que é o produto/serviço
-2. Para quem é
-3. Principais benefícios
-4. Funcionalidades e limitações
-5. Preços, prazos e condições confirmadas
-6. Perguntas frequentes e objeções
-7. Exemplos de abordagem comercial
-8. Quando encaminhar para uma pessoa
+SUA FUNÇÃO NESTA CONVERSA NÃO É GERAR O README IMEDIATAMENTE.
 
-Use somente informações fornecidas. Quando algo não estiver confirmado, marque como [CONFIRMAR]. Não invente preços, garantias, prazos ou funcionalidades.`
+Primeiro, você deverá me entrevistar detalhadamente para compreender completamente minha empresa, produto, serviço, público, processo comercial, posicionamento, comunicação, preços, regras, objeções, diferenciais, limitações, materiais disponíveis e comportamento esperado da IA.
+
+REGRAS DA ENTREVISTA
+- Faça todas as perguntas necessárias para eliminar lacunas de informação.
+- Não tenha pressa para gerar o documento.
+- Faça perguntas complementares sempre que minha resposta for vaga, incompleta ou gerar alguma dúvida.
+- Se uma resposta abrir uma nova questão importante, aprofunde antes de seguir. Exemplo: se eu disser "temos um sistema", não pule para a próxima pergunta — pergunte o que exatamente esse sistema faz, depois quais partes dele são mais utilizadas, depois se existe alguma limitação ou problema que os clientes costumam mencionar, e assim por diante.
+- Organize a entrevista em blocos para não ficar confusa: Empresa, Produto/Serviço, Público-alvo, Processo comercial, Comunicação, Preços, Objeções, Materiais, Encaminhamento humano, Regras e limitações, Cenários especiais e Revisão final.
+
+A ENTREVISTA DEVE INVESTIGAR, NO MÍNIMO:
+
+1) EMPRESA
+Nome; o que a empresa faz; história; posicionamento; região de atuação; público; diferenciais; concorrentes; como deseja ser percebida.
+
+2) PRODUTO/SERVIÇO
+O que é; como funciona; para quem serve; problemas que resolve; benefícios; funcionalidades; limitações; o que está incluso; o que não está incluso.
+
+3) PÚBLICO-ALVO
+Nicho; perfil do cliente; características; dores; necessidades; desejos; objeções; nível de conhecimento sobre o problema; situação atual.
+
+4) PROCESSO COMERCIAL
+Como iniciar uma conversa; objetivo da abordagem; como qualificar; perguntas importantes; como apresentar o produto; quando mostrar materiais; quando enviar áudio; quando enviar vídeo; quando enviar links; quando falar preço; como lidar com objeções; quando marcar reunião; quando encaminhar para humano; quando encerrar.
+
+5) COMUNICAÇÃO
+Persona da IA; nome que deve utilizar; tom de voz; formalidade; vocabulário; expressões que pode utilizar; expressões proibidas; uso de emojis; tamanho ideal das mensagens; como adaptar a linguagem ao cliente.
+
+6) PREÇOS
+Preço padrão; condições de pagamento; descontos autorizados; limite de negociação; o que a IA pode negociar; o que somente um humano pode negociar; informações que nunca podem ser reveladas.
+
+7) OBJEÇÕES
+Pergunte quais são as principais objeções e como devem ser tratadas. Exemplos: está caro; já tenho sistema; não tenho interesse; vou pensar; me manda depois; preciso falar com alguém; quero desconto; quero conhecer antes; não confio; tenho outra solução.
+
+8) ENCAMINHAMENTO HUMANO
+Quem é o responsável; quando encaminhar; como comunicar ao lead; o que a IA deve fazer depois do encaminhamento; o que NÃO deve fazer depois do encaminhamento.
+
+9) CONHECIMENTO E MATERIAIS
+Pergunte sobre: PDFs, documentos, vídeos, áudios, links, páginas, apresentações, demonstrações, FAQs e materiais comerciais. E principalmente QUANDO cada material deve ser utilizado. Exemplo: "Este vídeo só deve ser enviado depois que o lead demonstrar interesse." Isso é extremamente importante.
+
+10) CENÁRIOS ESPECIAIS
+Pergunte sobre situações específicas que a IA pode enfrentar: cliente indevido, pedido de desconto, comparação com concorrente, urgência, cancelamento de reunião, cliente que some no meio da conversa, atendimento fora do horário comercial, etc.
+
+AO FINALIZAR A ENTREVISTA
+Revise todas as respostas; identifique possíveis contradições; identifique informações faltantes; faça perguntas adicionais se necessário. SOMENTE depois gere o README.
+
+O README FINAL DEVE SER:
+- estruturado; extremamente claro; detalhado; sem informações inventadas; sem assumir informações que não foram fornecidas; organizado por categorias; pronto para ser utilizado como Base de Conhecimento de uma IA comercial.
+
+O README DEVE CONTER, ALÉM DAS SEÇÕES DE CONTEÚDO, AS SEÇÕES OBRIGATÓRIAS:
+- FLUXO DE CONVERSA: descreva passo a passo: abordagem → resposta → classificação → apresentação → descoberta → qualificação → valor → materiais → objeções → preço → intenção → encaminhamento/encerramento.
+- REGRAS DE DECISÃO: regras objetivas que a IA deve seguir para decidir cada passo do fluxo.
+- QUANDO USAR CADA MATERIAL: para cada material, o momento exato de utilizá-lo na conversa.
+- QUANDO NÃO USAR CADA MATERIAL: situações em que o material NÃO deve ser enviado.
+- INFORMAÇÕES QUE A IA NÃO PODE INVENTAR: preços, prazos, garantias, condições e qualquer informação não confirmada — a IA deve marcar como [CONFIRMAR] e nunca inventar.
+- QUANDO ENCAMINHAR PARA HUMANO: condições exatas de encaminhamento, como comunicar ao lead e o que a IA deve fazer (e não fazer) depois do encaminhamento.
+
+O resultado final deve ser um README OPERACIONAL, não apenas uma descrição da empresa.`
 
 const README_DESC_MARKER = '## Descrição'
 const README_BODY_MARKER = '## Conteúdo'
+const MEDIA_DESC_MARKER = '## Descrição'
+const MEDIA_USE_MARKER = '## Quando utilizar'
+
+/** Estilos consistentes dos campos do editor (referência visual Google Drive). */
+const FIELD = 'w-full rounded-xl border border-line-2 bg-field px-3 py-2.5 text-sm text-fg placeholder:text-faint outline-none transition-all duration-200 hover:border-line-strong focus:border-accent-500 focus:shadow-glow'
+const FIELD_LABEL = 'mb-1.5 block text-xs font-semibold text-secondary'
+const NAME_FIELD = 'w-full rounded-xl border-2 border-line-strong bg-field px-3.5 py-3 text-base font-medium text-fg placeholder:text-faint outline-none transition-all duration-200 hover:border-accent-500/60 focus:border-accent-500 focus:shadow-glow'
 
 const EMPTY_EDITOR: EditorState = {
   file: null,
   name: '',
   kind: 'texto',
   description: '',
+  whenToUse: '',
   content: '',
   source_url: '',
   uploading: false,
@@ -118,15 +174,15 @@ const NEW_MENU: Array<{ kind: Kind; label: string; icon: ReactNode }> = [
   { kind: 'youtube', label: 'YouTube', icon: <SquarePlay size={14} /> },
 ]
 
-function fileIcon(kind: Kind) {
-  if (kind === 'link') return <LinkIcon size={22} className="text-sky-300" />
-  if (kind === 'youtube') return <SquarePlay size={22} className="text-rose-300" />
-  if (kind === 'readme') return <FileText size={22} className="text-amber-300" />
-  if (kind === 'documento') return <File size={22} className="text-indigo-300" />
-  if (kind === 'audio') return <Mic size={22} className="text-emerald-300" />
-  if (kind === 'video') return <Film size={22} className="text-fuchsia-300" />
-  if (kind === 'imagem') return <Image size={22} className="text-lime-300" />
-  return <FileText size={22} className="text-accent-300" />
+function fileIcon(kind: Kind, size = 22) {
+  if (kind === 'link') return <LinkIcon size={size} className="text-sky-300" />
+  if (kind === 'youtube') return <SquarePlay size={size} className="text-rose-300" />
+  if (kind === 'readme') return <FileText size={size} className="text-amber-300" />
+  if (kind === 'documento') return <File size={size} className="text-indigo-300" />
+  if (kind === 'audio') return <Mic size={size} className="text-emerald-300" />
+  if (kind === 'video') return <Film size={size} className="text-fuchsia-300" />
+  if (kind === 'imagem') return <Image size={size} className="text-lime-300" />
+  return <FileText size={size} className="text-accent-300" />
 }
 
 function buildReadmeContent(description: string, content: string): string {
@@ -145,8 +201,44 @@ function parseReadmeContent(content: string): { description: string; body: strin
   return { description: desc, body }
 }
 
+function parseStructuredContent(kind: Kind, content: string): { description: string; whenToUse: string; body: string } {
+  if (!content) return { description: '', whenToUse: '', body: '' }
+  if (kind === 'readme') {
+    const parsed = parseReadmeContent(content)
+    return { description: parsed.description, whenToUse: '', body: parsed.body }
+  }
+  if (kind === 'audio' || kind === 'video' || kind === 'youtube') {
+    const descIdx = content.indexOf(MEDIA_DESC_MARKER)
+    const useIdx = content.indexOf(MEDIA_USE_MARKER)
+    if (descIdx < 0 && useIdx < 0) {
+      return { description: content.trim(), whenToUse: '', body: '' }
+    }
+    const description = descIdx >= 0
+      ? content.slice(descIdx + MEDIA_DESC_MARKER.length, useIdx >= 0 ? useIdx : undefined).trim()
+      : ''
+    const whenToUse = useIdx >= 0 ? content.slice(useIdx + MEDIA_USE_MARKER.length).trim() : ''
+    return { description, whenToUse, body: '' }
+  }
+  return { description: content.trim(), whenToUse: '', body: content.trim() }
+}
+
+function buildStructuredContent(kind: Kind, editor: Pick<EditorState, 'description' | 'whenToUse' | 'content'>): string | null {
+  if (kind === 'readme') return buildReadmeContent(editor.description, editor.content)
+  if (kind === 'audio' || kind === 'video' || kind === 'youtube') {
+    const parts: string[] = []
+    if (editor.description.trim()) parts.push(`${MEDIA_DESC_MARKER}\n${editor.description.trim()}`)
+    if (editor.whenToUse.trim()) parts.push(`${MEDIA_USE_MARKER}\n${editor.whenToUse.trim()}`)
+    return parts.join('\n\n')
+  }
+  return editor.content || null
+}
+
 function shortDesc(file: KbFile): string {
   if (file.kind === 'readme') return parseReadmeContent(file.content ?? '').description || 'README'
+  if (file.kind === 'audio' || file.kind === 'video' || file.kind === 'youtube') {
+    const parsed = parseStructuredContent(file.kind, file.content ?? '')
+    return parsed.description || file.source_url || KIND_LABEL[file.kind]
+  }
   if (file.content) return file.content.replace(/[#>*_`\-]/g, '').trim().slice(0, 90)
   if (file.source_url) return file.source_url
   return KIND_LABEL[file.kind]
@@ -317,12 +409,13 @@ export function KnowledgeBaseView() {
   }
 
   function openFile(file: KbFile) {
-    const parsed = file.kind === 'readme' ? parseReadmeContent(file.content ?? '') : { description: '', body: file.content ?? '' }
+    const parsed = parseStructuredContent(file.kind, file.content ?? '')
     setEditor({
       file,
       name: file.name,
       kind: file.kind,
       description: parsed.description,
+      whenToUse: parsed.whenToUse,
       content: parsed.body,
       source_url: file.source_url ?? '',
       uploading: false,
@@ -332,9 +425,7 @@ export function KnowledgeBaseView() {
 
   async function saveFile() {
     if (!editor || !editor.name.trim()) return
-    const content = editor.kind === 'readme'
-      ? buildReadmeContent(editor.description, editor.content) || null
-      : editor.content || null
+    const content = buildStructuredContent(editor.kind, editor)
     const payload = {
       name: editor.name.trim(),
       kind: editor.kind,
@@ -854,32 +945,80 @@ export function KnowledgeBaseView() {
         </form>
       </Modal>
 
-      <Modal open={!!editor} onClose={() => setEditor(null)} title={editor?.file ? 'Editar arquivo' : 'Novo arquivo'} size="lg">
-        {editor && <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void saveFile() }} onPaste={handleEditorPaste}>
-          <label className="block text-xs text-muted">
-            <span className="mb-1 block font-semibold text-fg">Nome (visível na base)</span>
-            <input autoFocus className="text-base" value={editor.name} onChange={(event) => setEditor({ ...editor, name: event.target.value })} placeholder="Ex.: Preços de implantação" />
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-muted">Tipo<select value={editor.kind} onChange={(event) => setEditor({ ...editor, kind: event.target.value as Kind })}>
-              {Object.entries(KIND_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select></label>
-            {(editor.kind === 'link' || editor.kind === 'youtube') && <label className="text-xs text-muted">URL<input value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." /></label>}
-            {MEDIA_KINDS.includes(editor.kind) && <label className="text-xs text-muted">Arquivo ou link manual<input value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." /></label>}
+      <Modal open={!!editor} onClose={() => setEditor(null)} title={editor?.file ? 'Editar arquivo' : 'Novo arquivo'} subtitle={editor ? `Tipo: ${KIND_LABEL[editor.kind]}` : undefined} size="lg">
+        {editor && <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void saveFile() }} onPaste={handleEditorPaste}>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-fg">Nome</label>
+            <input autoFocus className={NAME_FIELD} value={editor.name} onChange={(event) => setEditor({ ...editor, name: event.target.value })} placeholder="Ex.: Preços de implantação" />
+            <span className="mt-1.5 block text-[11px] text-faint">Nome do arquivo, exibido na base e usado pela IA como referência.</span>
           </div>
-          {editor.kind === 'readme' && <label className="block text-xs text-muted">Descrição<textarea rows={2} value={editor.description} onChange={(event) => setEditor({ ...editor, description: event.target.value })} placeholder="Resumo curto do que este README contém (aparece no card e como contexto para a IA)." /></label>}
+
+          {editor.kind === 'readme' && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-300/30 bg-amber-300/5 px-3 py-2.5">
+              <Button type="button" variant="secondary" size="sm" icon={<Copy size={14} />} onClick={() => void copyReadmePrompt()}>Copiar prompt para criar README</Button>
+              <span className="text-[11px] text-faint">Cole o prompt no ChatGPT: ele entrevista você e gera o README completo.</span>
+            </div>
+          )}
+
+          {(editor.kind === 'link' || editor.kind === 'youtube') && (
+            <div>
+              <label className={FIELD_LABEL}>{editor.kind === 'youtube' ? 'URL do YouTube' : 'URL'}</label>
+              <input className={FIELD} value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." />
+              <span className="mt-1.5 block text-[11px] text-faint">{editor.kind === 'youtube' ? 'Cole o endereço do vídeo que a IA deve enviar.' : 'Endereço que a IA deve enviar na conversa.'}</span>
+            </div>
+          )}
+
           {MEDIA_KINDS.includes(editor.kind) && (
-            <div className="space-y-2">
+            <div className="space-y-3 rounded-xl border border-line bg-subtle p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" variant="secondary" size="sm" icon={<Upload size={14} />} disabled={editor.uploading} onClick={() => { if (fileInputRef.current) { fileInputRef.current.multiple = false; fileInputRef.current.onchange = (event) => { const target = event.target as HTMLInputElement; if (target.files?.[0]) void uploadEditorFile(target.files[0]); target.value = '' } ; fileInputRef.current.click() } }}>{editor.uploading ? 'Enviando...' : 'Enviar arquivo'}</Button>
                 <span className="text-[11px] text-faint">ou cole uma imagem com Ctrl+V</span>
+              </div>
+              <div>
+                <label className={FIELD_LABEL}>URL manual (opcional)</label>
+                <input className={FIELD} value={editor.source_url} onChange={(event) => setEditor({ ...editor, source_url: event.target.value })} placeholder="https://..." />
               </div>
               {editor.uploading && <p className="text-xs text-muted">Enviando arquivo...</p>}
               {editor.uploadError && <p className="text-xs text-rose-300">{editor.uploadError}</p>}
             </div>
           )}
-          <label className="block text-xs text-muted">{editor.kind === 'readme' ? 'Conteúdo (Markdown)' : 'Conteúdo'}<textarea rows={14} value={editor.content} onChange={(event) => setEditor({ ...editor, content: event.target.value })} placeholder={CONTENT_PLACEHOLDER[editor.kind]} /></label>
-          <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditor(null)}>Cancelar</Button><Button type="submit" icon={<Check size={14} />}>Salvar</Button></div>
+
+          {editor.kind === 'readme' && (
+            <div>
+              <label className={FIELD_LABEL}>Descrição</label>
+              <textarea rows={2} className={FIELD} value={editor.description} onChange={(event) => setEditor({ ...editor, description: event.target.value })} placeholder="Resumo curto do que este README contém (aparece no card e como contexto para a IA)." />
+            </div>
+          )}
+
+          {(editor.kind === 'audio' || editor.kind === 'video' || editor.kind === 'youtube') && (
+            <>
+              <div>
+                <label className={FIELD_LABEL}>Descrição</label>
+                <textarea rows={2} className={FIELD} value={editor.description} onChange={(event) => setEditor({ ...editor, description: event.target.value })} placeholder="O que é este material e o que ele mostra." />
+              </div>
+              <div>
+                <label className={FIELD_LABEL}>Quando utilizar</label>
+                <textarea rows={2} className={FIELD} value={editor.whenToUse} onChange={(event) => setEditor({ ...editor, whenToUse: event.target.value })} placeholder="Ex.: Enviar somente depois que o lead demonstrar interesse." />
+                <span className="mt-1.5 block text-[11px] text-faint">O momento exato em que a IA deve enviar este material.</span>
+              </div>
+            </>
+          )}
+
+          {(editor.kind === 'link' || editor.kind === 'documento' || editor.kind === 'imagem') && (
+            <div>
+              <label className={FIELD_LABEL}>Descrição</label>
+              <textarea rows={3} className={FIELD} value={editor.content} onChange={(event) => setEditor({ ...editor, content: event.target.value })} placeholder={CONTENT_PLACEHOLDER[editor.kind]} />
+            </div>
+          )}
+
+          {(editor.kind === 'texto' || editor.kind === 'readme') && (
+            <div>
+              <label className={FIELD_LABEL}>{editor.kind === 'readme' ? 'Conteúdo (Markdown)' : 'Conteúdo'}</label>
+              <textarea rows={14} className={FIELD} value={editor.content} onChange={(event) => setEditor({ ...editor, content: event.target.value })} placeholder={CONTENT_PLACEHOLDER[editor.kind]} />
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 border-t border-line pt-4"><Button type="button" variant="secondary" onClick={() => setEditor(null)}>Cancelar</Button><Button type="submit" icon={<Check size={14} />}>Salvar</Button></div>
         </form>}
       </Modal>
 
@@ -898,6 +1037,13 @@ export function KnowledgeBaseView() {
         {details && <div className="space-y-3 text-sm">
           <div className="flex items-center gap-3">{fileIcon(details.kind)}<div><p className="font-medium">{details.name}</p><p className="text-xs text-muted">{KIND_LABEL[details.kind]}</p></div></div>
           {details.kind === 'readme' && parseReadmeContent(details.content ?? '').description && <div><p className="mb-1 text-xs font-medium text-muted">Descrição</p><p className="text-fg">{parseReadmeContent(details.content ?? '').description}</p></div>}
+          {(details.kind === 'audio' || details.kind === 'video' || details.kind === 'youtube') && (() => {
+            const parsed = parseStructuredContent(details.kind, details.content ?? '')
+            return <>
+              {parsed.description && <div><p className="mb-1 text-xs font-medium text-muted">Descrição</p><p className="text-fg">{parsed.description}</p></div>}
+              {parsed.whenToUse && <div><p className="mb-1 text-xs font-medium text-muted">Quando utilizar</p><p className="text-fg">{parsed.whenToUse}</p></div>}
+            </>
+          })()}
           {details.content && <div><p className="mb-1 text-xs font-medium text-muted">Conteúdo</p><p className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-subtle p-3 text-fg">{details.content}</p></div>}
           {details.source_url && <div><p className="mb-1 text-xs font-medium text-muted">Link</p><a href={details.source_url} target="_blank" rel="noreferrer" className="break-all text-accent-300 hover:text-accent-200">{details.source_url}</a></div>}
           <div className="grid grid-cols-2 gap-2 border-t border-line pt-3 text-xs text-muted">
