@@ -65,7 +65,7 @@ const INTENT_CASES: Array<{ msg: string; expected: string[] }> = [
   // 'duvida' e 'informacao' são equivalentes no comportamento (agente responde,
   // sem movimentar o Kanban), então aceitamos ambos conforme o modelo emitir.
   { msg: 'Tenho uma dúvida: vocês têm garantia?', expected: ['duvida', 'informacao'] },
-  { msg: 'Me conta mais sobre como funciona o serviço de vocês.', expected: ['informacao'] },
+  { msg: 'Me conta mais sobre como funciona o serviço de vocês.', expected: ['informacao', 'duvida'] },
   { msg: 'Quero marcar uma reunião para amanhã.', expected: ['reuniao'] },
   { msg: 'Quanto custa? Pode me mandar o orçamento?', expected: ['orcamento', 'informacao'] },
   { msg: 'Não tenho interesse, obrigado.', expected: ['sem_interesse'] },

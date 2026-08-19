@@ -15,6 +15,8 @@ export type LeadStatus =
   | 'novo'
   | 'na_fila'
   | 'enviado'
+  | 'ia'
+  | 'necessita_humano'
   | 'conversando'
   | 'sem_interesse'
   | 'remarketing'

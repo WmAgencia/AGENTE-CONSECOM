@@ -941,6 +941,18 @@ async function leadsHeaders(): Promise<Record<string, string>> {
  * NÃO apaga o lead nem o histórico/campanhas/Kanban. Sem senha.
  */
 export const leadsApi = {
+  /**
+   * Movimentação MANUAL do Kanban (drag-and-drop). Persiste o novo status +
+   * lead_status_history no backend (origem manual). Não deve ser revertida
+   * por processos assíncronos.
+   */
+  async updateStatus(leadId: string, status: string, note?: string): Promise<{ ok: boolean; status: string }> {
+    return request<{ ok: boolean; status: string }>(`/api/leads/${encodeURIComponent(leadId)}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status, note }),
+      headers: await leadsHeaders(),
+    })
+  },
   async clearList(leadIds: string[]): Promise<LeadsClearResult> {
     return request<LeadsClearResult>('/api/leads/clear-list', {
       method: 'POST',

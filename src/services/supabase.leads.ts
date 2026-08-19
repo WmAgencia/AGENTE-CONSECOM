@@ -60,6 +60,41 @@ export function shouldActivateConversation(status: string | null | undefined): b
 }
 
 // ---------------------------------------------------------------------------
+// Movimentação manual x automática (Modo Inteligente / Kanban).
+//
+// O worker de envio move o lead para 'enviado' quando a sequência conclui.
+// Porém, uma movimentação MANUAL do operador (ou o handoff/IA) NÃO pode ser
+// revertida por esse processo assíncrono: se o lead já avançou no funil
+// (conversando, ia, necessita_humano, sem_interesse, ...), o worker apenas
+// finaliza o run sem sobrescrever o status.
+// ---------------------------------------------------------------------------
+const PROGRESSED_STATUSES = new Set([
+  'conversando',
+  'ia',
+  'necessita_humano',
+  'sem_interesse',
+  'remarketing',
+  'responder_depois',
+  'reuniao_marcada',
+  'reuniao_cancelada',
+  'para_ligacao',
+  'fechado',
+  'nao_fechado',
+]);
+
+/**
+ * O worker só pode avançar o lead para 'enviado' a partir de estados pré-envio
+ * (novo/na_fila/enviado/desconhecido). Status que já entraram em conversa ou
+ * foram movidos manualmente NÃO são revertidos. Fail-open: status
+ * desconhecidos deixam passar (comportamento antigo preservado).
+ */
+export function canProgressToEnviado(status: string | null | undefined): boolean {
+  const s = status ? String(status) : '';
+  if (!s) return true;
+  return !PROGRESSED_STATUSES.has(s);
+}
+
+// ---------------------------------------------------------------------------
 // Completude da sequência de campanha (MODIFICAÇÃO 1).
 //
 // O lead só deve ser movido para "Conversando" quando TODAS as mensagens da

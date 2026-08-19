@@ -3,11 +3,13 @@ import { supabase, type Lead, type LeadStatus, type Campaign, type ConversationM
 import { computeEngagement, type Engagement } from '../lib/engagement'
 import { filterLeadsBySearch } from '../lib/kanbanSearch'
 import { LeadChat } from './LeadChat'
-import { followUpsApi } from '../lib/api'
+import { followUpsApi, leadsApi } from '../lib/api'
 import { Modal } from './ui'
 
 type Section =
   | 'enviados'
+  | 'ia'
+  | 'necessita_humano'
   | 'conversando'
   | 'sem_interesse'
   | 'remarketing'
@@ -19,6 +21,8 @@ type Section =
 
 const SECTIONS: { key: Section; label: string; icon: string; statuses: LeadStatus[] }[] = [
   { key: 'enviados', label: 'Enviados', icon: '📤', statuses: ['enviado', 'na_fila'] },
+  { key: 'ia', label: 'IA', icon: '🤖', statuses: ['ia'] },
+  { key: 'necessita_humano', label: 'Necessita de humano', icon: '🙋', statuses: ['necessita_humano'] },
   { key: 'conversando', label: 'Conversando', icon: '💬', statuses: ['conversando'] },
   { key: 'remarketing', label: 'Remarketing', icon: '🔁', statuses: ['remarketing'] },
   { key: 'responder_depois', label: 'Responder depois', icon: '↩', statuses: ['responder_depois'] },
@@ -31,6 +35,8 @@ const SECTIONS: { key: Section; label: string; icon: string; statuses: LeadStatu
 
 const SECTION_COLOR: Record<Section, string> = {
   enviados: 'bg-sky-500',
+  ia: 'bg-fuchsia-500',
+  necessita_humano: 'bg-red-500',
   conversando: 'bg-violet-500',
   remarketing: 'bg-amber-500',
   responder_depois: 'bg-cyan-500',
@@ -74,6 +80,8 @@ const BAR_COLOR: Record<Engagement['band'], string> = {
 function emptySections(): Record<Section, number> {
   return {
     enviados: 0,
+    ia: 0,
+    necessita_humano: 0,
     conversando: 0,
     sem_interesse: 0,
     remarketing: 0,
@@ -128,6 +136,48 @@ export function KanbanBoard({
   // Leads POR CAMPANHA vêm de send_runs (a participação real da campanha),
   // NÃO da lista global /leads — assim "limpar lista" nunca apaga o Kanban.
   const [byCampaign, setByCampaign] = useState<Map<string, Lead[]>>(new Map())
+  // Drag-and-drop: lead em arrasto + coluna alvo + overrides otimistas (a
+  // coluna muda na hora; o realtime confirma no banco e limpa o override).
+  const [dragLead, setDragLead] = useState<Lead | null>(null)
+  const [dragOverSection, setDragOverSection] = useState<string | null>(null)
+  const [overrides, setOverrides] = useState<Record<string, LeadStatus>>({})
+
+  const effectiveStatus = (l: Lead): LeadStatus => overrides[l.id] ?? l.status
+
+  // Limpa overrides já refletidos pelo backend (realtime atualizou o status).
+  useEffect(() => {
+    setOverrides((prev) => {
+      const stale = Object.entries(prev).filter(([id, st]) => {
+        const real = leads.find((l) => l.id === id)?.status
+        return real === st || real === undefined
+      })
+      if (stale.length === 0) return prev
+      const next = { ...prev }
+      for (const [id] of stale) delete next[id]
+      return next
+    })
+  }, [leads])
+
+  async function handleDrop(target: { key: Section; statuses: LeadStatus[] }) {
+    const lead = dragLead
+    setDragOverSection(null)
+    setDragLead(null)
+    if (!lead) return
+    const from = effectiveStatus(lead)
+    const to = target.statuses[0]
+    if (!to || from === to) return
+    setOverrides((prev) => ({ ...prev, [lead.id]: to }))
+    try {
+      await leadsApi.updateStatus(lead.id, to, `Movido manualmente no Kanban: ${from} → ${to}`)
+    } catch {
+      setOverrides((prev) => {
+        const next = { ...prev }
+        delete next[lead.id]
+        return next
+      })
+      window.alert('Não foi possível mover o lead. Tente novamente.')
+    }
+  }
   const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set())
   const [followUpsByLead, setFollowUpsByLead] = useState<Map<string, FollowUp[]>>(new Map())
 
@@ -389,8 +439,8 @@ export function KanbanBoard({
         </div>
       ) : (
         <div ref={pipelineRef} className="flex-1 flex gap-4 px-6 py-5 overflow-x-auto">
-          {SECTIONS.map((sec) => {
-            const items = list.filter((l) => sec.statuses.includes(l.status))
+{SECTIONS.map((sec) => {
+            const items = list.filter((l) => sec.statuses.includes(effectiveStatus(l)))
             const ordered = sec.key === 'reuniao_marcada'
               ? [...items].sort((a, b) => (a.meeting_at ?? '9999').localeCompare(b.meeting_at ?? '9999'))
               : sec.key === 'concluidos'
@@ -398,8 +448,23 @@ export function KanbanBoard({
                 : sec.key === 'para_ligacao'
                   ? [...items].sort((a, b) => (b.call_moved_at ?? '').localeCompare(a.call_moved_at ?? ''))
                   : items
+            const isOver = dragOverSection === sec.key
             return (
-              <div key={sec.key} className="w-72 shrink-0 rounded-xl border border-line bg-subtle flex flex-col">
+              <div
+                key={sec.key}
+                onDragOver={(e) => {
+                  if (!dragLead) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  setDragOverSection(sec.key)
+                }}
+                onDragLeave={() => setDragOverSection((d) => (d === sec.key ? null : d))}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  void handleDrop(sec)
+                }}
+                className={`w-72 shrink-0 rounded-xl border border-line bg-subtle flex flex-col transition-colors ${isOver ? 'border-accent-500 ring-2 ring-accent-500/30' : ''}`}
+              >
                 <div className="px-4 py-3 flex items-center gap-2">
                   <span className="text-sm">{sec.icon}</span>
                   <span className="text-xs font-semibold text-secondary uppercase tracking-wide">{sec.label}</span>
@@ -410,13 +475,15 @@ export function KanbanBoard({
                   {ordered.map((lead) => (
                     <LeadCard
                       key={lead.id}
-                      lead={lead}
+                      lead={{ ...lead, status: effectiveStatus(lead) }}
                       engagement={engagement.get(lead.id)}
                       followUps={followUpsByLead.get(lead.id) ?? []}
                       onAction={() => setChatLead(lead)}
                       onChat={() => setChatLead(lead)}
                       onMeeting={() => { setSelectedLead(lead); setModal('meeting') }}
                       onClose={() => { setSelectedLead(lead); setModal('close') }}
+                      onDragStart={(l) => setDragLead(l)}
+                      dragging={dragLead?.id === lead.id}
                     />
                   ))}
                   {ordered.length === 0 && (
@@ -462,6 +529,8 @@ const STATUS_BADGE: Record<LeadStatus, { label: string; cls: string }> = {
   novo: { label: 'Novo', cls: 'bg-slate-500/15 text-secondary' },
   na_fila: { label: 'Na fila', cls: 'bg-amber-500/15 text-amber-300' },
   enviado: { label: 'Enviado', cls: 'bg-sky-500/15 text-sky-300' },
+  ia: { label: 'IA', cls: 'bg-fuchsia-500/15 text-fuchsia-300' },
+  necessita_humano: { label: 'Necessita de humano', cls: 'bg-red-500/15 text-red-300' },
   conversando: { label: 'Conversando', cls: 'bg-violet-500/15 text-violet-300' },
   sem_interesse: { label: 'Sem interesse', cls: 'bg-rose-500/15 text-rose-300' },
   remarketing: { label: 'Remarketing', cls: 'bg-amber-500/15 text-amber-300' },
@@ -478,7 +547,7 @@ const CALL_REASON_LABEL: Record<string, string> = {
   numero_invalido: 'Número inválido / incorreto',
 }
 
-export function LeadCard({ lead, engagement, followUps, onAction, onChat, onMeeting, onClose }: {
+export function LeadCard({ lead, engagement, followUps, onAction, onChat, onMeeting, onClose, onDragStart, dragging }: {
   lead: Lead
   engagement?: Engagement
   followUps: FollowUp[]
@@ -486,17 +555,25 @@ export function LeadCard({ lead, engagement, followUps, onAction, onChat, onMeet
   onChat: () => void
   onMeeting: () => void
   onClose: () => void
+  onDragStart?: (l: Lead) => void
+  dragging?: boolean
 }) {
   const badge = STATUS_BADGE[lead.status]
   const tooltip = engagementTooltip(engagement)
   return (
-    <div className="group relative rounded-xl bg-panel border border-line p-3 hover:border-line-2 transition cursor-pointer"
+    <div className={`group relative rounded-xl bg-panel border border-line p-3 hover:border-line-2 transition cursor-pointer ${dragging ? 'opacity-40' : ''}`}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', lead.id)
+        e.dataTransfer.effectAllowed = 'move'
+        onDragStart?.(lead)
+      }}
       onClick={onChat}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             {lead.needs_attention && (
-              <span title="Respondeu e precisa de atenção (IA desativada)" className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300 font-semibold">⚠ ATENÇÃO</span>
+              <span title={lead.status === 'necessita_humano' ? 'Handoff — um lead precisa da sua atenção' : 'Respondeu e precisa de atenção (IA desativada)'} className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300 font-semibold">⚠ ATENÇÃO</span>
             )}
             <div className="font-medium text-sm truncate">{lead.name || 'Sem nome'}</div>
           </div>

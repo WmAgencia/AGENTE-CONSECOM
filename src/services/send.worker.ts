@@ -65,6 +65,7 @@ import {
   type Strategy,
 } from './strategy.service.js';
 import { cleanupStaleConnections } from './evolution.connections.js';
+import { canProgressToEnviado } from './supabase.leads.js';
 
 const TICK_MS = Number(getEnv().CONSECOM_WORKER_TICK_MS ?? 5000);
 
@@ -640,6 +641,37 @@ export class SendWorker {
     });
   }
 
+  /**
+   * Avança o lead para 'enviado' APENAS se ele ainda está em estado pré-envio
+   * (novo/na_fila/enviado). Se o operador moveu o lead manualmente, ou o
+   * lead já entrou em conversa/IA/handoff, o run finaliza SEM sobrescrever o
+   * status — movimentação manual não é revertida por processo assíncrono.
+   */
+  private async progressLeadToEnviado(leadId: string): Promise<void> {
+    try {
+      const res = await fetch(
+        `${this.url}/rest/v1/leads?select=status&id=eq.${encodeURIComponent(leadId)}&limit=1`,
+        { headers: this.headers(false) },
+      );
+      if (!res.ok) {
+        // Falhou a leitura: não força status (evita reverter movimento manual).
+        return;
+      }
+      const rows = (await res.json()) as Array<{ status: string | null }>;
+      const current = rows[0]?.status ?? null;
+      if (!canProgressToEnviado(current)) {
+        getLogger().info(
+          { leadId, current },
+          '[CAMPAIGN] run concluído mas lead já avançou no funil — status preservado',
+        );
+        return;
+      }
+      await this.updateLeadStatus(leadId, 'enviado');
+    } catch {
+      // best-effort: falha não deve quebrar o envio do run.
+    }
+  }
+
   /** Move o lead para a coluna "Números para ligação" (status 'para_ligacao'). */
   private async moveLeadToCall(leadId: string, reason: string): Promise<void> {
     await fetch(`${this.url}/rest/v1/leads?id=eq.${leadId}`, {
@@ -774,7 +806,7 @@ const position = run.current_position;
     const next = intelligent ? intelligentInitial : (msgs[position] ?? null);
     if (!next) {
       await this.patchSendRun(run.id, { status: 'done', current_position: position });
-      await this.updateLeadStatus(run.lead_id, 'enviado');
+      await this.progressLeadToEnviado(run.lead_id);
       log.info(
         { runId: run.id, leadId: run.lead_id, intelligent },
         '[CAMPAIGN] run done — modo inteligente não possui sequência tradicional',
@@ -1037,7 +1069,7 @@ const position = run.current_position;
       last_sent_at: new Date().toISOString(),
     });
     if (done) {
-      await this.updateLeadStatus(run.lead_id, 'enviado');
+      await this.progressLeadToEnviado(run.lead_id);
       await this.bumpCampaign(run.campaign_id, 'success_count');
       log.info(
         { runId: run.id, leadId: run.lead_id },

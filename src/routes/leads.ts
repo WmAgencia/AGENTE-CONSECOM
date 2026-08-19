@@ -19,6 +19,7 @@ import {
   getWorkspaceAndUser,
 } from '../services/evolution.connections.js';
 import { classifyBrazilianPhone } from '../lib/phone.js';
+import { updateLeadStatus } from '../services/supabase.leads.js';
 
 interface LeadRow {
   id: string;
@@ -30,6 +31,22 @@ function sup() {
   const cfg = getSupabaseProspeccaoConfig();
   return cfg.url && cfg.serviceRoleKey ? cfg : null;
 }
+
+/** Status aceitos na movimentação MANUAL do Kanban (drag-and-drop). */
+const VALID_MANUAL_STATUSES = new Set([
+  'enviado',
+  'ia',
+  'necessita_humano',
+  'conversando',
+  'remarketing',
+  'responder_depois',
+  'sem_interesse',
+  'reuniao_marcada',
+  'reuniao_cancelada',
+  'para_ligacao',
+  'fechado',
+  'nao_fechado',
+]);
 
 function supHeaders(key: string, json = false): Record<string, string> {
   return json
@@ -135,10 +152,33 @@ export function registerLeadsRoutes(app: FastifyInstance): void {
     const r = await fetch(`${s.url}/rest/v1/leads?id=eq.${encodeURIComponent(leadId)}`, {
       method: 'PATCH',
       headers: supHeaders(s.serviceRoleKey, true),
-      body: JSON.stringify({ ai_control: mode }),
+body: JSON.stringify({ ai_control: mode }),
     });
     if (!r.ok) return reply.status(502).send({ error: 'lead_update_failed' });
     return reply.send({ ok: true, ai_control: mode });
+  });
+
+  app.post('/api/leads/:id/status', async (req, reply) => {
+    const { workspaceId, userId } = getWorkspaceAndUser(req);
+    if (!(workspaceId ?? userId)) return reply.status(401).send({ error: 'unauthorized' });
+    const leadId = (req.params as { id?: string }).id;
+    const body = req.body as { status?: unknown; note?: unknown } | null;
+    const status = typeof body?.status === 'string' ? body.status.trim() : '';
+    const note = typeof body?.note === 'string' ? body.note.trim() : undefined;
+    if (!leadId) return reply.status(400).send({ error: 'lead_id_required' });
+    if (!status) return reply.status(400).send({ error: 'status_required' });
+    if (!VALID_MANUAL_STATUSES.has(status)) {
+      return reply.status(400).send({ error: 'invalid_status' });
+    }
+    try {
+      // updateLeadStatus persiste o novo status + lead_status_history
+      // (estado novo, motivo/nota e timestamp). A movimentação manual vem do
+      // Kanban e não deve ser revertida por processos assíncronos.
+      await updateLeadStatus(leadId, status, note);
+      return reply.send({ ok: true, status });
+    } catch {
+      return reply.status(502).send({ error: 'lead_update_failed' });
+    }
   });
 
   app.post('/api/leads/:id/reply', async (req, reply) => {

@@ -72,6 +72,7 @@ import {
   stripIntentMarker,
   classifyIntentHeuristic,
   planInbound,
+  detectHandoffSignal,
 } from '../services/intent.classifier.js';
 import { scoreInboundMessage } from '../services/scoring.js';
 import {
@@ -83,6 +84,7 @@ import { blockIfSequenceActive, isLeadSequenceActive } from '../services/campaig
 import { InboundMessageDebouncer } from '../services/inbound.message.debouncer.js';
 import { parseFollowUpMarker, stripFollowUpMarker } from '../services/followup.parser.js';
 import { createFollowUp } from '../services/followup.service.js';
+import { createNotifyAdminGroupTool } from '../tools/notify.admin.js';
 
 const IDEMPOTENCY_MAX_ENTRIES = 1000;
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -633,9 +635,27 @@ const campaignKnowledge = await resolveCampaignKnowledge(campaignInfo?.campaignI
             log.info({ messageKeyId: msg.messageKeyId, heuristic: heuristic.intent }, '[IA] heurística crítica sobrescreveu marker contraditório');
           }
         }
-        if (intent === 'humano') {
+// HANDOFF: pedido explícito de humano (marker/heurística) OU sinal
+        // determinístico forte de compra/contrato/pagamento (rede de segurança
+        // quando o marker do modelo não é 'humano'). Negociação/desconto fica
+        // com a IA — ela encaminha só se não houver regra na base.
+        const handoffSignal = detectHandoffSignal(msg.text);
+        const isHandoff = intent === 'humano' || handoffSignal !== null;
+        const handoffReason = intent === 'humano'
+          ? 'pedido de atendimento humano'
+          : (handoffSignal?.reason ?? null);
+        if (isHandoff) {
+          // Regra 5: a conexão que É o responsável não "transfere" — a IA assume
+          // e apenas sinaliza. O movimento para 'necessita_humano' fica só para
+          // quem realmente depende de outra pessoa.
           await updateLeadNeedsAttention(lead.id, true).catch(() => {});
-          log.info({ leadId: lead.id }, '[HANDOFF] Lead solicitou atendimento humano');
+          if (!connectionIsResponsible) {
+            void notifyHandoffAttention(msg.instance, lead, handoffReason).catch(() => {});
+          }
+          log.info(
+            { leadId: lead.id, reason: handoffReason, responsible: connectionIsResponsible },
+            '[HANDOFF] Lead solicitou atendimento humano',
+          );
         }
 
        if (followUp) {
@@ -684,15 +704,31 @@ const campaignKnowledge = await resolveCampaignKnowledge(campaignInfo?.campaignI
           { leadId: lead.id, recorded },
           '[KANBAN] Lead movido para Sem interesse + campanha interrompida',
         );
+      } else if (isHandoff && !connectionIsResponsible && canMoveToHandoff(freshStatus)) {
+        // HANDOFF real: IA encerra e o operador assume. Move para
+        // 'necessita_humano', preserva o histórico com o motivo e garante o
+        // sinal de atenção. (Regra 5: conexão responsável não se auto-transfere.)
+        await updateLeadStatus(lead.id, 'necessita_humano', handoffReason ?? 'handoff').catch(() => {});
+        await updateLeadNeedsAttention(lead.id, true).catch(() => {});
+        log.info(
+          { leadId: lead.id, from: freshStatus, reason: handoffReason },
+          '[KANBAN] Lead movido para NECESSITA DE HUMANO',
+        );
       } else if (shouldActivateConversation(freshStatus)) {
-        // MODIFICAÇÃO 1: só move para 'conversando' quando TODAS as mensagens
-        // da campanha foram enviadas. Resposta no meio da sequência (ou com
-        // alguma mensagem pendente/falha) mantém o lead na coluna atual; a
-        // sequência segue normalmente e o movimento acontece depois.
+        // MODIFICAÇÃO 1: só move para a coluna de conversa quando TODAS as
+        // mensagens da campanha foram enviadas. Resposta no meio da sequência
+        // (ou com alguma mensagem pendente/falha) mantém o lead na coluna
+        // atual; a sequência segue normalmente e o movimento acontece depois.
+        // Em modo inteligente o destino é a coluna IA (a IA conduz); no modo
+        // tradicional é a coluna Conversando.
         const sequence = await loadLeadSequenceCompleteness(lead.id).catch(() => null);
         if (sequence === null || isSequenceComplete(sequence)) {
-          await updateLeadStatus(lead.id, 'conversando').catch(() => {});
-          log.info({ leadId: lead.id }, '[KANBAN] Lead movido para Conversando');
+          const intelligent = campaignInfo?.aiMode === 'intelligent';
+          await updateLeadStatus(lead.id, intelligent ? 'ia' : 'conversando').catch(() => {});
+          log.info(
+            { leadId: lead.id, intelligent },
+            `[KANBAN] Lead movido para ${intelligent ? 'IA' : 'Conversando'}`,
+          );
         } else {
           log.info(
             { leadId: lead.id, status: freshStatus, runStatus: sequence.runStatus },
@@ -775,7 +811,7 @@ const campaignKnowledge = await resolveCampaignKnowledge(campaignInfo?.campaignI
  */
 async function loadLeadCampaignStatus(
   leadId: string,
-): Promise<{ campaignId: string | null; runStatus: string | null; campaignStatus: string | null; aiEnabled: boolean; campaignPersona: CampaignPersona | null; campaignHandoff: CampaignHandoff | null } | null> {
+): Promise<{ campaignId: string | null; runStatus: string | null; campaignStatus: string | null; aiEnabled: boolean; aiMode: 'intelligent' | 'traditional' | null; campaignPersona: CampaignPersona | null; campaignHandoff: CampaignHandoff | null } | null> {
   const cfg = getSupabaseProspeccaoConfig();
   if (!cfg.url || !cfg.serviceRoleKey) return null;
   const headers = {
@@ -794,16 +830,16 @@ async function loadLeadCampaignStatus(
     let campaignStatus: string | null = null;
     if (row.campaign_id) {
       const c = await fetch(
-        `${cfg.url}/rest/v1/campaigns?select=status,ai_enabled,ai_persona,ai_handoff&id=eq.${encodeURIComponent(row.campaign_id)}&limit=1`,
+        `${cfg.url}/rest/v1/campaigns?select=status,ai_enabled,ai_mode,ai_persona,ai_handoff&id=eq.${encodeURIComponent(row.campaign_id)}&limit=1`,
         { headers },
       );
       if (c.ok) {
-        const cs = (await c.json()) as Array<{ status: string; ai_enabled?: boolean | null; ai_persona?: unknown; ai_handoff?: unknown }>;
+        const cs = (await c.json()) as Array<{ status: string; ai_enabled?: boolean | null; ai_mode?: string | null; ai_persona?: unknown; ai_handoff?: unknown }>;
         campaignStatus = cs[0]?.status ?? null;
-        return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: cs[0]?.ai_enabled !== false, campaignPersona: sanitizeCampaignPersona(cs[0]?.ai_persona) ?? null, campaignHandoff: sanitizeCampaignHandoff(cs[0]?.ai_handoff) ?? null };
+        return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: cs[0]?.ai_enabled !== false, aiMode: cs[0]?.ai_mode === 'intelligent' ? 'intelligent' : 'traditional', campaignPersona: sanitizeCampaignPersona(cs[0]?.ai_persona) ?? null, campaignHandoff: sanitizeCampaignHandoff(cs[0]?.ai_handoff) ?? null };
       }
     }
-return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: true, campaignPersona: null, campaignHandoff: null };
+return { campaignId: row.campaign_id, runStatus: row.status, campaignStatus, aiEnabled: true, aiMode: 'traditional', campaignPersona: null, campaignHandoff: null };
   } catch {
     return null;
   }
@@ -905,6 +941,61 @@ export function closerMatchesConnection(
     closer.name &&
     identity.connection_name.toLowerCase().trim() === closer.name.toLowerCase().trim();
   return phoneMatch || Boolean(nameMatch);
+}
+
+// ---------------------------------------------------------------------------
+// Handoff -> "NECESSITA DE HUMANO" (Modo Inteligente / Kanban).
+// ---------------------------------------------------------------------------
+
+/** Estados de funil "ativos" em que o handoff tem sentido (exclui fechados). */
+const HANDOFF_ELIGIBLE_STATUSES = new Set([
+  'novo',
+  'na_fila',
+  'enviado',
+  'conversando',
+  'ia',
+  'remarketing',
+  'responder_depois',
+  'reuniao_cancelada',
+]);
+
+/**
+ * O handoff move o lead para 'necessita_humano' apenas quando ele está em um
+ * estado ativo. Lead já fechado, sem interesse, em reunião marcada ou já em
+ * 'necessita_humano' mantém o status (só o sinal de atenção é garantido).
+ */
+export function canMoveToHandoff(status: string | null | undefined): boolean {
+  const s = status ? String(status) : '';
+  if (!s) return true;
+  return HANDOFF_ELIGIBLE_STATUSES.has(s);
+}
+
+/**
+ * Notificação "Um lead precisa da sua atenção" no grupo administrativo
+ * (best-effort): usa o mesmo tool notify_admin_group do agente. Falhas são
+ * engolidas — o sinal de atenção (needs_attention) já fica registrado.
+ */
+export async function notifyHandoffAttention(
+  instance: string | undefined,
+  lead: { id: string; name: string | null; phone: string | null },
+  reason: string | null,
+): Promise<void> {
+  try {
+    const tool = createNotifyAdminGroupTool();
+    const label = lead.name || lead.phone || lead.id;
+    const motivo = reason ? ` Motivo: ${reason}.` : '';
+    await tool.execute(
+      { message: `Um lead precisa da sua atenção: ${label}.${motivo}` },
+      {
+        conversationId: lead.id,
+        source: 'internal',
+        deadlineMs: Date.now() + 10_000,
+        instance,
+      },
+    );
+  } catch {
+    // best-effort: notificação nunca bloqueia o processamento.
+  }
 }
 
 function maskFrom(jid: string): string {

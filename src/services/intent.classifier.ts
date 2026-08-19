@@ -236,6 +236,53 @@ const HUMANO = [
   'pode me passar para um humano',
 ];
 
+// --- Sinais DETERMINÍSTICOS de handoff (rede de segurança do marker da IA) ---
+// A IA é a fonte principal de handoff (marker <!--INTENT:humano-->). Estes
+// padrões só capturam pedidos de COMPRA EXPLÍCITA ou falar com o RESPONSÁVEL —
+// sinais fortes e inequívocos — para nunca mover o lead prematuramente quando
+// o modelo ainda consegue resolver (negociação/desconto fica com a IA, que
+// encaminha se não houver regra na base).
+const BUY_INTENT = [
+  'quero fechar',
+  'quero contratar',
+  'quero comprar',
+  'quero assinar',
+  'vamos fechar',
+  'vou fechar',
+  'pode fechar',
+  'quero fechar hoje',
+  'manda o contrato',
+  'pode mandar o contrato',
+  'quero o contrato',
+  'como faco para pagar',
+  'quero pagar',
+  'como faco o pagamento',
+  'quero fazer o pagamento',
+  'quero falar com o responsavel',
+  'quero falar com o dono',
+  'quero falar com quem fecha',
+  'me passa o responsavel',
+  'me passa quem fecha',
+];
+
+export interface HandoffSignal {
+  /** Motivo legível para registrar no histórico / notificação. */
+  reason: string;
+}
+
+/**
+ * Detecta sinais determinísticos de handoff na MENSAGEM BRUTA do lead.
+ * Usado no webhook como REDE DE SEGURANÇA quando o marker da IA não é
+ * 'humano' (ex.: modelo marcou 'informacao' para um pedido de contrato).
+ * Nunca lança. Retorna null quando não há sinal forte.
+ */
+export function detectHandoffSignal(text: string): HandoffSignal | null {
+  const n = normalize(text);
+  if (!n) return null;
+  if (hasAny(n, BUY_INTENT)) return { reason: 'intenção explícita de compra' };
+  return null;
+}
+
 export interface HeuristicResult {
   intent: InboundIntent;
   /** confiança qualitativa: high somente para sinais inequívocos. */

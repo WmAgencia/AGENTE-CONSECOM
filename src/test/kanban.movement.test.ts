@@ -21,8 +21,10 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'mock-service-role'
 import {
   isSequenceComplete,
   loadLeadSequenceCompleteness,
+  canProgressToEnviado,
   type LeadSequenceCompleteness,
 } from '../services/supabase.leads.js'
+import { detectHandoffSignal } from '../services/intent.classifier.js'
 
 function jsonRes(data: unknown, status = 200): Response {
   return {
@@ -159,4 +161,47 @@ test('falha de leitura (fila não retorna): fail-open quando done', async () => 
   assert.equal(info.queueMessageCount, 0)
   // done + pos(2) >= 0 => move
   assert.equal(isSequenceComplete(info), true)
+})
+
+// --- Modo Inteligente: progressão do worker x movimentação manual -------------
+
+test('canProgressToEnviado: estados pré-envio permitem o worker avançar', () => {
+  assert.equal(canProgressToEnviado(null), true)
+  assert.equal(canProgressToEnviado(''), true)
+  assert.equal(canProgressToEnviado('novo'), true)
+  assert.equal(canProgressToEnviado('na_fila'), true)
+  assert.equal(canProgressToEnviado('enviado'), true)
+  assert.equal(canProgressToEnviado('estado_desconhecido'), true)
+})
+
+test('canProgressToEnviado: funil avançado NÃO é revertido pelo worker', () => {
+  assert.equal(canProgressToEnviado('ia'), false)
+  assert.equal(canProgressToEnviado('necessita_humano'), false)
+  assert.equal(canProgressToEnviado('conversando'), false)
+  assert.equal(canProgressToEnviado('sem_interesse'), false)
+  assert.equal(canProgressToEnviado('remarketing'), false)
+  assert.equal(canProgressToEnviado('responder_depois'), false)
+  assert.equal(canProgressToEnviado('reuniao_marcada'), false)
+  assert.equal(canProgressToEnviado('para_ligacao'), false)
+  assert.equal(canProgressToEnviado('fechado'), false)
+  assert.equal(canProgressToEnviado('nao_fechado'), false)
+})
+
+// --- DetectaHandoffSignal: rede de segurança do marker da IA -----------------
+
+test('detectHandoffSignal: intenção explícita de compra dispara handoff', () => {
+  assert.equal(detectHandoffSignal('quero fechar com vocês')?.reason, 'intenção explícita de compra')
+  assert.equal(detectHandoffSignal('pode mandar o contrato?')?.reason, 'intenção explícita de compra')
+  assert.equal(detectHandoffSignal('quero falar com o responsável')?.reason, 'intenção explícita de compra')
+  assert.equal(detectHandoffSignal('como faço para pagar?')?.reason, 'intenção explícita de compra')
+})
+
+test('detectHandoffSignal: ignora ruído sem sinal forte', () => {
+  assert.equal(detectHandoffSignal('bom dia'), null)
+  assert.equal(detectHandoffSignal('tá caro'), null)
+  assert.equal(detectHandoffSignal('tem desconto?'), null)
+  assert.equal(detectHandoffSignal('quanto custa?'), null)
+  assert.equal(detectHandoffSignal('sem interesse'), null)
+  assert.equal(detectHandoffSignal('me manda depois'), null)
+  assert.equal(detectHandoffSignal(''), null)
 })
