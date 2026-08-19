@@ -571,6 +571,17 @@ export interface AiFlowTestResult {
   provider: string
   latencyMs: number
   signed: string
+  diagnostico: {
+    intencao: string
+    confianca: string
+    score: number
+    motivo: string[]
+    estado: string
+    acao: string
+    material: string
+    handoff: boolean
+    ferramentas: string
+  }
 }
 
 export interface AiTrainingPersona {

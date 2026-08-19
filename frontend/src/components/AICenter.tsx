@@ -305,6 +305,17 @@ function FlowTest() {
                   Lead: <b className="text-fg">{result.lead.name}</b>
                   {result.lead.company ? <> — <span className="text-muted">{result.lead.company}</span></> : null}
                 </div>
+                <div className="rounded-lg border border-accent-500/20 bg-accent-500/5 p-3">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-accent-300">Diagnóstico técnico</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                    <div><span className="text-muted">Intenção</span><div className="font-semibold text-fg">{result.diagnostico.intencao}</div></div>
+                    <div><span className="text-muted">Score</span><div className="font-semibold text-fg">{result.diagnostico.score}/100</div></div>
+                    <div><span className="text-muted">Estado</span><div className="font-semibold text-fg">{result.diagnostico.estado}</div></div>
+                    <div><span className="text-muted">Handoff</span><div className="font-semibold text-fg">{result.diagnostico.handoff ? 'sim' : 'não'}</div></div>
+                  </div>
+                  <div className="mt-2 text-xs text-secondary">Ação: <b className="text-fg">{result.diagnostico.acao}</b> · Material: <b className="text-fg">{result.diagnostico.material}</b></div>
+                  <div className="mt-1 text-[11px] text-muted">Motivos: {result.diagnostico.motivo.join(', ') || 'nenhum'} · Ferramentas: {result.diagnostico.ferramentas}</div>
+                </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
                     <div className="text-[11px] uppercase tracking-wide text-faint mb-1">Etapa</div>

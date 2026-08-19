@@ -18,6 +18,8 @@ import { getEnv, getSupabaseProspeccaoConfig, hasNvidiaApiKey } from '../config/
 import { getLogger } from '../utils/logger.js';
 import { extractBearerToken } from '../utils/auth.js';
 import { runAgentLoop } from '../services/agent.service.js';
+import { classifyIntentHeuristic, planInbound } from '../services/intent.classifier.js';
+import { scoreInboundMessage } from '../services/scoring.js';
 import {
   loadAgentDirectives,
 } from '../services/supabase.leads.js';
@@ -208,6 +210,10 @@ export function registerAiRoutes(app: FastifyInstance): void {
     }
 
     const { leadName, company, context, initialMessage } = parsed.data;
+    const heuristic = classifyIntentHeuristic(initialMessage);
+    const intent = heuristic?.intent ?? 'ambiguo';
+    const score = scoreInboundMessage({ currentStatus: 'novo', intent, text: initialMessage });
+    const plan = planInbound('novo', intent);
 
     // MODO DE TESTE explícito: tools desabilitadas garantem que nenhum
     // WhatsApp real é enviado e nenhuma campanha/lead real é alterado.
@@ -261,8 +267,19 @@ export function registerAiRoutes(app: FastifyInstance): void {
         model: result.model,
         provider: PROVIDER,
         latencyMs: result.latencyMs,
-        signed: mensagem,
-      });
+         signed: mensagem,
+         diagnostico: {
+           intencao: intent,
+           confianca: heuristic?.confidence ?? 'none',
+           score: score.score,
+           motivo: score.factors,
+           estado: plan.nextStatus ?? 'novo',
+           acao: plan.stopCampaign ? 'interromper_campanha' : intent === 'humano' ? 'encaminhar_humano' : 'responder_e_conduzir',
+           material: context ? 'contexto_do_teste' : 'nenhum',
+           handoff: intent === 'humano',
+           ferramentas: 'desativadas_no_teste',
+         },
+       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'AI flow-test failed';
       log.error({ errMessage: message }, 'ai: flow-test route error');
