@@ -600,9 +600,13 @@ if (campaignInfo?.campaignId && campaignInfo.aiEnabled === false) {
       // --- Intenção: marker da IA (fonte principal) com fallback heurístico.
        const followUp = parseFollowUpMarker(agentResult.result);
        let intent = parseIntentMarker(agentResult.result);
-       if (!intent) intent = classifyIntentHeuristic(msg.text)?.intent ?? 'ambiguo';
-       const cleanReply = stripIntentMarker(stripFollowUpMarker(agentResult.result));
-       log.info({ messageKeyId: msg.messageKeyId, intent }, '[IA] Intenção detectada');
+        if (!intent) intent = classifyIntentHeuristic(msg.text)?.intent ?? 'ambiguo';
+        const cleanReply = stripIntentMarker(stripFollowUpMarker(agentResult.result));
+        log.info({ messageKeyId: msg.messageKeyId, intent }, '[IA] Intenção detectada');
+        if (intent === 'humano') {
+          await updateLeadNeedsAttention(lead.id, true).catch(() => {});
+          log.info({ leadId: lead.id }, '[HANDOFF] Lead solicitou atendimento humano');
+        }
 
        if (followUp) {
          const idempotencyKey = `ai:${lead.id}:${followUp.date}:${followUp.time ?? 'sem-horario'}:${followUp.message}`;
