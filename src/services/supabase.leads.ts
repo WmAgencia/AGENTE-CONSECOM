@@ -8,6 +8,7 @@
  *   - load agent directives / name used in the agent system prompt
  */
 import { getSupabaseProspeccaoConfig } from '../config/env.js';
+import { getLogger } from '../utils/logger.js';
 import { normalizeBrazilianPhone } from '../lib/phone.js';
 
 export interface LeadRow {
@@ -277,12 +278,12 @@ export async function updateLeadStatus(
   leadId: string,
   status: string,
   notes?: string,
-): Promise<void> {
+): Promise<boolean> {
   const cfg = getSupabaseProspeccaoConfig();
-  if (!cfg.url || !cfg.serviceRoleKey) return;
+  if (!cfg.url || !cfg.serviceRoleKey) return false;
   const now = new Date().toISOString();
 
-  await fetch(`${cfg.url}/rest/v1/leads?id=eq.${leadId}`, {
+  const res = await fetch(`${cfg.url}/rest/v1/leads?id=eq.${leadId}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -291,6 +292,18 @@ export async function updateLeadStatus(
     },
     body: JSON.stringify({ status, updated_at: now }),
   });
+
+  if (!res.ok) {
+    // Não registra o histórico quando o UPDATE foi rejeitado: um row de
+    // histórico sem a mudança correspondente no lead vira um registro falso
+    // (ex.: coluna IA no Kanban com o lead ainda em "Enviados").
+    const text = (await res.text()).slice(0, 300);
+    getLogger().warn(
+      { leadId, status, supabaseStatus: res.status, supabaseBody: text },
+      'lead: PATCH de status REJEITADO pelo Supabase (constraint/migration pendente?)',
+    );
+    return false;
+  }
 
   await fetch(`${cfg.url}/rest/v1/lead_status_history`, {
     method: 'POST',
@@ -301,6 +314,7 @@ export async function updateLeadStatus(
     },
     body: JSON.stringify({ lead_id: leadId, status, notes: notes ?? null }),
   });
+  return true;
 }
 
 /**

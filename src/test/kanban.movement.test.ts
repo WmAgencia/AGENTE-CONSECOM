@@ -23,6 +23,7 @@ import {
   loadLeadSequenceCompleteness,
   canProgressToEnviado,
   planKanbanMove,
+  updateLeadStatus,
   type LeadSequenceCompleteness,
 } from '../services/supabase.leads.js'
 import { detectHandoffSignal } from '../services/intent.classifier.js'
@@ -41,13 +42,37 @@ const store = {
   sendRuns: [] as Array<Record<string, unknown>>,
   queueMessages: [] as Array<{ id: string }>,
   calls: [] as string[],
+  historyWrites: [] as Array<{ lead_id: string; status: string }>,
 }
 
-async function mockFetch(input: Parameters<typeof fetch>[0]): Promise<Response> {
+async function mockFetch(input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> {
   const url = decodeURIComponent(typeof input === 'string' ? input : String(input))
   store.calls.push(url)
   if (url.includes('/rest/v1/send_runs')) return jsonRes(store.sendRuns)
   if (url.includes('/rest/v1/queue_messages')) return jsonRes(store.queueMessages)
+  // Simula o CHECK leads_status_check de produção: 'ia'/'necessita_humano'
+  // são REJEITADOS com 23514 (constraint) quando a migration v39 não foi
+  // aplicada; os demais status passam. Sem a migration, o PATCH falha.
+  if (url.includes('/rest/v1/leads')) {
+    let body = {}
+    try {
+      body = init?.body ? JSON.parse(String(init.body)) : {}
+    } catch {}
+    const s = (body as { status?: string }).status
+    const allowed = ['novo', 'na_fila', 'enviado', 'conversando', 'sem_interesse', 'responder_depois']
+    if (s && !allowed.includes(s)) {
+      return jsonRes({ code: '23514', message: 'new row violates check constraint' }, 400)
+    }
+    return jsonRes({}, 204)
+  }
+  if (url.includes('/rest/v1/lead_status_history') && init?.method === 'POST') {
+    let body = {}
+    try {
+      body = init.body ? JSON.parse(String(init.body)) : {}
+    } catch {}
+    store.historyWrites.push(body as { lead_id: string; status: string })
+    return jsonRes([body], 201)
+  }
   return jsonRes([])
 }
 
@@ -59,6 +84,7 @@ function reset(): void {
   store.sendRuns.length = 0
   store.queueMessages.length = 0
   store.calls.length = 0
+  store.historyWrites.length = 0
 }
 
 // --- isSequenceComplete: matriz de decisão pura -------------------------------
@@ -235,4 +261,25 @@ test('detectHandoffSignal: ignora ruído sem sinal forte', () => {
   assert.equal(detectHandoffSignal('sem interesse'), null)
   assert.equal(detectHandoffSignal('me manda depois'), null)
   assert.equal(detectHandoffSignal(''), null)
+})
+
+// --- updateLeadStatus: PATCH rejeitado NÃO gera histórico falso --------------
+// Corresponde ao bug real: o CHECK leads_status_check não aceitava 'ia' nem
+// 'necessita_humano'; o PATCH falhava silenciosamente e o histórico era
+// gravado mesmo assim (linha falsa de "IA" com o lead ainda em "Enviados").
+
+test('updateLeadStatus: status fora do CHECK => retorna false e NÃO grava histórico', async () => {
+  reset()
+  const ok = await updateLeadStatus('lead-1', 'ia')
+  assert.equal(ok, false)
+  assert.equal(store.historyWrites.length, 0, 'não pode gravar histórico sem o status ter mudado')
+})
+
+test('updateLeadStatus: status permitido => grava status + histórico', async () => {
+  reset()
+  const ok = await updateLeadStatus('lead-1', 'responder_depois', 'motivo')
+  assert.equal(ok, true)
+  assert.equal(store.historyWrites.length, 1)
+  assert.equal(store.historyWrites[0].status, 'responder_depois')
+  assert.equal(store.historyWrites[0].notes, 'motivo')
 })

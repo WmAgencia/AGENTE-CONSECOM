@@ -152,7 +152,7 @@ ALTER TABLE public.leads ADD CONSTRAINT leads_status_check CHECK (
   status IN (
     'novo','na_fila','enviado','conversando','sem_interesse',
     'remarketing','reuniao_marcada','reuniao_cancelada','fechado','nao_fechado',
-    'para_ligacao'
+    'para_ligacao','responder_depois','ia','necessita_humano'
   )
 );
 
