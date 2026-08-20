@@ -1121,3 +1121,24 @@ test('MI2) Modo Inteligente sem abordagem configurada = nenhum envio da sequênc
   await w.tick()
   assert.equal(store.sent.length, 0, 'sem abordagem definida, o modo inteligente não dispara nada')
 })
+
+test('MI3) Modo Inteligente SEM sequência tradicional (queue vazia) ainda envia a abordagem inicial', async () => {
+  const l1 = setupLead('Lead 1', '11999990001')
+  // Campanha inteligente não tem queue_messages (a sequência tradicional não
+  // existe); a abordagem inicial é a ÚNICA mensagem. Bug real: o early-return
+  // de "fila vazia" encerrava o run como done sem enviar nada.
+  resetBoard(0, 0, l1)
+  store.campaigns.get('c1')!.ai_mode = 'intelligent'
+  store.campaigns.get('c1')!.ai_initial_message = 'Olá, boa noite! É o Wesley?'
+
+  const w = await newWorker()
+  await w.tick()
+  assert.deepEqual(
+    store.sent.map((m) => m.text),
+    ['Olá, boa noite! É o Wesley?'],
+    'abordagem inicial enviada mesmo com queue_messages vazia',
+  )
+  assert.equal(store.runs.get(`run-${l1.id}`)!.status, 'done', 'run conclui logo após a abordagem')
+  assert.equal(store.runs.get(`run-${l1.id}`)!.current_position, 1)
+  assert.equal(store.leads.get(l1.id)!.status, 'enviado', 'lead liberado para a resposta da IA')
+})

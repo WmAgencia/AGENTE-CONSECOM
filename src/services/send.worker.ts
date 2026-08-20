@@ -745,7 +745,13 @@ export class SendWorker {
   private async processRun(run: SendRunRow): Promise<void> {
     const log = getLogger();
     const msgs = await this.getQueueMessages(run.campaign_id);
-    if (msgs.length === 0) {
+    const aiMode = await this.getCampaignAiMode(run.campaign_id);
+    // Modo inteligente: a sequência tradicional NÃO existe (queue_messages
+    // fica vazia por design) e a única mensagem é a abordagem inicial
+    // (ai_initial_message). Portanto o early-return de fila vazia só pode
+    // valer para o modo tradicional — no modo inteligente ele não pode
+    // encerrar o run sem enviar a abordagem inicial.
+    if (msgs.length === 0 && aiMode.mode !== 'intelligent') {
       await this.patchSendRun(run.id, { status: 'done', current_position: 0 });
       return;
     }
@@ -786,7 +792,6 @@ const sendInstance = assignedInstance || campaignInstance || undefined;
     }
 
 const position = run.current_position;
-    const aiMode = await this.getCampaignAiMode(run.campaign_id);
     // Modo inteligente: a sequência tradicional NÃO existe. A única mensagem é
     // a abordagem inicial (posição 0). Sem abordagem configurada, nada é
     // enviado — a campanha NUNCA cai na sequência tradicional por fallback.
