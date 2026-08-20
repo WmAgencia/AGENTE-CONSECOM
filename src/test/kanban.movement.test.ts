@@ -22,6 +22,7 @@ import {
   isSequenceComplete,
   loadLeadSequenceCompleteness,
   canProgressToEnviado,
+  planKanbanMove,
   type LeadSequenceCompleteness,
 } from '../services/supabase.leads.js'
 import { detectHandoffSignal } from '../services/intent.classifier.js'
@@ -164,6 +165,36 @@ test('falha de leitura (fila não retorna): fail-open quando done', async () => 
 })
 
 // --- Modo Inteligente: progressão do worker x movimentação manual -------------
+
+// --- planKanbanMove: Modo Inteligente SEMPRE move p/ IA quando a IA responde ---
+
+test('modo inteligente: run pendente NÃO impede movimento para IA (a IA já respondeu)', () => {
+  const seq: LeadSequenceCompleteness = { hasRun: true, runStatus: 'pending', currentPosition: 0, queueMessageCount: 0 };
+  assert.deepEqual(planKanbanMove({ aiMode: 'intelligent', sequence: seq }), { nextStatus: 'ia' });
+});
+
+test('modo inteligente: run done também move para IA', () => {
+  const seq: LeadSequenceCompleteness = { hasRun: true, runStatus: 'done', currentPosition: 1, queueMessageCount: 0 };
+  assert.deepEqual(planKanbanMove({ aiMode: 'intelligent', sequence: seq }), { nextStatus: 'ia' });
+});
+
+test('modo inteligente: sem run também move para IA', () => {
+  assert.deepEqual(planKanbanMove({ aiMode: 'intelligent', sequence: null }), { nextStatus: 'ia' });
+});
+
+test('modo tradicional: sequência completa move para Conversando', () => {
+  const seq: LeadSequenceCompleteness = { hasRun: true, runStatus: 'done', currentPosition: 3, queueMessageCount: 3 };
+  assert.deepEqual(planKanbanMove({ aiMode: 'traditional', sequence: seq }), { nextStatus: 'conversando' });
+});
+
+test('modo tradicional: sequência incompleta (run pendente) NÃO move', () => {
+  const seq: LeadSequenceCompleteness = { hasRun: true, runStatus: 'running', currentPosition: 1, queueMessageCount: 3 };
+  assert.deepEqual(planKanbanMove({ aiMode: 'traditional', sequence: seq }), { nextStatus: null });
+});
+
+test('modo tradicional: sem run move para Conversando (comportamento antigo)', () => {
+  assert.deepEqual(planKanbanMove({ aiMode: 'traditional', sequence: null }), { nextStatus: 'conversando' });
+});
 
 test('canProgressToEnviado: estados pré-envio permitem o worker avançar', () => {
   assert.equal(canProgressToEnviado(null), true)

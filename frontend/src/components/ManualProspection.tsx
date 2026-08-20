@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { UserPlus, Trash2, Check, AlertCircle, Link2, Loader2, Pencil, X, ArrowRight } from 'lucide-react'
+import { UserPlus, Trash2, Check, AlertCircle, AlertTriangle, Link2, Loader2, Pencil, X, ArrowRight } from 'lucide-react'
 import { Button } from './ui'
 
 const API = import.meta.env.VITE_BACKEND_URL ?? 'https://consecom-backend-production.up.railway.app'
@@ -23,6 +23,8 @@ interface UrlContact {
   whatsapp: boolean
   context?: string | null
   selected: boolean
+  exists?: boolean
+  existing_name?: string | null
 }
 
 export function ManualProspection() {
@@ -144,10 +146,12 @@ export function ManualProspection() {
   const statusLabel = (l: AddedLead): string => {
     if (l.error) return l.error
     if (l.status === 'added') return 'Adicionado'
-    if (l.status === 'duplicate') return 'Duplicado'
+    if (l.status === 'duplicate') return 'Já existe'
     if (l.status === 'invalid') return 'Inválido'
     return l.status
   }
+
+  const isDuplicate = (l: AddedLead): boolean => l.status === 'duplicate'
 
   // --- Prospecção por URL ---
 
@@ -367,7 +371,9 @@ export function ManualProspection() {
                   key={l.id}
                   className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm"
                 >
-                  {l.error ? (
+                  {isDuplicate(l) ? (
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  ) : l.error ? (
                     <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                   ) : (
                     <Check className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -376,9 +382,11 @@ export function ManualProspection() {
                   <span className="text-xs text-muted">{l.phone}</span>
                   <span
                     className={`text-xs px-2 py-0.5 rounded ${
-                      l.error
-                        ? 'bg-rose-500/10 text-rose-300'
-                        : 'bg-emerald-500/10 text-emerald-300'
+                      isDuplicate(l)
+                        ? 'bg-amber-500/10 text-amber-300'
+                        : l.error
+                          ? 'bg-rose-500/10 text-rose-300'
+                          : 'bg-emerald-500/10 text-emerald-300'
                     }`}
                   >
                     {statusLabel(l)}
@@ -453,7 +461,9 @@ export function ManualProspection() {
                   key={l.id}
                   className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm"
                 >
-                  {l.error ? (
+                  {isDuplicate(l) ? (
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  ) : l.error ? (
                     <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                   ) : (
                     <Check className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -462,9 +472,11 @@ export function ManualProspection() {
                   <span className="text-xs text-muted">{l.phone}</span>
                   <span
                     className={`text-xs px-2 py-0.5 rounded ${
-                      l.error
-                        ? 'bg-rose-500/10 text-rose-300'
-                        : 'bg-emerald-500/10 text-emerald-300'
+                      isDuplicate(l)
+                        ? 'bg-amber-500/10 text-amber-300'
+                        : l.error
+                          ? 'bg-rose-500/10 text-rose-300'
+                          : 'bg-emerald-500/10 text-emerald-300'
                     }`}
                   >
                     {statusLabel(l)}
@@ -501,12 +513,21 @@ export function ManualProspection() {
             <div className="rounded-lg border border-line overflow-hidden">
               <div className="px-4 py-2 border-b border-line text-sm font-medium flex items-center justify-between">
                 <span>Selecionar todos ({previewSelectedCount}/{preview.length})</span>
-                <button
-                  onClick={() => setPreview((prev) => prev?.map((c) => ({ ...c, selected: true })) ?? null)}
-                  className="text-xs text-accent-300 hover:text-accent-200"
-                >
-                  Todos
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setPreview((prev) => prev?.map((c) => ({ ...c, selected: !c.exists })) ?? null)}
+                    className="text-xs text-emerald-400 hover:text-emerald-300"
+                    title="Selecionar apenas os leads que ainda não existem"
+                  >
+                    Novos ({preview.filter((c) => !c.exists).length})
+                  </button>
+                  <button
+                    onClick={() => setPreview((prev) => prev?.map((c) => ({ ...c, selected: true })) ?? null)}
+                    className="text-xs text-accent-300 hover:text-accent-200"
+                  >
+                    Todos
+                  </button>
+                </div>
               </div>
               {preview.map((c) => (
                 <div key={c.index} className="flex items-center gap-3 px-4 py-2 border-b border-line last:border-0">
@@ -547,6 +568,11 @@ export function ManualProspection() {
                           {c.phone} {c.whatsapp ? '· WhatsApp' : ''}
                           {c.context && c.context !== c.name ? ` · ${c.context}` : ''}
                         </span>
+                        {c.exists && (
+                          <span className="block text-xs text-amber-400 mt-0.5">
+                            Lead {c.existing_name || c.name || 'sem nome'} já existe com esse telefone.
+                          </span>
+                        )}
                       </>
                     )}
                   </div>

@@ -182,6 +182,29 @@ test('identidade: prompt usa o nome da conexão certa por conversa', () => {
   assert.ok(!b.includes('Ana'), 'conexão B não deve citar Ana');
 });
 
+// --- 4.1) Base de Conhecimento é a fonte prioritária (não o playbook/nicho) ---
+test('KB presente: prompt instrui que a Base/README prevalece sobre playbook e nicho', () => {
+  const withKb = buildSystemPrompt({
+    useReactFallback: false,
+    toolNames: [],
+    knowledgeBase: '[README] README.md\nEsta campanha vende exclusivamente a solução da Consecom para psicólogos.',
+    injectIntentMarker: true,
+  });
+  assert.match(withKb, /FONTE PRINCIPAL E ÚNICA/);
+  assert.match(withKb, /INSTRUÇÃO PRINCIPAL/);
+  assert.match(withKb, /nicho\/negócio\/categoria/);
+});
+
+test('KB ausente: prompt NÃO instrui prioridade da Base', () => {
+  const withoutKb = buildSystemPrompt({
+    useReactFallback: false,
+    toolNames: [],
+    injectIntentMarker: true,
+  });
+  assert.ok(!withoutKb.includes('FONTE PRINCIPAL E ÚNICA'));
+  assert.ok(!withoutKb.includes('BASE DE CONHECIMENTO'));
+});
+
 // --- 5) Notificação: notify_admin_group registrado e executável --------------
 test('notificação: notify_admin_group está registrado no registry', () => {
   const registry = currentRegistry();

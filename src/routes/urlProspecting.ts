@@ -20,6 +20,7 @@ import {
   type ProspectedContact,
 } from '../lib/urlProspecting.js';
 import { classifyBrazilianPhone } from '../lib/phone.js';
+import { getTenantForUserId } from '../services/saas.auth.js';
 
 interface SupabaseMeta {
   url: string;
@@ -92,16 +93,57 @@ export function registerUrlProspectingRoutes(app: FastifyInstance): void {
       });
     }
 
-    // Resposta enxuta: sem dados sensíveis, com sinal de deduplicação.
-    const contacts = result.contacts.map((c, index) => ({
-      index,
-      name: c.name,
-      phone: c.phone,
-      phone_normalized: c.phone_normalized,
-      whatsapp: c.whatsapp,
-      context: c.context ?? null,
-      selected: true,
-    }));
+    // Resposta enxuta: sem dados sensíveis, com sinal de deduplicação POR
+    // TENANT (spec: não `phone=X` global). Marca cada contato que JÁ existe
+    // para o usuário/tenant, permitindo o "Selecionar novos" no frontend.
+    const s = sup();
+    if (!s) return reply.status(503).send({ error: 'server_misconfigured' });
+    const tenantId = (await getTenantForUserId(identifier).catch(() => null)) ?? null;
+    const existing = new Map<string, string | null>(); // phone_normalized -> name
+    try {
+      const phones = Array.from(
+        new Set(
+          result.contacts
+            .map((c) => c.phone_normalized)
+            .filter((p): p is string => typeof p === 'string' && p.length > 0),
+        ),
+      );
+      if (phones.length > 0) {
+        const filter = tenantId
+          ? `phone_normalized=in.(${phones.map(encodeURIComponent).join(',')})&or=(tenant_id.eq.${encodeURIComponent(tenantId)},and(tenant_id.is.null,owner_user_id.eq.${encodeURIComponent(identifier)}))`
+          : `phone_normalized=in.(${phones.map(encodeURIComponent).join(',')})&owner_user_id=eq.${encodeURIComponent(identifier)}`;
+        const dupRes = await fetch(`${s.url}/rest/v1/leads?select=phone_normalized,name&${filter}`, {
+          headers: supHeaders(s.key),
+        });
+        if (dupRes.ok) {
+          const rows = (await dupRes.json()) as Array<{ phone_normalized: string | null; name: string | null }>;
+          for (const row of rows) {
+            if (row.phone_normalized) existing.set(row.phone_normalized, row.name);
+          }
+        }
+      }
+    } catch (dupErr) {
+      const em = dupErr instanceof Error ? dupErr.message : 'unknown';
+      log.warn({ errMessage: em }, 'url-prospecting: exists lookup failed');
+    }
+
+    const contacts = result.contacts.map((c, index) => {
+      const normalized = c.phone_normalized;
+      const dupName = normalized ? existing.get(normalized) ?? null : null;
+      return {
+        index,
+        name: c.name,
+        phone: c.phone,
+        phone_normalized: c.phone_normalized,
+        whatsapp: c.whatsapp,
+        context: c.context ?? null,
+        // Contatos que JÁ existem: o frontend mostra o aviso e pode desmarcá-los
+        // via "Selecionar novos".
+        exists: dupName !== null,
+        existing_name: dupName,
+        selected: dupName === null,
+      };
+    });
 
     log.info({ url: target, count: contacts.length }, 'url-prospecting: preview ready');
     return reply.send({
@@ -191,10 +233,15 @@ export function registerUrlProspectingRoutes(app: FastifyInstance): void {
         continue;
       }
 
-      // Dedup contra o banco (mesmo telefone + mesmo dono).
+      // Dedup contra o banco POR TENANT (mesmo telefone + mesmo tenant; leads
+      // legados sem tenant_id: mesmo owner).
+      const tenantId = (await getTenantForUserId(identifier).catch(() => null)) ?? null;
+      const dupQuery = tenantId
+        ? `phone_normalized=eq.${encodeURIComponent(e164)}&or=(tenant_id.eq.${encodeURIComponent(tenantId)},and(tenant_id.is.null,owner_user_id.eq.${encodeURIComponent(identifier)}))`
+        : `phone_normalized=eq.${encodeURIComponent(e164)}&owner_user_id=eq.${encodeURIComponent(identifier)}`;
       let dupName: string | null = null;
       try {
-        const dupUrl = `${s.url}/rest/v1/leads?select=id,name&phone_normalized=eq.${encodeURIComponent(e164)}&owner_user_id=eq.${encodeURIComponent(identifier)}&limit=1`;
+        const dupUrl = `${s.url}/rest/v1/leads?select=id,name&${dupQuery}&limit=1`;
         const dupRes = await fetch(dupUrl, { headers: supHeaders(s.key) });
         if (dupRes.ok) {
           const rows = (await dupRes.json()) as Array<{ id: string; name: string | null }>;
@@ -211,7 +258,7 @@ export function registerUrlProspectingRoutes(app: FastifyInstance): void {
           status: 'duplicate',
           name,
           phone,
-          message: `Lead "${dupName || 'sem nome'}" já existe com este telefone.`,
+          message: `Lead "${dupName || 'sem nome'}" já existe com esse telefone.`,
         });
         continue;
       }
@@ -225,6 +272,7 @@ export function registerUrlProspectingRoutes(app: FastifyInstance): void {
         tags: ['url_prospecting'],
         status: 'novo',
         owner_user_id: identifier,
+        tenant_id: tenantId,
         is_active_in_prospecting: true,
         // Fluxo igual ao da extensão: import_state='imported' permite distribuir
         // para uma campanha via RPC consecom_distribute_imported_leads.

@@ -131,6 +131,27 @@ export function isSequenceComplete(info: LeadSequenceCompleteness): boolean {
 }
 
 /**
+ * Decisão pura do movimento do Kanban no primeiro retorno do lead.
+ *
+ * - Modo inteligente: NÃO existe sequência de campanha (só a abordagem
+ *   inicial). Assim que a IA responde o lead, ele SEMPRE vai para a coluna
+ *   'ia', independente do estado do run (o lead pode responder segundos após
+ *   o envio, antes do worker marcar o run como done).
+ * - Modo tradicional: só vai para 'conversando' quando a sequência da
+ *   campanha está completa (todas as mensagens enviadas).
+ */
+export function planKanbanMove(opts: {
+  aiMode?: string | null;
+  sequence: LeadSequenceCompleteness | null;
+}): { nextStatus: 'ia' | 'conversando' | null } {
+  if (opts.aiMode === 'intelligent') return { nextStatus: 'ia' };
+  if (opts.sequence === null || isSequenceComplete(opts.sequence)) {
+    return { nextStatus: 'conversando' };
+  }
+  return { nextStatus: null };
+}
+
+/**
  * Carrega o estado da sequência de campanha do lead (run mais recente +
  * quantidade de mensagens da fila). Best-effort: nunca lança erro.
  */

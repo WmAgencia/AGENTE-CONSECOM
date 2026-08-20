@@ -20,6 +20,7 @@ import {
 } from '../services/evolution.connections.js';
 import { classifyBrazilianPhone } from '../lib/phone.js';
 import { updateLeadStatus } from '../services/supabase.leads.js';
+import { getTenantForUserId } from '../services/saas.auth.js';
 
 interface LeadRow {
   id: string;
@@ -490,10 +491,17 @@ body: JSON.stringify({ ai_control: mode }),
         continue;
       }
 
-      // Deduplicação contra o banco: mesmo telefone normalizado + mesmo dono.
+      // Deduplicação contra o banco POR TENANT: mesmo telefone normalizado +
+      // mesmo tenant (leads legados sem tenant_id: mesmo owner). A duplicidade
+      // deve impedir que o lead de outro usuário/tenant seja considerado
+      // duplicado (spec: "per tenant", não `phone=X` global).
+      const tenantId = (await getTenantForUserId(identifier).catch(() => null)) ?? null;
+      const dupQuery = tenantId
+        ? `phone_normalized=eq.${encodeURIComponent(e164)}&or=(tenant_id.eq.${encodeURIComponent(tenantId)},and(tenant_id.is.null,owner_user_id.eq.${encodeURIComponent(identifier)}))`
+        : `phone_normalized=eq.${encodeURIComponent(e164)}&owner_user_id=eq.${encodeURIComponent(identifier)}`;
       let dupName: string | null = null;
       try {
-        const dupUrl = `${s.url}/rest/v1/leads?select=id,name&phone_normalized=eq.${encodeURIComponent(e164)}&owner_user_id=eq.${encodeURIComponent(identifier)}&limit=1`;
+        const dupUrl = `${s.url}/rest/v1/leads?select=id,name&${dupQuery}&limit=1`;
         const dupRes = await fetch(dupUrl, { headers: supHeaders(s.serviceRoleKey) });
         if (dupRes.ok) {
           const dupRows = (await dupRes.json()) as Array<{ id: string; name: string | null }>;
@@ -510,7 +518,7 @@ body: JSON.stringify({ ai_control: mode }),
           status: 'duplicate',
           name,
           phone,
-          message: `Lead "${dupName || 'sem nome'}" já existe com este telefone.`,
+          message: `Lead "${dupName || 'sem nome'}" já existe com esse telefone.`,
         });
         continue;
       }
@@ -531,6 +539,7 @@ body: JSON.stringify({ ai_control: mode }),
           : [],
         status: 'novo',
         owner_user_id: identifier,
+        tenant_id: tenantId,
         is_active_in_prospecting: true,
         // Fluxo padrão VYNTRA: import_state='imported' faz o lead aparecer na
         // página /importados e permite distribuir para campanha via RPC

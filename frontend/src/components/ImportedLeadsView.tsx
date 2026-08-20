@@ -32,6 +32,9 @@ export function ImportedLeadsView({
   const [notice, setNotice] = useState('')
   const [connections, setConnections] = useState<WhatsAppConnection[]>([])
   const [dddFilter, setDddFilter] = useState('')
+  // Leads que JÁ participaram de alguma campanha (send_runs). "Selecionar
+  // novos" seleciona apenas os que NUNCA foram distribuídos.
+  const [distributedIds, setDistributedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     supabase.from('whatsapp_connections').select('*').order('created_at').then(({ data }) => {
@@ -56,6 +59,44 @@ export function ImportedLeadsView({
   const selectAll = () => {
     setSelected(new Set(filteredLeads.map((lead) => lead.id)))
   }
+
+  const selectNew = () => {
+    setSelected(
+      new Set(
+        filteredLeads
+          .filter((lead) => !distributedIds.has(lead.id))
+          .map((lead) => lead.id),
+      ),
+    )
+  }
+
+  useEffect(() => {
+    let active = true
+    const ids = imported.map((l) => l.id)
+    if (ids.length === 0) {
+      setDistributedIds(new Set())
+      return
+    }
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from('send_runs')
+          .select('lead_id')
+          .in('lead_id', ids)
+        if (!active) return
+        const s = new Set<string>()
+        for (const r of (data as Array<{ lead_id: string }> | null) ?? []) {
+          if (r.lead_id) s.add(r.lead_id)
+        }
+        setDistributedIds(s)
+      } catch {
+        // best-effort: sem o índice, "novos" vira "todos"
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [imported])
 
   function toggleLead(id: string) {
     setSelected((current) => {
@@ -162,6 +203,9 @@ export function ImportedLeadsView({
             <div className="px-4 py-3 border-b border-line text-sm font-medium flex items-center justify-between">
               <span>{filteredLeads.length} lead(s) encontrado(s){dddFilter ? ` · DDD ${dddFilter}` : ` de ${imported.length} importado(s)`}</span>
               <span className="flex items-center gap-2">
+                <button type="button" onClick={selectNew} disabled={filteredLeads.length === 0} className="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed" title="Selecionar apenas leads que nunca foram distribuídos para uma campanha">
+                  Selecionar novos ({filteredLeads.filter((l) => !distributedIds.has(l.id)).length})
+                </button>
                 <button type="button" onClick={selectAll} disabled={filteredLeads.length === 0} className="text-xs text-accent-400 hover:text-accent-300 disabled:opacity-40 disabled:cursor-not-allowed">Selecionar todos ({filteredLeads.length})</button>
                 {selected.size > 0 && <button type="button" onClick={() => setSelected(new Set())} className="text-xs text-muted hover:text-faint">Limpar</button>}
               </span>

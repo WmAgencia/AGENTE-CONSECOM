@@ -54,6 +54,7 @@ import {
   shouldActivateConversation,
   isSequenceComplete,
   loadLeadSequenceCompleteness,
+  planKanbanMove,
   appendConversationTurn,
   loadAgentDirectives,
   loadAiResponseDelaySeconds,
@@ -716,23 +717,25 @@ const campaignKnowledge = await resolveCampaignKnowledge(campaignInfo?.campaignI
           '[KANBAN] Lead movido para NECESSITA DE HUMANO',
         );
       } else if (shouldActivateConversation(freshStatus)) {
-        // MODIFICAÇÃO 1: só move para a coluna de conversa quando TODAS as
-        // mensagens da campanha foram enviadas. Resposta no meio da sequência
-        // (ou com alguma mensagem pendente/falha) mantém o lead na coluna
-        // atual; a sequência segue normalmente e o movimento acontece depois.
-        // Em modo inteligente o destino é a coluna IA (a IA conduz); no modo
-        // tradicional é a coluna Conversando.
+        // MODIFICAÇÃO (Modo Inteligente): a IA JÁ respondeu o lead. Em modo
+        // inteligente não existe sequência de campanha (apenas a abordagem
+        // inicial), então o lead deve ir para a coluna IA SEMPRE que a IA
+        // começar a responder — independente do estado do run. O lead pode
+        // responder segundos após o envio, antes do worker marcar o run como
+        // done; esse portão NÃO pode prender o lead em "Enviados". No modo
+        // tradicional, a sequência precisa estar completa antes de mover para
+        // "Conversando".
         const sequence = await loadLeadSequenceCompleteness(lead.id).catch(() => null);
-        if (sequence === null || isSequenceComplete(sequence)) {
-          const intelligent = campaignInfo?.aiMode === 'intelligent';
-          await updateLeadStatus(lead.id, intelligent ? 'ia' : 'conversando').catch(() => {});
+        const move = planKanbanMove({ aiMode: campaignInfo?.aiMode, sequence });
+        if (move.nextStatus) {
+          await updateLeadStatus(lead.id, move.nextStatus).catch(() => {});
           log.info(
-            { leadId: lead.id, intelligent },
-            `[KANBAN] Lead movido para ${intelligent ? 'IA' : 'Conversando'}`,
+            { leadId: lead.id, status: freshStatus, nextStatus: move.nextStatus, intelligent: move.nextStatus === 'ia' },
+            `[KANBAN] Lead movido para ${move.nextStatus === 'ia' ? 'IA (resposta da IA em modo inteligente)' : 'Conversando'}`,
           );
         } else {
           log.info(
-            { leadId: lead.id, status: freshStatus, runStatus: sequence.runStatus },
+            { leadId: lead.id, status: freshStatus, runStatus: sequence?.runStatus },
             '[KANBAN] Sequência de campanha incompleta — lead mantido na coluna atual',
           );
         }

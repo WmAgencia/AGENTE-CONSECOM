@@ -182,7 +182,16 @@ export function buildKnowledgeContext(files: KnowledgeFile[], maxChars = 6000): 
   const blocks: string[] = [];
   let used = 0;
 
-  for (const file of files) {
+  // O README é a instrução principal da base: SEMPRE vem primeiro, antes de
+  // qualquer material, para nunca ser cortado pelo limite de contexto. Os
+  // demais arquivos mantêm a ordem original (pasta/alfabética).
+  const sorted = [...files].sort((a, b) => {
+    const aReadme = a.kind === 'readme' ? 0 : 1;
+    const bReadme = b.kind === 'readme' ? 0 : 1;
+    return aReadme - bReadme;
+  });
+
+  for (const file of sorted) {
     const kind = file.kind === 'readme' ? 'README' : file.kind.toUpperCase();
     const loc = file.folder_path ? `${file.folder_path}/${file.name}` : file.name;
     const body = file.content?.trim() ?? (file.source_url ? `Link: ${file.source_url}` : '(sem conteúdo)');
